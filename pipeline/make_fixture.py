@@ -31,7 +31,7 @@ MAX_LEVEL = 2
 HEIGHT_PX = 257
 IMG_PX = 512
 ANALYSIS_RES = 2.0
-CRS = f"+proj=eqc +lat_ts={LAT0} +lon_0={LON0} +R={R} +units=m +no_defs"
+CRS = f"+proj=eqc +lat_ts={LAT0} +lat_0=0 +lon_0={LON0} +x_0=0 +y_0={-R * math.radians(LAT0):.3f} +R={R} +units=m +no_defs"
 HAZARD_THRESH = (15.0, 25.0)  # caution, no-go (astronaut_walk profile)
 
 
