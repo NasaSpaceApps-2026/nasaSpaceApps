@@ -4,6 +4,7 @@ OWNER: builder "server". Signatures and return shapes are FROZEN; implement the 
 from __future__ import annotations
 
 import copy
+import re
 
 import numpy as np
 
@@ -17,6 +18,44 @@ _POI_PRIORITY = {"base": 0, "landing_site": 1, "landing": 1, "landmark": 2, "sam
 
 def _measures(layer) -> str:
     return str(layer.meta.get("measures") or "")
+
+
+def _norm(s: str) -> str:
+    return re.sub(r"[\s_\-/]+", " ", str(s).lower()).strip()
+
+
+def alias_table(site: Site) -> dict[str, dict]:
+    """Everyday words for evidence layers, from each layer's meta["aliases"] (site.yaml).
+    {normalised alias: {"alias": as written, "layers": [layer ids, catalogue order]}}.
+    A word listed under several layers is a group alias."""
+    out: dict[str, dict] = {}
+    for l in site.layers.values():
+        for a in l.meta.get("aliases") or []:
+            e = out.setdefault(_norm(a), {"alias": str(a), "layers": []})
+            if l.id not in e["layers"]:
+                e["layers"].append(l.id)
+    return out
+
+
+def resolve_alias(site: Site, name) -> list[str] | None:
+    """Layer ids an alias stands for (one or several), or None if `name` is not an alias."""
+    if not isinstance(name, str):
+        return None
+    e = alias_table(site).get(_norm(name))
+    return list(e["layers"]) if e else None
+
+
+def alias_groups(site: Site) -> list[dict]:
+    """Aliases grouped by the layers they resolve to: [{"aliases": [...], "layers": [...]}], group aliases first."""
+    groups: dict[tuple, list[str]] = {}
+    for e in alias_table(site).values():
+        groups.setdefault(tuple(e["layers"]), []).append(e["alias"])
+    out = [{"aliases": a, "layers": list(k)} for k, a in groups.items()]
+    return sorted(out, key=lambda g: (-len(g["layers"]), g["layers"]))
+
+
+def resolution_text(alias: str, layers: list[str]) -> str:
+    return f"{alias} -> {', '.join(sorted(layers))}"
 
 
 def site_overview(site: Site) -> dict:
@@ -50,6 +89,7 @@ def site_overview(site: Site) -> dict:
                   "x": p.get("x"), "y": p.get("y")} for p in pois],
         "rover": rover,
         "evidence_tiers": [TIER_NAMES[i] for i in sorted(TIER_NAMES)],
+        "aliases": alias_groups(site),
         "next": ("Call describe_layer(id) before relying on an unfamiliar layer; use "
                  "describe_location(at) to inspect a place, find_locations(...) for footprint-sized "
                  "spots and find_regions(...) for connected areas."),
@@ -58,7 +98,7 @@ def site_overview(site: Site) -> dict:
 
 def list_layers(site: Site, kind: str | None = None, query: str | None = None) -> dict:
     """{"layers": [{"id", "kind", "title", "measures", "resolution_m"}]}; query matches
-    id/title/measures case-insensitively."""
+    id/title/measures/aliases case-insensitively."""
     if kind is not None and kind not in _KIND_ORDER:
         raise AtlasError(f'Unknown layer kind "{kind}".',
                          hint="Kinds: continuous, categorical, evidence.")
@@ -68,8 +108,11 @@ def list_layers(site: Site, kind: str | None = None, query: str | None = None) -
         if kind and l.kind != kind:
             continue
         title = str(l.meta.get("title", l.id))
-        if q and q not in f"{l.id} {title} {_measures(l)}".lower():
-            continue
+        if q:
+            alias_text = " ".join(str(a).lower() for a in (l.meta.get("aliases") or []))
+            hay = f"{l.id} {title} {_measures(l)} {alias_text}".lower()
+            if q not in hay and _norm(q) not in _norm(hay):
+                continue
         out.append({"id": l.id, "kind": l.kind, "title": title, "measures": _measures(l),
                     "resolution_m": l.meta.get("resolution_m")})
     return {"layers": out}

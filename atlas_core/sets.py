@@ -1,7 +1,8 @@
 """Location set store (handles). FROZEN INTERFACE.
 
 A member is a dict with at least: id, x, y, lat, lon, score. Optional: name, clear_radius_m,
-area_m2, bbox [xmin, ymin, xmax, ymax], attributes {...}. Pair sets (from nearest()) have members
+area_m2, bbox [xmin, ymin, xmax, ymax], attributes {...}, and for regions the private "_cells"
+(int32 flat indices row * size_px + col of the region's cells; never returned by page() or tool results). Pair sets (from nearest()) have members
 with: id, from_id, to_id, x, y (of the `from` member), cost, cost_metric, straight_m.
 """
 from __future__ import annotations
@@ -10,6 +11,12 @@ import itertools
 from dataclasses import dataclass, field
 
 from .errors import AtlasError
+
+
+def public_member(m: dict) -> dict:
+    """The member without private (underscore) keys such as "_cells", the region's cell indices that
+    travel uses to measure to the nearest edge. Never shown in tool output."""
+    return {k: v for k, v in m.items() if not k.startswith("_")} if any(k.startswith("_") for k in m) else m
 
 
 @dataclass
@@ -67,5 +74,5 @@ class SetStore:
             members = sorted(members, key=key, reverse=descending)
         return {
             "set_id": s.set_id, "kind": s.kind, "created_by": s.created_by, "count": s.count,
-            "offset": offset, "members": members[offset: offset + limit],
+            "offset": offset, "members": [public_member(m) for m in members[offset: offset + limit]],
         }

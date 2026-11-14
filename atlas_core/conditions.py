@@ -46,6 +46,36 @@ def _key(cond: dict):
     return None
 
 
+def expand_aliases(site: Site, conditions: list[dict] | None) -> tuple[list[dict] | None, list[str]]:
+    """Replace {"evidence": <alias>} by the layer(s) the alias stands for (a group alias becomes an
+    any_of over the member layers). Real layer ids are never rewritten. Returns (conditions, notes);
+    notes say how each alias was resolved, e.g. "clay -> fe_mg_smectite, kaolinite, mg_smectite_2"."""
+    from .catalog import resolution_text, resolve_alias
+    notes: list[str] = []
+
+    def one(c):
+        if not isinstance(c, dict):
+            return c
+        if "any_of" in c and isinstance(c["any_of"], list):
+            return {**c, "any_of": [one(x) for x in c["any_of"]]}
+        name = c.get("evidence")
+        if isinstance(name, str) and name not in site.layers:
+            ids = resolve_alias(site, name)
+            if ids:
+                note = resolution_text(name, ids)
+                if note not in notes:
+                    notes.append(note)
+                base = {k: v for k, v in c.items() if k != "evidence"}
+                if len(ids) == 1:
+                    return {"evidence": ids[0], **base}
+                return {"any_of": [{"evidence": i, **base} for i in sorted(ids)]}
+        return c
+
+    if not conditions:
+        return conditions, notes
+    return [one(c) for c in conditions], notes
+
+
 def merge_profile(site: Site, conditions: list[dict] | None, profile: str | None) -> tuple[list[dict], dict]:
     """Combine a profile's conditions with explicit ones.
 

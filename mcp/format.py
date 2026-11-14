@@ -186,8 +186,11 @@ def fmt_overview(d: dict) -> str:
         for t in tg) + ".") if tg else (
         "Search targets for find_sites: none (terrain-only site: no mineral or geology layers). find_sites and "
         "evidence/geologic conditions will fail; say the data cannot answer such questions.")
+    ag = d.get("aliases") or []
+    aliases = ("Aliases (users' words -> layers; a word for several layers searches all of them): " + "; ".join(
+        ", ".join(g["aliases"][:4]) + " -> " + ", ".join(g["layers"]) for g in ag[:8]) + ".") if ag else None
     tiers = "Evidence tiers (ascending): " + " < ".join(d["evidence_tiers"]) + "."
-    return _lines(head, "Layers:", *["  " + x for x in layer_lines], prof, pois, rover, markers, targets, tiers,
+    return _lines(head, "Layers:", *["  " + x for x in layer_lines], prof, pois, rover, markers, targets, aliases, tiers,
                   d.get("next"))
 
 
@@ -352,6 +355,8 @@ def fmt_search(d: dict, kind: str) -> str:
         head = (f"Found {n} {noun}; showing top {len(res)} by {d.get('objective')}. "
                 f"Full ranked list stored as {d['set_id']}.")
     out = [head]
+    if d.get("alias_notes"):
+        out.append("Resolved: " + "; ".join(d["alias_notes"]) + " (any of these layers).")
     out += [f"{i}. {_member_line(m, kind)}" for i, m in enumerate(res, 1)]
     diag = d.get("diagnostics") or []
     if diag and n == 0:
@@ -385,13 +390,18 @@ def fmt_nearest(d: dict) -> str:
     for i, p in enumerate(res, 1):
         unit = {"walk_time_min": "min", "walk_m": "m walk", "straight_m": "m straight"}.get(p.get("cost_metric"), "")
         to_at = f" at {xy(p['to_x'], p['to_y'])}" if p.get("to_x") is not None else ""
+        edge = ""
+        if p.get("from_entry_x") is not None:
+            edge += f"; leaves from region edge cell {xy(p['from_entry_x'], p['from_entry_y'])}"
+        if p.get("to_entry_x") is not None:
+            edge += f"; reaches region edge cell {xy(p['to_entry_x'], p['to_entry_y'])}"
         evtxt = ""
         for side in ("from", "to"):
             for k, e in (p.get(f"{side}_evidence") or {}).items():
                 evtxt += (f"; {side} {k}: " + ("no_coverage" if e.get("best_tier") is None else
                                                f"best tier {e['best_tier_name']} (area by tier: {ev_breakdown(e)})"))
         out.append(f"{i}. {p['from_id']} -> {p['to_id']}{to_at}: {num(p['cost'])} {unit}, straight {num(p['straight_m'], 0)} m, "
-                   f"from {xy(p['x'], p['y'])} m" + evtxt)
+                   f"from {xy(p['x'], p['y'])} m" + edge + evtxt)
     src = insitu_sources_line([e for p in res for side in ("from", "to") for e in (p.get(f"{side}_evidence") or {}).values()])
     if src:
         out.append(src)
@@ -671,10 +681,15 @@ def fmt_marker(m: dict) -> str:
 def fmt_sites(d: dict) -> str:
     n, ss = d["count"], d["sites"]
     if n == 0:
-        return _lines(f"No sites found for {d['target']}.", "Hint: " + d["hint"])
+        return _lines(f"No sites found for {d['target']}.",
+                      f"Resolved: {d['resolved']}." if d.get("resolved") else None, "Hint: " + d["hint"])
     out = [f"{n} site(s) for {d['target']} ({d['kind']}); top {len(ss)}, ranked by "
            f"{'best evidence tier then area' if d['kind'] == 'evidence' else 'area'}, from {d['near']['id']} "
            f"{xy(d['near']['x'], d['near']['y'])}. Stored as {d['set_id']}."]
+    if d.get("resolved"):
+        layers = d.get("layers") or []
+        out.append(f"Resolved: {d['resolved']}" + (f" (sites are where any of these {len(layers)} layers is present; "
+                                                  "each site lists the evidence of every one)." if len(layers) > 1 else "."))
     for i, s in enumerate(ss, 1):
         ev = s["evidence"][0]
         tier = f"best tier {s['best_tier']} {s['best_tier_name']}, " if s.get("best_tier") is not None else ""

@@ -6,12 +6,14 @@ evidence entries the agent can cite. No 0-1 score: evidence is ordinal (see mcp-
 """
 from __future__ import annotations
 
+import difflib
 import math
 
 import numpy as np
 from scipy import ndimage
 
 from atlas_core import AtlasError, evidence as EV, resolve_ref, route as R, search, travel
+from atlas_core.catalog import alias_groups, alias_table, resolution_text, resolve_alias
 from atlas_core.conditions import combine, compile_all
 from atlas_core.site import TIER_NAMES, TIERS, Site
 
@@ -64,13 +66,34 @@ def search_sites(site: Site, store, body: dict) -> dict:
     want = str(body["target"]).strip()
     t = next((x for x in targets if x["target"] == want), None) or \
         next((x for x in targets if x["target"].lower() == want.lower()), None)
+    resolved = None            # how an alias was resolved, e.g. "clay -> fe_mg_smectite, kaolinite, mg_smectite_2"
+    group = None               # evidence layer ids when an alias stands for several layers
+    if t is None:
+        ids = [i for i in (resolve_alias(site, want) or [])
+               if site.layers[i].kind == "evidence"]
+        if ids:
+            resolved = resolution_text(want, ids)
+            if len(ids) == 1:
+                t = next(x for x in targets if x["target"] == ids[0])
+            else:
+                group = sorted(ids)
+                t = next(x for x in targets if x["target"] == group[0])
     if t is None:
         if not targets:
             raise AtlasError(f'No searchable science targets are loaded for this site, so "{want}" cannot be searched.',
                              hint="This site has terrain layers only (no mineral or geology layers yet). "
                                   "Say that the data cannot answer; terrain questions still work.")
-        raise AtlasError(f'Unknown target "{want}".',
-                         hint="Valid targets: " + ", ".join(x["target"] for x in targets) + ".")
+        names = [x["target"] for x in targets]
+        pool = {n.lower(): n for n in names}
+        for e in alias_table(site).values():
+            pool.setdefault(e["alias"].lower(), e["alias"])
+        close = [pool[c] for c in difflib.get_close_matches(want.lower(), list(pool), n=3, cutoff=0.6)]
+        hint = (f"Did you mean {', '.join(close)}? " if close else "") + "Valid targets: " + ", ".join(names) + "."
+        groups = alias_groups(site)
+        if groups:
+            hint += " Aliases: " + "; ".join(", ".join(g["aliases"][:3]) + " -> " + ", ".join(g["layers"])
+                                             for g in groups[:6]) + "."
+        raise AtlasError(f'Unknown target "{want}".', hint=hint)
     top_k = body.get("top_k", 5)
     if not isinstance(top_k, int) or isinstance(top_k, bool) or not 1 <= top_k <= 50:
         raise AtlasError("top_k must be an integer within 1..50.")
@@ -83,12 +106,16 @@ def search_sites(site: Site, store, body: dict) -> dict:
     near = near_pts[0]
 
     layer = site.layer(t["layer"])
+    elayers = [site.layer(i) for i in group] if group else [layer]
     if t["kind"] == "evidence":
         min_tier = body.get("min_tier", "weak_orbital")
         if min_tier not in TIERS:
             raise AtlasError(f'Unknown min_tier "{min_tier}".', hint="Use one of: " + ", ".join(TIERS) + ".")
-        conds = [{"evidence": layer.id, "min_tier": min_tier}]
-        objective = f"best_evidence:{layer.id}"
+        if group:
+            conds = [{"any_of": [{"evidence": l.id, "min_tier": min_tier} for l in elayers]}]
+        else:
+            conds = [{"evidence": layer.id, "min_tier": min_tier}]
+        objective = "best_evidence:" + ",".join(l.id for l in elayers)
     else:
         min_tier = None
         conds = [{"layer": layer.id, "op": "in", "value": [t["class"]]}]
@@ -121,21 +148,26 @@ def search_sites(site: Site, store, body: dict) -> dict:
         z = R.terrain_z(site, m["x"], m["y"])
         evidence = []
         if t["kind"] == "evidence":
-            tiers = layer.data[sl][cells]
-            best = int(tiers.max())
-            share = float((tiers >= TIERS[min_tier]).mean())
-            rr_, cc_ = np.nonzero(cells)
-            sm = EV.summarize(site, layer, rr_ + sl[0].start, cc_ + sl[1].start)
-            evidence.append({"layer": layer.id, **src, "value": TIER_NAMES[best], "tier": best,
-                             "area_at_or_above_min_tier_m2": round(float(cells.sum()) * site.res_m ** 2, 1),
-                             "area_by_tier_m2": sm["area_by_tier_m2"], "orbital_source": sm["orbital_source"],
-                             "best_tier_basis": ("rover sample: " + ("; ".join(x["name"] for x in sm["in_situ"]["samples"])
-                                                                      or "sample not identified")
-                                                 if best == 4 and sm.get("in_situ") else f"orbital: {sm['orbital_source']}"),
-                             **({"in_situ": sm["in_situ"]} if sm.get("in_situ") else {})})
+            entries = []
+            for el in elayers:
+                tiers = el.data[sl][cells]
+                best_l = int(tiers.max())
+                rr_, cc_ = np.nonzero(cells)
+                sm = EV.summarize(site, el, rr_ + sl[0].start, cc_ + sl[1].start)
+                entries.append((best_l, sm, {
+                    "layer": el.id, **_src(el), "value": TIER_NAMES[best_l], "tier": best_l,
+                    "area_at_or_above_min_tier_m2": round(float(cells.sum()) * site.res_m ** 2, 1),
+                    "area_by_tier_m2": sm["area_by_tier_m2"], "orbital_source": sm["orbital_source"],
+                    "best_tier_basis": ("rover sample: " + ("; ".join(x["name"] for x in sm["in_situ"]["samples"])
+                                                             or "sample not identified")
+                                        if best_l == 4 and sm.get("in_situ") else f"orbital: {sm['orbital_source']}"),
+                    **({"in_situ": sm["in_situ"]} if sm.get("in_situ") else {})}))
+            entries.sort(key=lambda e: -e[0])          # best layer first (stable: catalogue order on ties)
+            best, sm, top = entries[0]
+            evidence.extend(e[2] for e in entries)
             best_tier, best_name = best, TIER_NAMES[best]
             area_by_tier = sm["area_by_tier_m2"]
-            basis = evidence[-1]["best_tier_basis"]
+            basis = top["best_tier_basis"]
         else:
             evidence.append({"layer": layer.id, **src, "value": t["class"],
                              "area_m2": round(float(cells.sum()) * site.res_m ** 2, 1)})
@@ -167,10 +199,11 @@ def search_sites(site: Site, store, body: dict) -> dict:
         hint += (f" Sites {', '.join(unreachable)} are not reachable from {near.get('id')} with the {profile} "
                  "slope limit (they are cut off by steep or unknown ground).")
     return {
-        "target": t["target"], "kind": t["kind"], "layer": layer.id, "count": res["count"], "set_id": res["set_id"],
+        "target": want if resolved else t["target"], "kind": t["kind"], "layer": layer.id,
+        "layers": [l.id for l in elayers], "resolved": resolved, "count": res["count"], "set_id": res["set_id"],
         "sites": sites, "near": {"id": near.get("id"), "x": near["x"], "y": near["y"]},
         "filters": {"min_tier": min_tier, "radius_m": body.get("radius_m"), "max_slope_deg": body.get("max_slope_deg"),
                     "min_area_m2": min_area, "reachability_profile": profile},
         "assumptions": res["assumptions"], "diagnostics": res["diagnostics"], "hint": hint,
-        "registration_notes": EV.caveat_texts(site, [layer.id]),
+        "registration_notes": EV.caveat_texts(site, [l.id for l in elayers]),
     }

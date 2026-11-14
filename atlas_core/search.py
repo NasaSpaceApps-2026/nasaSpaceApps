@@ -60,10 +60,10 @@ from scipy.signal import fftconvolve
 
 from . import evidence as ev
 from . import travel
-from .conditions import combine, compile_all, merge_profile
+from .conditions import combine, compile_all, expand_aliases, merge_profile
 from .errors import AtlasError
 from .refs import resolve_ref
-from .sets import SetStore
+from .sets import SetStore, public_member
 from .site import Site
 
 MAX_CLEAR_RADIUS_M = 1000.0
@@ -228,6 +228,7 @@ def find_locations(site: Site, store: SetStore, conditions: list[dict] | None = 
                    within: dict | None = None, objective: str = "flattest",
                    spacing_m: float | None = None, limit: int = 5) -> dict:
     limit = _check_limit(limit)
+    conditions, alias_notes = expand_aliases(site, conditions)
     conds, params, compiled, allmask = _compile(site, conditions, profile)
 
     # footprint radius
@@ -414,6 +415,8 @@ def find_locations(site: Site, store: SetStore, conditions: list[dict] | None = 
     out = {"set_id": s.set_id, "count": s.count,
            "results": copy.deepcopy(s.members[:limit]), "objective": objective,
            "assumptions": assumptions, "diagnostics": diagnostics, "hint": hint}
+    if alias_notes:
+        out["alias_notes"] = alias_notes
     notes = _registration_notes(site, conds, ev_layer)
     if notes:
         out["registration_notes"] = notes
@@ -459,8 +462,17 @@ def find_regions(site: Site, store: SetStore, conditions: list[dict] | None = No
             or not np.isfinite(min_area_m2) or min_area_m2 < 0:
         raise AtlasError(f"min_area_m2 must be a number >= 0, got {min_area_m2!r}.",
                          hint="Use square metres, e.g. 400 (the default).")
+    conditions, alias_notes = expand_aliases(site, conditions)
     conds, params, compiled, allmask = _compile(site, conditions, profile)
-    ev_layer = _parse_objective(site, objective, _REG_OBJECTIVES, within)
+    # "best_evidence:a,b,c": best tier over several layers (a group alias such as clay)
+    ev_group = None
+    if isinstance(objective, str) and objective.startswith("best_evidence:") and "," in objective:
+        ev_group = [x.strip() for x in objective.split(":", 1)[1].split(",") if x.strip()]
+        for lid in ev_group:
+            _parse_objective(site, "best_evidence:" + lid, _REG_OBJECTIVES, within)
+        ev_layer = ev_group[0]
+    else:
+        ev_layer = _parse_objective(site, objective, _REG_OBJECTIVES, within)
     if objective == "flattest":
         site.layer("slope_2m")
     diagnostics = _diagnostics(compiled, allmask)
@@ -480,6 +492,9 @@ def find_regions(site: Site, store: SetStore, conditions: list[dict] | None = No
     metric = within["metric"] if within is not None else None
 
     ev_ids = _evidence_layers(site, conds, ev_layer)
+    for lid in ev_group or []:
+        if lid not in ev_ids:
+            ev_ids.append(lid)
     recs = []
     for i in keep_ids:
         sl = slices[i - 1]
@@ -508,9 +523,10 @@ def find_regions(site: Site, store: SetStore, conditions: list[dict] | None = No
             wmin = float(np.min(wfield[rows, cols]))
             attrs[metric] = round(wmin, 4)
         if ev_layer is not None:
-            tmax = int(site.layers[ev_layer].data[rows, cols].max())
+            tmax = max(int(site.layers[lid].data[rows, cols].max()) for lid in (ev_group or [ev_layer]))
         evd = {lid: ev.summarize(site, site.layers[lid], rows, cols) for lid in ev_ids} if ev_ids else None
         recs.append({"i": i, "x": x, "y": y, "area": float(areas[i]), "bbox": [xmin, ymin, xmax, ymax],
+                     "cells": (rows * n + cols).astype(np.int32),
                      "attrs": attrs, "smean": smean, "wmin": wmin, "evidence": evd,
                      "tmax": tmax if ev_layer is not None else None})
 
@@ -539,7 +555,8 @@ def find_regions(site: Site, store: SetStore, conditions: list[dict] | None = No
         else:
             score = rec["tmax"]
         mem = {"x": rec["x"], "y": rec["y"], "lat": lat, "lon": lon, "score": score,
-               "area_m2": rec["area"], "bbox": rec["bbox"], "attributes": rec["attrs"]}
+               "area_m2": rec["area"], "bbox": rec["bbox"], "attributes": rec["attrs"],
+               "_cells": rec["cells"]}      # private: flat cell indices (row * size_px + col), for edge-based travel
         if rec["evidence"]:
             mem["evidence"] = rec["evidence"]
         members.append(mem)
@@ -570,8 +587,10 @@ def find_regions(site: Site, store: SetStore, conditions: list[dict] | None = No
             biggest = float(areas[1:].max())
             hint = (f"{nlab} connected area(s) match, but the largest is {biggest:.0f} m2, below "
                     f"min_area_m2 = {_fmt_num(float(min_area_m2))}. Lower min_area_m2 or relax the conditions.")
-    out = {"set_id": s.set_id, "count": s.count, "results": copy.deepcopy(s.members[:limit]),
+    out = {"set_id": s.set_id, "count": s.count, "results": [copy.deepcopy(public_member(m)) for m in s.members[:limit]],
            "objective": objective, "assumptions": assumptions, "diagnostics": diagnostics, "hint": hint}
+    if alias_notes:
+        out["alias_notes"] = alias_notes
     notes = _registration_notes(site, conds, ev_layer)
     if notes:
         out["registration_notes"] = notes

@@ -256,57 +256,158 @@ def within_mask(site: Site, within: dict, store: SetStore | None) -> tuple[np.nd
     return mask, field, label
 
 
-def _pairs_straight(fp: list[dict], tp: list[dict]):
-    tree = cKDTree(np.array([[float(t["x"]), float(t["y"])] for t in tp]))
-    d, idx = tree.query(np.array([[float(f["x"]), float(f["y"])] for f in fp]))
-    return [int(i) for i in idx], [float(v) for v in d]
-
-
 def _euclid(a: dict, b: dict) -> float:
     return math.hypot(float(a["x"]) - float(b["x"]), float(a["y"]) - float(b["y"]))
 
 
+def _has_cells(m: dict) -> bool:
+    c = m.get("_cells")
+    return c is not None and len(c) > 0
+
+
+def _cell_xy(site: Site, cells: np.ndarray):
+    n = site.size_px
+    cells = np.asarray(cells, np.int64)
+    x, y = site.rc_to_xy(cells // n, cells % n)
+    return np.asarray(x, np.float64), np.asarray(y, np.float64)
+
+
+def _pairs_straight(site: Site, fp: list[dict], tp: list[dict]):
+    """Returns (to_index, cost, from_entry, to_entry) per from member. Region members are measured
+    cell to cell, so the cost is the gap between the nearest cells of the two members."""
+    def pts(members):
+        xs, ys, owner = [], [], []
+        for i, m in enumerate(members):
+            if _has_cells(m):
+                x, y = _cell_xy(site, m["_cells"])
+            else:
+                x, y = np.array([float(m["x"])]), np.array([float(m["y"])])
+            xs.append(x), ys.append(y), owner.append(np.full(len(x), i))
+        return np.concatenate(xs), np.concatenate(ys), np.concatenate(owner)
+    tx, ty, towner = pts(tp)
+    fx, fy, fowner = pts(fp)
+    tree = cKDTree(np.column_stack([tx, ty]))
+    d, idx = tree.query(np.column_stack([fx, fy]))
+    out = []
+    for fi, f in enumerate(fp):
+        sel = np.nonzero(fowner == fi)[0]
+        k = sel[int(np.argmin(d[sel]))]
+        h = int(idx[k])
+        ti = int(towner[h])
+        fe = (float(fx[k]), float(fy[k])) if _has_cells(f) else None
+        te = (float(tx[h]), float(ty[h])) if _has_cells(tp[ti]) else None
+        out.append((ti, float(d[k]), fe, te))
+    return out
+
+
+def _endpoints(plan: _Plan, members: list[dict], notes: list[str]):
+    """Planning cells to seed from / read at, per member: (cells, entry) or None if unusable.
+    A region (member with "_cells") uses every passable planning cell it touches; `entry` maps each of
+    them to the (x, y) of a region cell inside it. Points snap to the nearest passable cell (<= 20 m);
+    a region with no passable cell falls back to snapping its representative point."""
+    out, moved, dropped = [], [], 0
+    n, k, m_ = plan.n, plan.k, plan.m
+    for mem in members:
+        if _has_cells(mem):
+            cells = np.asarray(mem["_cells"], np.int64)
+            r, c = cells // n, cells % n
+            pi, pj = r // k, c // k
+            ok = plan.passable[pi, pj]
+            if ok.any():
+                r, c, pi, pj = r[ok], c[ok], pi[ok], pj[ok]
+                d2 = (r - (pi * k + (k - 1) / 2.0)) ** 2 + (c - (pj * k + (k - 1) / 2.0)) ** 2
+                key = pi * m_ + pj
+                order = np.lexsort((c, r, d2, key))
+                first = np.concatenate(([True], key[order][1:] != key[order][:-1]))
+                sel = order[first]
+                x, y = plan.site.rc_to_xy(r[sel], c[sel])
+                entry = {(int(a), int(b)): (float(xx), float(yy)) for a, b, xx, yy in zip(pi[sel], pj[sel], x, y)}
+                out.append((sorted(entry), entry))
+                continue
+        res = plan.snap(float(mem["x"]), float(mem["y"]))
+        if res is None:
+            dropped += 1
+            out.append(None)
+            continue
+        if res[2] > 0:
+            moved.append(res[2])
+        out.append(([(res[0], res[1])], None))
+    if moved:
+        notes.append(f"{len(moved)} location(s) were not on walkable ground and were moved to the nearest "
+                     f"walkable cell (up to {max(moved):.0f} m).")
+    if dropped:
+        notes.append(f"{dropped} location(s) have no walkable ground within {SNAP_RADIUS_M:.0f} m and were ignored.")
+    return out
+
+
+def _lex_min(pf: np.ndarray, cells: list[tuple[int, int]]):
+    """Cell with the smallest finite pf value (ties: smallest cell), or None."""
+    arr = np.asarray(cells)
+    vals = pf[arr[:, 0], arr[:, 1]]
+    fin = np.isfinite(vals)
+    if not fin.any():
+        return None
+    arr, vals = arr[fin], vals[fin]
+    o = np.lexsort((arr[:, 1], arr[:, 0], vals))[0]
+    return (int(arr[o, 0]), int(arr[o, 1])), float(vals[o])
+
+
 def _pairs_walk(site: Site, fp, tp, metric, profile, notes):
-    """Returns (to_index or None, cost) per from member."""
+    """Returns (to_index or None, cost, from_entry, to_entry) per from member. Regions are measured
+    to/from their nearest passable cell: a region seeds Dijkstra from all of its cells, or has the
+    minimum read over all of its cells."""
     travel = _travel_params(site, profile)
     plan = _Plan(site, travel)
-    f_cells, n1 = _snap_sources(plan, fp)
-    t_cells, n2 = _snap_sources(plan, tp)
-    notes.extend(n1 + n2)
+    f_eps = _endpoints(plan, fp, notes)
+    t_eps = _endpoints(plan, tp, notes)
     by_cell: dict[tuple[int, int], list[int]] = {}
-    for j, c in enumerate(t_cells):
-        if c is not None:
-            by_cell.setdefault(c, []).append(j)
-    out: list[tuple[int | None, float]] = [(None, math.inf)] * len(fp)
+    for j, ep in enumerate(t_eps):
+        if ep is not None:
+            for c in ep[0]:
+                by_cell.setdefault(c, []).append(j)
+    none = (None, math.inf, None, None)
+    out: list[tuple] = [none] * len(fp)
     if not by_cell:
         return out
 
     def pick(fi: int, members: list[int]) -> int:
         return min(members, key=lambda j: (_euclid(fp[fi], tp[j]), j))
 
+    def entry_of(ep, cell):
+        return ep[1][cell] if ep is not None and ep[1] is not None else None
+
     if len(fp) <= MULTI_SOURCE_THRESHOLD:
-        cache: dict[tuple[int, int], np.ndarray] = {}
-        for fi, fc in enumerate(f_cells):
-            if fc is None:
+        cache: dict[tuple, tuple] = {}
+        t_all = sorted(by_cell)
+        for fi, ep in enumerate(f_eps):
+            if ep is None:
                 continue
-            if fc not in cache:
-                cache[fc] = _walk_plan_field(plan, metric, travel, [fc])[0]
-            pf = cache[fc]
-            best = None
-            for tc, members in by_cell.items():
-                v = float(pf[tc])
-                if np.isfinite(v) and (best is None or v < best[0] or (v == best[0] and tc < best[1])):
-                    best = (v, tc)
-            if best is not None:
-                out[fi] = (pick(fi, by_cell[best[1]]), best[0])
+            key = tuple(ep[0])
+            if key not in cache:
+                cache[key] = _walk_plan_field(plan, metric, travel, ep[0])
+            pf, mcp = cache[key]
+            best = _lex_min(pf, t_all)
+            if best is None:
+                continue
+            tc, cost = best
+            ti = pick(fi, by_cell[tc])
+            fe = None
+            if ep[1] is not None:
+                fe = ep[1][tuple(int(v) for v in mcp.traceback(tc)[0])]
+            out[fi] = (ti, cost, fe, entry_of(t_eps[ti], tc))
         return out
 
     pf, mcp = _walk_plan_field(plan, metric, travel, list(by_cell))
-    for fi, fc in enumerate(f_cells):
-        if fc is None or not np.isfinite(pf[fc]):
+    for fi, ep in enumerate(f_eps):
+        if ep is None:
             continue
+        best = _lex_min(pf, ep[0])
+        if best is None:
+            continue
+        fc, cost = best
         start = tuple(int(v) for v in mcp.traceback(fc)[0])
-        out[fi] = (pick(fi, by_cell[start]), float(pf[fc]))
+        ti = pick(fi, by_cell[start])
+        out[fi] = (ti, cost, entry_of(ep, fc), entry_of(t_eps[ti], start))
     return out
 
 
@@ -326,7 +427,12 @@ def nearest(site: Site, store: SetStore, from_ref, to_ref, metric: str = "walk_t
     }
     x, y, lat, lon are the `from` member's. Implementation: if len(from) <= 25 run one Dijkstra
     per `from` member and read cost at every `to` member; otherwise one multi-source Dijkstra from
-    all `to` members plus per-cell source attribution."""
+    all `to` members plus per-cell source attribution.
+
+    Region members (find_regions sets) are measured to their NEAREST CELL, not their representative
+    point: a `from` region seeds the search from all its passable cells and a `to` region is read as
+    the minimum over its cells. Such a pair also has "from_entry_x/y" / "to_entry_x/y": the cell of the
+    region where the path starts / ends. "straight_m" is then measured between those entry cells."""
     _check_metric(metric)
     if not isinstance(limit, int) or limit < 1:
         raise AtlasError("`limit` must be an integer >= 1.")
@@ -337,18 +443,17 @@ def nearest(site: Site, store: SetStore, from_ref, to_ref, metric: str = "walk_t
     if not tp:
         raise AtlasError("`to` resolved to no locations.", hint="Check that the set is not empty.")
     notes: list[str] = []
-    if any("area_m2" in m for m in fp + tp):
-        notes.append("Regions are measured from their representative interior point, not their nearest "
+    if any("area_m2" in m and not _has_cells(m) for m in fp + tp):
+        notes.append("Some regions are measured from their representative interior point, not their nearest "
                      "edge, so costs to large regions are overestimates.")
     if metric == "straight_m":
-        idx, dist = _pairs_straight(fp, tp)
-        res = [(i, d) for i, d in zip(idx, dist)]
+        res = _pairs_straight(site, fp, tp)
     else:
         res = _pairs_walk(site, fp, tp, metric, profile, notes)
         notes.append(PLACEHOLDER_NOTE if metric == "walk_time_min" else "Distances follow 4 m grid paths.")
         notes.append(APPROX_NOTE)
     members, unreachable = [], []
-    for f, (ti, cost) in zip(fp, res):
+    for f, (ti, cost, f_entry, t_entry) in zip(fp, res):
         if ti is None or not math.isfinite(cost):
             unreachable.append(f.get("id"))
             continue
@@ -358,8 +463,14 @@ def nearest(site: Site, store: SetStore, from_ref, to_ref, metric: str = "walk_t
             "to_id": t.get("id"), "to_name": t.get("name"),
             "x": f["x"], "y": f["y"], "lat": f.get("lat"), "lon": f.get("lon"),
             "cost": round(float(cost), 3), "cost_metric": metric,
-            "straight_m": round(_euclid(f, t), 2), "score": round(float(cost), 3),
+            "straight_m": round(_euclid(f_entry and {"x": f_entry[0], "y": f_entry[1]} or f,
+                                        t_entry and {"x": t_entry[0], "y": t_entry[1]} or t), 2),
+            "score": round(float(cost), 3),
         }
+        if f_entry is not None:
+            pair["from_entry_x"], pair["from_entry_y"] = round(f_entry[0], 2), round(f_entry[1], 2)
+        if t_entry is not None:
+            pair["to_entry_x"], pair["to_entry_y"] = round(t_entry[0], 2), round(t_entry[1], 2)
         for side, mem in (("from", f), ("to", t)):       # keep the evidence tiers of regions/spots (with provenance)
             if mem.get("evidence"):
                 pair[f"{side}_evidence"] = mem["evidence"]

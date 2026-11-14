@@ -346,6 +346,19 @@ MINERAL_TITLE = {
     "kaolinite": "Kaolinite (CRISM prototype)",
     "mg_smectite_2": "Mg smectite 2 (CRISM prototype)",
 }
+# Everyday words users say for each evidence layer. A word listed under several layers is a group alias
+# (find_sites / evidence conditions turn it into an any_of over those layers).
+MINERAL_ALIASES = {
+    "carbonate": ["carbonates", "carbonate rock", "carbonate rocks", "magnesium carbonate", "mg carbonate"],
+    "olivine": ["olivine-rich rock", "olivine-rich rocks", "olivine rich", "olivine rock", "olivine bearing rock"],
+    "fe_mg_smectite": ["clay", "clays", "clay minerals", "phyllosilicate", "phyllosilicates", "smectite", "smectites",
+                       "fe/mg smectite", "fe-mg smectite"],
+    "mg_smectite_2": ["clay", "clays", "clay minerals", "phyllosilicate", "phyllosilicates", "smectite", "smectites",
+                      "mg smectite", "mg-smectite"],
+    "kaolinite": ["clay", "clays", "clay minerals", "phyllosilicate", "phyllosilicates", "kaolin"],
+    "high_ca_pyroxene": ["pyroxene", "pyroxenes", "high-ca pyroxene", "hcp"],
+    "low_ca_pyroxene": ["pyroxene", "pyroxenes", "low-ca pyroxene", "lcp"],
+}
 DECODE_MAX_RESID = 14      # RGB units: max distance of a pixel colour from the nearest scaled prototype colour
 STRONG_S = 0.8             # brightness factor s (pixel = s x bold colour): s >= 0.8 -> bold -> strong_orbital
 MIN_S = 0.4                # below this the colour is too close to black to decode -> no_coverage
@@ -626,6 +639,7 @@ def run(out_dir: Path = OUT, make_figure: bool = True):
                           "those marks are unit/section-level statements applied at a derived position, and they override the orbital tier there.")
         entry = dict(
             id=lid, kind="evidence", file=f"{lid}.tif", title=MINERAL_TITLE[lid] + ", interim", units=None, resolution_m=36.0,
+            aliases=list(MINERAL_ALIASES.get(lid, [])),
             measures=(f"Orbital spectral detection of the '{', '.join(pn[p] for p in pure)}' prototype class in the CRISM mineral map, as an ordinal evidence tier: "
                       f"strong_orbital (3) = bold tone = 'very high confidence' match to the prototype (decoded brightness >= {STRONG_S} of the bold colour); "
                       f"weak_orbital (2) = subdued tone = 'high / intermediate confidence'{mix_txt}; not_detected (0) = the pixel was confidently classified "

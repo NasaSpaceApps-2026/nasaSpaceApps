@@ -477,7 +477,8 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
         "errors: say the data cannot answer). Use find_regions instead for custom conditions or combined "
         "constraints, find_locations for flat pads, search_pois for named places. near defaults to the rover; radius_m is a straight-line limit "
         "from near; max_slope_deg drops steeper ground; min_tier (default weak_orbital) is the weakest evidence "
-        "accepted for minerals. Stored as a set; site ids work as locations (e.g. plan_route(goal=\"2.1\"))."
+        "accepted for minerals. target also takes everyday words (aliases): 'clay' searches fe_mg_smectite, kaolinite and "
+        "mg_smectite_2 together and the result says how it was resolved. Stored as a set; site ids work as locations (e.g. plan_route(goal=\"2.1\"))."
         + targets_txt + " " + UNITS + " "
         'Example: find_sites(target="carbonate", near="base", radius_m=2000, max_slope_deg=20, top_k=5)'))
     async def find_sites(target: str, near: Any = None, radius_m: float | None = None,
