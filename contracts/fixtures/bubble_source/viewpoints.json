@@ -1,0 +1,54 @@
+{
+  "frame": "site_enu",
+  "poses_trusted": true,
+  "requires_human": false,
+  "registration_rms_m": 0.0,
+  "bubble_id": "fixture_mound",
+  "cameras": [
+    {
+      "name": "nadir",
+      "role": "nadir",
+      "xyz": [
+        0.0,
+        0.0,
+        40.0
+      ],
+      "heading_deg": 0,
+      "pitch_deg": -90,
+      "fov_deg": 50,
+      "width": 64,
+      "height": 64,
+      "image": null
+    },
+    {
+      "name": "fit_0",
+      "role": "fit",
+      "xyz": [
+        1.0,
+        -1.0,
+        2.4
+      ],
+      "heading_deg": 45,
+      "pitch_deg": -20,
+      "fov_deg": 60,
+      "width": 96,
+      "height": 72,
+      "image": "refs/fit_0.png"
+    },
+    {
+      "name": "holdout_0",
+      "role": "holdout",
+      "xyz": [
+        2.5,
+        -2.5,
+        2.6
+      ],
+      "heading_deg": 18,
+      "pitch_deg": -22,
+      "fov_deg": 60,
+      "width": 96,
+      "height": 72,
+      "image": "refs/holdout_0.png"
+    }
+  ]
+}
