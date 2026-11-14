@@ -3,10 +3,12 @@ import * as Cesium from 'cesium'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 import { R, Site, SPHERE, deg } from './site'
 import { siteImagery, siteTerrain } from './providers'
+import { CesiumRover } from './cesiumRover'
 import './App.css'
 
 const MARS_ION_ASSET = 3644333
-type Mode = 'orbit' | 'site' | 'ground'
+type Mode = 'orbit' | 'site' | 'ground' | 'rover'
+let roverCtl: CesiumRover | null = null // set once the viewer is up; used by fly()
 
 export default function App() {
   const box = useRef<HTMLDivElement>(null)
@@ -15,6 +17,7 @@ export default function App() {
   const [layers, setLayers] = useState<Record<string, { on: boolean; layer: Cesium.ImageryLayer }>>({})
   const [status, setStatus] = useState('loading site…')
   const [hud, setHud] = useState('')
+  const [drive, setDrive] = useState('')
 
   useEffect(() => {
     let dead = false
@@ -134,6 +137,16 @@ export default function App() {
         }
       })
       ;(window as unknown as { __viewer?: Cesium.Viewer }).__viewer = v
+      roverCtl = new CesiumRover(v, s)
+      ;(window as unknown as { __rover?: CesiumRover }).__rover = roverCtl
+      let lastHud = 0
+      roverCtl.onPose = (p) => {
+        const now = performance.now()
+        if (now - lastHud < 250) return
+        lastHud = now
+        setDrive(`rover ${p.status}${p.stop_reason ? ' (' + p.stop_reason + ')' : ''} · slope ${p.slope_deg.toFixed(1)}° · ` +
+          `ahead ${p.ahead_slope_deg.toFixed(1)}° · ${p.display_speed_mps.toFixed(1)} m/s shown (${p.speed_mps.toFixed(2)} real) · x ${p.x.toFixed(0)} y ${p.y.toFixed(0)}`)
+      }
       setSite(s)
       setViewer(v)
       fly(v, s, (new URLSearchParams(location.search).get('view') as Mode) || 'site', 0)
@@ -156,7 +169,7 @@ export default function App() {
       <div className="panel">
         <b>Ares Atlas — Jezero</b>
         <div className="row">
-          {(['orbit', 'site', 'ground'] as Mode[]).map((m) => (
+          {(['orbit', 'site', 'ground', 'rover'] as Mode[]).map((m) => (
             <button key={m} disabled={!viewer} onClick={() => fly(viewer!, site!, m, 2)}>
               {m}
             </button>
@@ -169,6 +182,8 @@ export default function App() {
           </label>
         ))}
         <small>Ground: drag = look · Orbit/site: drag = rotate, right-drag = tilt · wheel = zoom</small>
+        <small>Rover: W/S drive, A/D turn (limits are assumed values)</small>
+        <small>{drive}</small>
         <small>{status}</small>
         <small>{hud}</small>
       </div>
@@ -178,6 +193,7 @@ export default function App() {
 
 /** Mouse controls per camera mode. Ground = first-person look; orbit/site = rotate planet + tilt. */
 function applyControls(v: Cesium.Viewer, mode: Mode) {
+  roverCtl?.setChase(mode === 'rover')
   const c = v.scene.screenSpaceCameraController
   const T = Cesium.CameraEventType, K = Cesium.KeyboardEventModifier
   const ctl = c as unknown as Record<string, unknown>
@@ -197,6 +213,7 @@ function applyControls(v: Cesium.Viewer, mode: Mode) {
 function fly(v: Cesium.Viewer, s: Site, mode: Mode, duration: number) {
   const lat0 = s.manifest.lat0, lon0 = s.manifest.lon0
   applyControls(v, String(mode).startsWith('alt:') ? 'site' : mode)
+  if (mode === 'rover') return // chase camera is driven by the rover each frame
   if (String(mode).startsWith('alt:')) {
     // test hook: straight-down view from a given altitude in metres, e.g. ?view=alt:40000
     v.camera.setView({
