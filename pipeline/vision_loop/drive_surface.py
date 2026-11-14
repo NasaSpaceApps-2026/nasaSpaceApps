@@ -7,8 +7,11 @@ import json
 import shutil
 
 import numpy as np
+from PIL import Image
 
+from bubble.geom import grid_xy
 from vision_loop.errors import VisionError
+from vision_loop.model import _falloff, compile_model, load_baseline
 
 STEP = 0.01
 
@@ -72,6 +75,62 @@ def sample_pixel_center(
     if value != value:
         return value
     return base + STEP * value
+
+
+def guess_mask(dem_shape, grid, ops) -> np.ndarray:
+    rows, cols = int(dem_shape[0]), int(dem_shape[1])
+    guessed = np.zeros((rows, cols), dtype=np.uint8)
+    x, y = grid_xy(grid, rows, cols)
+    for op in ops:
+        if op.get("inferred") is not True:
+            continue
+        weight = _falloff(x, y, float(op["x"]), float(op["y"]), float(op["radius_m"]))
+        guessed[weight > 0.05] = 1
+    return guessed
+
+
+def compile_drive(work: Path) -> dict:
+    work = Path(work)
+    height, texture, grid, model = compile_model(work)
+    dem, _baseline_texture, _baseline_grid = load_baseline(work)
+    values, base = encode_heights(height)
+    baseline_values, baseline_base = encode_heights(dem)
+    layout = json.loads((work / "grid.json").read_text())
+    return {
+        "values": values,
+        "base": base,
+        "res_m": float(layout["res_m"]),
+        "x0": float(layout["x0"]),
+        "y0": float(layout["y0"]),
+        "texture": texture,
+        "guessed": guess_mask(height.shape, grid, model.get("ops", [])),
+        "baseline_values": baseline_values,
+        "baseline_base": baseline_base,
+    }
+
+
+def write_drive(work: Path) -> Path:
+    work = Path(work)
+    drive = compile_drive(work)
+    out = work / "drive"
+    out.mkdir(parents=True, exist_ok=True)
+    values = np.ascontiguousarray(drive["values"], dtype="<u2")
+    values.tofile(out / "height.u16")
+    rows, cols = values.shape
+    header = {
+        "layout": "vertex",
+        "width": int(cols),
+        "height": int(rows),
+        "res_m": float(drive["res_m"]),
+        "x0": float(drive["x0"]),
+        "y0": float(drive["y0"]),
+        "base": float(drive["base"]),
+        "step": STEP,
+    }
+    (out / "height.json").write_text(json.dumps(header, indent=2) + "\n")
+    Image.fromarray(np.asarray(drive["texture"], dtype=np.uint8)).save(out / "texture.png")
+    np.ascontiguousarray(drive["guessed"], dtype=np.uint8).tofile(out / "guessed.u8")
+    return out
 
 
 def import_cesium_height(

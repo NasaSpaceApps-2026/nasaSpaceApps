@@ -5,11 +5,15 @@ import numpy as np
 import pytest
 
 from vision_loop.drive_surface import (
+    compile_drive,
     encode_heights,
     import_cesium_height,
     sample_pixel_center,
     sample_vertex,
+    write_drive,
 )
+from vision_loop.model import save_model
+from vision_loop.workspace import init_workspace
 
 
 def test_cesium_u16_becomes_an_editable_model(tmp_path: Path):
@@ -56,3 +60,49 @@ def test_pixel_center_matches_the_cesium_site_formula():
     got = sample_pixel_center(-3, 3, values=values, base=0.0, res_m=2.0, size_m=8.0, center_x=0.0, center_y=0.0)
     assert got == pytest.approx(10.0, abs=0.005)
     assert np.isnan(sample_pixel_center(20, 0, values=values, base=0.0, res_m=2.0, size_m=8.0, center_x=0.0, center_y=0.0))
+
+
+def test_bump_is_visible_to_a_wheel_sample(tmp_path: Path):
+    work = tmp_path / "work"
+    init_workspace(Path("contracts/fixtures/bubble_source"), work)
+    save_model(work / "model.json", {"ops": [
+        {"op": "bump", "x": 4, "y": 2, "radius_m": 2, "height_m": 0.4, "inferred": False},
+    ]})
+    drive = compile_drive(work)
+    assert drive["baseline_values"] is not None
+    base_h = sample_vertex(
+        4, 2,
+        values=drive["baseline_values"],
+        base=drive["baseline_base"],
+        res_m=drive["res_m"],
+        x0=drive["x0"],
+        y0=drive["y0"],
+    )
+    got = sample_vertex(
+        4, 2,
+        values=drive["values"],
+        base=drive["base"],
+        res_m=drive["res_m"],
+        x0=drive["x0"],
+        y0=drive["y0"],
+    )
+    assert got > base_h + 0.3
+    assert int(drive["guessed"][0, 0]) == 0
+
+
+def test_inferred_bump_marks_guessed_ground(tmp_path: Path):
+    work = tmp_path / "work"
+    init_workspace(Path("contracts/fixtures/bubble_source"), work)
+    save_model(work / "model.json", {"ops": [
+        {"op": "bump", "x": 4, "y": 2, "radius_m": 2, "height_m": 0.2, "inferred": True},
+    ]})
+    drive = compile_drive(work)
+    row = int(round((drive["y0"] - 2) / drive["res_m"]))
+    col = int(round((4 - drive["x0"]) / drive["res_m"]))
+    assert int(drive["guessed"][row, col]) == 1
+    out = write_drive(work)
+    header = json.loads((out / "height.json").read_text())
+    assert header["layout"] == "vertex"
+    assert header["step"] == 0.01
+    raw = np.fromfile(out / "height.u16", dtype="<u2")
+    assert raw.size == header["width"] * header["height"]
