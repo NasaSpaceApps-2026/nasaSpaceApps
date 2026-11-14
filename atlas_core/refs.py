@@ -7,6 +7,7 @@ Accepted forms:
     {"lat": 18.44, "lon": 77.45}     planetocentric lat, east lon
     "poi:<id>"  or a bare POI id     named point of interest
     "base" / "rover"                 keywords (base = POI with type "base"; rover = site.rover_xy)
+    "marker:<id>"                    user/agent marker (site.markers, maintained by the API)
     "set:<n>"                        every member of a location set
     "<n>.<k>"                        one member of a location set
     a list of any of the above       concatenated
@@ -61,6 +62,13 @@ def resolve_ref(site: Site, ref, store: SetStore | None = None) -> list[dict]:
         if m is None:
             raise AtlasError(f'Unknown set member "{s}".', hint="Call get_set to list members.")
         return [dict(m)]
+    if s.startswith("marker:"):
+        markers = getattr(site, "markers", None) or {}
+        m = markers.get(s[7:])
+        if m is None:
+            known = ", ".join(f"marker:{k}" for k in list(markers)[:15]) or "none placed yet"
+            raise AtlasError(f'Unknown marker "{s}".', hint=f"Known markers: {known}. Call list_markers.")
+        return [_check_bounds(site, _pt(site, m["x"], m["y"], id=f"marker:{s[7:]}", name=m.get("label")))]
     if s == "rover":
         xy = getattr(site, "rover_xy", None)
         if xy is None:

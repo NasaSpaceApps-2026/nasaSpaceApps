@@ -73,6 +73,7 @@ class Site:
     pois: list[dict] = field(default_factory=list)    # each: id, name, type, x, y, ... (PRD contract 3)
     radius_m: float = MARS_RADIUS_M
     rover_xy: tuple[float, float] | None = None       # set by the server from rover state, if known
+    markers: dict = field(default_factory=dict)       # id -> {x, y, label, ...}; owned by the API, read by resolve_ref
 
     # ---- geometry -------------------------------------------------------
     @property

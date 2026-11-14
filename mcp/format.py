@@ -82,9 +82,20 @@ def fmt_overview(d: dict) -> str:
         layer_lines.append(f"{kind}: " + "; ".join(f"{l['id']} ({l['measures'].rstrip('.')})" for l in ls))
     prof = "Profiles: " + (", ".join(p["name"] for p in d["profiles"]) or "none")
     pois = "POIs: " + "; ".join(f"{p['id']} {xy(p['x'], p['y'])}" for p in d["pois"]) if d["pois"] else None
-    rover = f"Rover: {xy(d['rover']['x'], d['rover']['y'])}" if d.get("rover") else "Rover: position not known."
+    rv = d.get("rover")
+    rover = (f"Rover: {xy(rv['x'], rv['y'])}" + (f", mode {rv['mode']}" if rv.get("mode") else "")
+             + (", FSD armed" if rv.get("fsd_armed") else "")) if rv else "Rover: position not known."
+    mk = d.get("markers")
+    markers = ("Markers: " + "; ".join(f"marker:{m['id']} {xy(m['x'], m['y'])}"
+                                       + (f" \"{m['label']}\"" if m.get("label") and m["label"] != m["id"] else "")
+                                       for m in mk)) if mk else "Markers: none placed."
+    tg = d.get("search_targets")
+    targets = ("Search targets for find_sites: " + "; ".join(
+        f"{t['target']} ({t.get('mission') or '?'}{('/' + t['instrument']) if t.get('instrument') else ''})"
+        for t in tg) + ".") if tg else None
     tiers = "Evidence tiers (ascending): " + " < ".join(d["evidence_tiers"]) + "."
-    return _lines(head, "Layers:", *["  " + x for x in layer_lines], prof, pois, rover, tiers, d.get("next"))
+    return _lines(head, "Layers:", *["  " + x for x in layer_lines], prof, pois, rover, markers, targets, tiers,
+                  d.get("next"))
 
 
 def fmt_layers(d: dict) -> str:
@@ -271,3 +282,228 @@ def _pct(f: float) -> str:
     if f > 0.9999:
         return ">99.99%"
     return f"{f * 100:.2f}".rstrip("0").rstrip(".") + "%"
+
+
+# ---- routes, traverses, profiles ----------------------------------------------------------
+
+def _min(v) -> str:
+    return f"{num(v, 0) if v is not None and abs(v) >= 10 else num(v)} min"
+
+
+def _consumables_line(c: dict | None) -> str | None:
+    if not c:
+        return None
+    u, m = c["used"], c["margin"]
+    return (f"Consumables (time only; EVA limit {num(c['eva_limit_min'], 0)} min, reserve "
+            f"{num(c['reserve_fraction'] * 100, 0)}%): used {num(u['minutes'])} min ({num(u['fraction'] * 100, 0)}%), "
+            f"margin above reserve {num(m['minutes'])} min ({num(m['fraction'] * 100, 0)}%).")
+
+
+def _go_line(a: dict | None) -> str | None:
+    if not a:
+        return None
+    if a["go"]:
+        return "Assessment: GO" + ("" if not a.get("caution") else " with cautions: " + " ".join(a["caution"]))
+    return "Assessment: NO-GO. " + " ".join(a["reasons"])
+
+
+def fmt_route(d: dict) -> str:
+    if not d["feasible"]:
+        nr = d.get("nearest_reachable")
+        near = (f"Nearest reachable point: {xy(nr['x'], nr['y'])} m, {num(nr['distance_to_goal_m'], 0)} m from the "
+                f"goal, {num(nr['travel_min'])} min travel." if nr else "No reachable point found.")
+        return _lines(f"NO ROUTE (feasible: false). {d['reason']}", near, "Hint: " + d["hint"] if d.get("hint") else None)
+    stops = "; ".join(f"{s['kind']} {xy(s['x'], s['y'])} at {num(s['distance_m'], 0)} m, {num(s['eta_min'])} min"
+                      for s in d.get("stops", []))
+    head = (f"Route {d['route_id']} ({d['profile']}, slope limit {num(d['max_slope_limit_deg'])} deg): "
+            f"{num(d['distance_m'], 0)} m, {num(d['duration_min'])} min, ascent {num(d['ascent_m'], 0)} m, "
+            f"max slope {num(d['max_slope_deg'])} deg, {d['hazard_cells']} caution cell(s) "
+            f"(>{num(d['caution_slope_deg'])} deg).")
+    warn = [w for w in d.get("warnings", []) if w not in (d.get("assessment") or {}).get("reasons", [])
+            and w not in (d.get("assessment") or {}).get("caution", [])]
+    return _lines(
+        head, ("Stops: " + stops) if stops else None, _consumables_line(d.get("consumables")),
+        _go_line(d.get("assessment")), ("Warnings: " + " ".join(warn)) if warn else None,
+        "Times use a placeholder isotropic speed model (approximate). " + (
+            "Assumed: " + "; ".join(d["assumptions"]) + "." if d.get("assumptions") else ""),
+        f"Next: assess_route(\"{d['route_id']}\"), then follow_route(\"{d['route_id']}\") (rover must be at the start).")
+
+
+def fmt_assess(d: dict) -> str:
+    if not d["feasible"]:
+        return f"Route {d.get('route_id')} is NOT feasible: {d['reason']}"
+    a = d["assessment"]
+    verdict = "GO" if a["go"] else "NO-GO"
+    return _lines(
+        f"{verdict} for {d['route_id']} ({d['profile']}): {num(d['distance_m'], 0)} m, {num(d['duration_min'])} min, "
+        f"max slope {num(d['max_slope_deg'])} deg (no-go limit {num(d['max_slope_limit_deg'])}, caution "
+        f"{num(d['caution_slope_deg'])}), ascent {num(d['ascent_m'], 0)} m.",
+        _consumables_line(d.get("consumables")),
+        ("Reasons: " + " ".join(a["reasons"])) if a["reasons"] else None,
+        ("Cautions: " + " ".join(a["caution"])) if a["caution"] else None,
+        "Limits marked assumed in the profile are not cited values." if d.get("assumptions") else None,
+        ("Next: follow_route to drive it." if a["go"] else "Next: plan_route with a lower max_slope_deg, a shorter goal, "
+         "or a larger time budget; do not call this route safe."))
+
+
+def fmt_science(d: dict) -> str:
+    t = d["time"]
+    r = d.get("route")
+    if not d["stops"]:
+        return _lines(f"No science stops fit (budget {num(t['budget_min'], 0)} min, {d['candidates_considered']} "
+                      "candidate(s) considered).", "Hint: " + d["hint"])
+    lines = [f"Traverse with {len(d['stops'])} stop(s), science value {num(d['science_value_total'], 2)}; "
+             f"{num(t['total_min'], 0)} of {num(t['budget_min'], 0)} min ({num(t['travel_min'], 0)} travel + "
+             f"{num(t['stops_min'], 0)} at stops{', returns to start' if t['return_to_start'] else ''})."]
+    for i, s in enumerate(d["stops"], 1):
+        v = f"{num(s['science_value'], 2)}{' (assumed, no value recorded)' if s['value_assumed'] else ''}"
+        lines.append(f"{i}. {s['id']} {s.get('name') or ''} {xy(s['x'], s['y'])} m, arrive {num(s['arrive_min'], 0)} min, "
+                     f"value {v}" + (f", matched: {'; '.join(s['matched_by'])}" if s["matched_by"] else ""))
+    if r:
+        lines.append(f"Route {r['route_id']}: {num(r['distance_m'], 0)} m, max slope {num(r['max_slope_deg'])} deg, "
+                     f"{_go_line(r.get('assessment')) or ''}")
+        c = _consumables_line(r.get("consumables"))
+        if c:
+            lines.append(c)
+    if d["skipped"]:
+        lines.append("Skipped: " + "; ".join(f"{s['id']} ({s['reason']})" for s in d["skipped"][:4]) + ".")
+    for n in d.get("notes", [])[1:3]:
+        lines.append("Note: " + n)
+    lines.append("Next: assess_route(route_id) for go/no-go; set_view(highlights=[...]) to show the stops.")
+    return "\n".join(lines)
+
+
+def fmt_profile(d: dict) -> str:
+    s = d["samples"]
+    pick = s if len(s) <= 9 else [s[round(i * (len(s) - 1) / 8)] for i in range(9)]
+    rows = "; ".join(f"{num(p['d'], 0)} m: z {num(p['z'])} slope {num(p['slope_deg'])}" for p in pick)
+    unk = f" {d['unknown_samples']} sample(s) have no data." if d["unknown_samples"] else ""
+    return _lines(
+        f"Profile {num(d['distance_m'], 0)} m, {d['count']} samples every {num(d['spacing_m'])} m: elevation "
+        f"{num(d['min_z'])} to {num(d['max_z'])} m, ascent {num(d['ascent_m'])} m, descent {num(d['descent_m'])} m, "
+        f"slope mean {num(d['mean_slope_deg'])} / max {num(d['max_slope_deg'])} deg.{unk}",
+        "Samples (distance: elevation m, slope deg): " + rows,
+        "Next: plan_route to get a drivable route; slope is per 2 m cell, so small rocks are not resolved.")
+
+
+def fmt_pois(d: dict) -> str:
+    ps = d["pois"]
+    if not ps:
+        return f"No POIs match. Known types: {', '.join(d['types'])}.\nTry: search_pois() with fewer filters."
+    rows = []
+    for p in ps[:12]:
+        sv = p.get("science_value")
+        rows.append(f"- {p['ref']} {p.get('name') or ''} [{p.get('type')}] {xy(p['x'], p['y'])} m"
+                    + (f", {num(p['distance_m'], 0)} m away" if p.get("distance_m") is not None else "")
+                    + (f", science value {num(sv, 2)}" if sv is not None else ", science value not recorded"))
+    more = f" (showing {len(ps[:12])})" if d["count"] > 12 else ""
+    return _lines(f"{d['count']} POI(s){more}:", *rows,
+                  "Next: goto_location(target=\"poi:<id>\"), plan_route(goal=...), or fly_camera(target=...).")
+
+
+# ---- rover, FSD, view, markers, sites -------------------------------------------------------
+
+def fmt_rover_state(s: dict) -> str:
+    z = f", z {num(s['z'], 0)} m" if s.get("z") is not None else ""
+    return _lines(
+        f"Rover {xy(s['x'], s['y'])} m{z}, heading {num(s['heading_deg'], 0)} deg (clockwise from north), pitch "
+        f"{num(s['pitch_deg'])}, roll {num(s['roll_deg'])} deg; mode {s['mode']}"
+        f"{' (FSD armed)' if s['fsd_armed'] else ''}, speed {num(s['speed_mps'], 2)} m/s, odometer "
+        f"{num(s['odometer_m'], 0)} m.",
+        f"Status: {s['status']}. Last event: {s['last_event']}." + (
+            f" Route {s['route_id']}, {num(s['remaining_m'], 0)} m remaining." if s.get("route_id") and s.get("remaining_m") else ""),
+        f"Profile {s['profile']}. Simulated time driven {num(s['sim_elapsed_s'] / 60)} min.")
+
+
+_REASON_TEXT = {
+    "arrived": "ARRIVED", "blocked_slope": "STOPPED: blocked_slope", "blocked_hazard": "STOPPED: blocked_hazard",
+    "replanned": "STOPPED: replanned", "stopped_by_user": "STOPPED: stopped_by_user", "timeout": "STOPPED: timeout",
+}
+
+
+def fmt_command(d: dict) -> str:
+    st = d["state"]
+    reason = d.get("stop_reason")
+    if d.get("feasible") is False:
+        nr = d.get("nearest_reachable")
+        return _lines(f"NOT DRIVEN ({reason}): {d['detail']}",
+                      (f"Nearest reachable point {xy(nr['x'], nr['y'])} m ({num(nr['distance_to_goal_m'], 0)} m from "
+                       "the goal).") if nr else None,
+                      f"Rover stays at {xy(st['x'], st['y'])} m.", "Hint: " + d["hint"] if d.get("hint") else None)
+    head = _REASON_TEXT.get(reason, str(reason)) + (f" - {d['detail']}" if d.get("detail") else "")
+    drove = ""
+    if d.get("distance_m") is not None and reason is not None and "elapsed_sim_min" in d:
+        drove = f" Drove {num(d['distance_m'], 0)} m in {num(d['elapsed_sim_min'])} simulated min."
+    nr = d.get("new_route")
+    return _lines(
+        head, f"Rover now {xy(st['x'], st['y'])} m, heading {num(st['heading_deg'], 0)} deg, odometer "
+              f"{num(st['odometer_m'], 0)} m, pitch {num(st['pitch_deg'])} roll {num(st['roll_deg'])} deg.{drove}",
+        (f"New route {nr['route_id']}: {num(nr['distance_m'], 0)} m, {num(nr['duration_min'])} min, max slope "
+         f"{num(nr['max_slope_deg'])} deg. Next: follow_route(\"{nr['route_id']}\").") if nr else None,
+        ("Replan failed: " + d["replan_failed"]) if d.get("replan_failed") else None,
+        ("Hint: " + d["hint"]) if d.get("hint") else None)
+
+
+def fmt_fsd(d: dict) -> str:
+    h = d.get("last_hazard")
+    pol = ", ".join(f"{k}={'on' if v else 'off'}" for k, v in d["policy"].items())
+    return _lines(
+        f"FSD {'ARMED' if d['armed'] else 'off'}; mode {d['mode']}; policy {pol}; replans used {d['replans_used']} of "
+        f"{d['replans_allowed']}; route {d.get('route_id') or 'none'}, {num(d['remaining_route_m'], 0)} m remaining.",
+        ("Last hazard: " + h["detail"] + f" at {xy(h['x'], h['y'])} m.") if h else "No hazard recorded.",
+        ("Blockers: " + "; ".join(d["blockers"]) + ".") if d["blockers"] else "No blockers.",
+        "Next: follow_route to continue, or plan_route from the rover to re-plan." if d["blockers"] else
+        "Next: plan_route then follow_route; fsd_enable first to allow one automatic replan.")
+
+
+def fmt_fsd_change(d: dict) -> str:
+    return fmt_fsd(d["fsd"])
+
+
+def fmt_view(d: dict) -> str:
+    parts = []
+    if d.get("mode"):
+        parts.append(f"mode {d['mode']}")
+    if d.get("target"):
+        t = d["target"]
+        parts.append(f"target {t.get('id') or ''} {xy(t['x'], t['y'])} m".replace("  ", " "))
+    if d.get("layers"):
+        parts.append("layers " + ", ".join(f"{l['layer']} {'on' if l['visible'] else 'off'}" for l in d["layers"]))
+    if d.get("highlights"):
+        parts.append(f"{len(d['highlights'])} highlight(s): " + ", ".join(str(h['id']) for h in d["highlights"][:8]))
+    return _lines("View update sent: " + "; ".join(parts) + ".", d.get("note"),
+                  "Next: describe the scene from tool results, or place_marker / plan_route.")
+
+
+def fmt_markers(d: dict) -> str:
+    if not d["markers"]:
+        return "No markers placed.\nNext: place_marker(x, y, label) or ask the user to click the ground."
+    rows = [f"- marker:{m['id']} {xy(m['x'], m['y'])} m z {num(m.get('z'), 0)}, \"{m.get('label')}\", placed by "
+            f"{m['created_by']}" for m in d["markers"]]
+    return _lines(f"{d['count']} marker(s):", *rows,
+                  "Use them anywhere a location is accepted, e.g. plan_route(start=\"marker:m1\", goal=\"marker:m2\").")
+
+
+def fmt_marker(m: dict) -> str:
+    return (f"Placed marker:{m['id']} \"{m['label']}\" at {xy(m['x'], m['y'])} m (z {num(m.get('z'), 0)}, "
+            f"{m['lat']:.4f}, {m['lon']:.4f}).\nUse \"marker:{m['id']}\" as a location in other tools.")
+
+
+def fmt_sites(d: dict) -> str:
+    n, ss = d["count"], d["sites"]
+    if n == 0:
+        return _lines(f"No sites found for {d['target']}.", "Hint: " + d["hint"])
+    out = [f"{n} site(s) for {d['target']} ({d['kind']}); top {len(ss)}, ranked by "
+           f"{'best evidence tier then area' if d['kind'] == 'evidence' else 'area'}, from {d['near']['id']} "
+           f"{xy(d['near']['x'], d['near']['y'])}. Stored as {d['set_id']}."]
+    for i, s in enumerate(ss, 1):
+        ev = s["evidence"][0]
+        tier = f"best tier {s['best_tier']} {s['best_tier_name']}, " if s.get("best_tier") is not None else ""
+        reach = "reachable" if s["reachable"] else "NOT reachable"
+        walk = f" ({num(s['walk_distance_m'], 0)} m walk)" if s.get("walk_distance_m") is not None else ""
+        out.append(f"{i}. {s['id']} {xy(s['x'], s['y'])} m, {tier}area {num(s['area_m2'], 0)} m2, mean slope "
+                   f"{num(s['mean_slope_deg'])} deg, {num(s['distance_m'], 0)} m away, {reach}{walk}; "
+                   f"{ev['layer']} from {ev.get('mission') or '?'}/{ev.get('instrument') or '?'}")
+    out.append("Evidence is orbital detection tiers, not abundance; cite layer and mission. Hint: " + d["hint"])
+    out.append("Next: set_view(highlights=[ids]) to show them, plan_route(goal=\"<id>\") to get there.")
+    return "\n".join(out)
