@@ -8,8 +8,10 @@ from vision_loop.drive_surface import (
     compile_drive,
     encode_heights,
     import_cesium_height,
+    sample_drive,
     sample_pixel_center,
     sample_vertex,
+    slope_deg,
     write_drive,
 )
 from vision_loop.model import save_model
@@ -106,3 +108,68 @@ def test_inferred_bump_marks_guessed_ground(tmp_path: Path):
     assert header["step"] == 0.01
     raw = np.fromfile(out / "height.u16", dtype="<u2")
     assert raw.size == header["width"] * header["height"]
+
+
+def test_inside_the_bubble_the_bump_wins_and_outside_uses_the_site():
+    bubble = {
+        "layout": "vertex",
+        "values": np.array([[1000]], np.uint16),
+        "base": 0.0,
+        "res_m": 1.0,
+        "x0": 0.0,
+        "y0": 0.0,
+        "width": 1,
+        "height": 1,
+    }
+    site = {
+        "layout": "pixel_center",
+        "values": np.full((4, 4), 500, np.uint16),
+        "base": 0.0,
+        "res_m": 2.0,
+        "size_m": 8.0,
+        "center_x": 0.0,
+        "center_y": 0.0,
+        "width": 4,
+        "height": 4,
+    }
+    assert sample_drive(0, 0, bubble, site) == pytest.approx(10.0, abs=0.005)
+    assert sample_drive(-3, 3, bubble, site) == pytest.approx(5.0, abs=0.005)
+
+
+def test_flat_grid_slope_is_about_zero():
+    bubble = {
+        "layout": "vertex",
+        "values": np.full((5, 5), 1000, np.uint16),
+        "base": 0.0,
+        "res_m": 1.0,
+        "x0": 0.0,
+        "y0": 0.0,
+        "width": 5,
+        "height": 5,
+    }
+    assert slope_deg(2, -2, bubble) == pytest.approx(0.0, abs=1e-6)
+    edge = {
+        "layout": "vertex",
+        "values": np.array([[1000]], np.uint16),
+        "base": 0.0,
+        "res_m": 1.0,
+        "x0": 0.0,
+        "y0": 0.0,
+        "width": 1,
+        "height": 1,
+    }
+    assert slope_deg(0, 0, edge) == pytest.approx(0.0, abs=1e-6)
+
+
+def test_drive_cli_prints_the_output_directory(tmp_path: Path, capsys):
+    from vision_loop.__main__ import main
+
+    work = tmp_path / "work"
+    init_workspace(Path("contracts/fixtures/bubble_source"), work)
+    main(["drive", "--work", str(work)])
+    printed = capsys.readouterr().out.strip()
+    assert Path(printed) == work / "drive"
+    assert (work / "drive" / "height.u16").exists()
+    assert (work / "drive" / "height.json").exists()
+    main(["check", "--work", str(work)])
+    assert "inferred ops are only on low-coverage ground" in capsys.readouterr().out

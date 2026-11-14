@@ -5,6 +5,7 @@
   PYTHONPATH=pipeline python3 -m vision_loop revert --work DIR
   PYTHONPATH=pipeline python3 -m vision_loop gap --work DIR
   PYTHONPATH=pipeline python3 -m vision_loop check --work DIR
+  PYTHONPATH=pipeline python3 -m vision_loop drive --work DIR
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from bubble.geom import Camera
 from bubble.gltf import write_glb
 from bubble.render import render_mesh
 from vision_loop.coverage import coverage_count, inferred_ops_on_high_coverage, low_coverage_mask
+from vision_loop.drive_surface import write_drive
 from vision_loop.errors import VisionError
 from vision_loop.model import compile_model, load_baseline, load_model, pop_last, save_model
 from vision_loop.workspace import init_workspace
@@ -154,6 +156,8 @@ def main(argv: list[str] | None = None) -> None:
     gap.add_argument("--work", type=Path, required=True)
     check = sub.add_parser("check")
     check.add_argument("--work", type=Path, required=True)
+    drive = sub.add_parser("drive")
+    drive.add_argument("--work", type=Path, required=True)
     args = parser.parse_args(argv)
     if args.cmd == "init":
         summary = init_workspace(args.bundle, args.work)
@@ -167,7 +171,9 @@ def main(argv: list[str] | None = None) -> None:
         print(f"ops {len(model['ops'])}")
     elif args.cmd == "gap":
         print(json.dumps(gap_report(args.work), indent=2))
-    else:
+    elif args.cmd == "drive":
+        print(write_drive(args.work))
+    elif args.cmd == "check":
         problems = check_inferred(args.work)
         if problems:
             raise SystemExit("inferred op on surveyed ground:\n" + "\n".join(problems))

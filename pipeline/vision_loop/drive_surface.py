@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import math
 import shutil
 
 import numpy as np
@@ -75,6 +76,42 @@ def sample_pixel_center(
     if value != value:
         return value
     return base + STEP * value
+
+
+def sample_drive(x: float, y: float, bubble: dict, site: dict | None = None) -> float:
+    got = sample_vertex(
+        x, y,
+        values=bubble["values"], base=bubble["base"], res_m=bubble["res_m"],
+        x0=bubble["x0"], y0=bubble["y0"],
+    )
+    if got == got:
+        return got
+    if site is None:
+        return float("nan")
+    return sample_pixel_center(
+        x, y,
+        values=site["values"], base=site["base"], res_m=site["res_m"],
+        size_m=site["size_m"], center_x=site["center_x"], center_y=site["center_y"],
+    )
+
+
+def slope_deg(x: float, y: float, bubble: dict, site: dict | None = None) -> float:
+    center = sample_drive(x, y, bubble, site)
+    right = sample_drive(x + 2, y, bubble, site)
+    left = sample_drive(x - 2, y, bubble, site)
+    north = sample_drive(x, y + 2, bubble, site)
+    south = sample_drive(x, y - 2, bubble, site)
+    if right != right:
+        right = center
+    if left != left:
+        left = center
+    if north != north:
+        north = center
+    if south != south:
+        south = center
+    gx = (right - left) / 4.0
+    gy = (north - south) / 4.0
+    return math.degrees(math.atan(math.hypot(gx, gy)))
 
 
 def guess_mask(dem_shape, grid, ops) -> np.ndarray:
