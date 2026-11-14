@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Compile the vision loop's `model.json` into the height grid Rithvik's Cesium viewer already samples, so Yousef's rover wheels stand on the edited terrain.
+**Goal:** Turn Rithvik's Cesium height grid into the JSON file the vision agent edits, then write that JSON back to a height grid the rover and Cesium both sample.
 
-**Architecture:** The agent keeps editing `model.json`. A compiler applies those ops to the baseline height and texture, then writes a uint16 height window, a texture image, and a guessed-ground mask. One sample function reads that window inside the bubble and Rithvik's site grid outside it. Cesium and the rover both call that function. The `.glb` stays the picture the vision loop renders. It is not the collision surface.
+**Architecture:** Import reads `dem2m.u16` plus `dem2m.json` and writes `model.json`. That JSON is the model file. It records the grid (layout, size, spacing, base, step) and starts with `"ops": []`. The original uint16 bytes are copied beside it so the agent does not rewrite hundreds of thousands of height numbers by hand. The agent appends bump, paint, and smooth ops to `model.json`. Export applies those ops and writes a new uint16 grid in the same encoding. `sample_drive` reads the edited grid inside the bubble and the original Cesium grid outside it. The `.glb` stays a picture. It is not the collision surface.
 
 **Tech Stack:** Python 3.11, numpy, Pillow, pytest. A small TypeScript twin of the sampler lives in `contracts/drive/sampleHeight.ts` for Rithvik and Yousef to paste. Do not edit `web/` or `api/`.
 
@@ -17,14 +17,107 @@
 - Texture is written for the viewer to drape. It does not move the suspension. Suspension, pitch, and roll come from the height under the wheels. A `guessed.u8` mask is 1 where an op with `"inferred": true` has falloff above 0.05, so the rover can treat that ground as caution.
 - Do not edit `pipeline/bubble`, `web/`, or `api/`. Do not download imagery.
 - Round-trip error of a finite height through uint16 is at most 0.005 m.
+- Import does not put every height inside `model.json`. A 512×512 site is a quarter million numbers. The JSON names the copied `baseline/height.u16` and holds the editable `ops` list. That is the file the agent modifies.
+
+---
+
+### Task 0: Import the Cesium height grid into model.json
+
+**Files:**
+- Create: `pipeline/vision_loop/drive_surface.py`
+- Test: `tests/vision_loop/test_drive_surface.py`
+
+**Interfaces:**
+- Consumes: a `dem2m.u16` and `dem2m.json` in Rithvik's format (`width`, `height`, `res_m`, `base`, `step`)
+- Produces: `import_cesium_height(u16_path, json_path, work: Path, size_m: float | None = None) -> dict`
+  - Writes `work/model.json`, `work/baseline/height.u16`, `work/baseline/height.json`
+  - `size_m` defaults to `width * res_m` when omitted
+
+`model.json` shape:
+
+```json
+{
+  "source": "cesium_dem2m",
+  "layout": "pixel_center",
+  "width": 4,
+  "height": 4,
+  "res_m": 2.0,
+  "size_m": 8.0,
+  "center_x": 0.0,
+  "center_y": 0.0,
+  "base": -2400.0,
+  "step": 0.01,
+  "heights": "baseline/height.u16",
+  "ops": []
+}
+```
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+import json
+from pathlib import Path
+
+import numpy as np
+
+from vision_loop.drive_surface import import_cesium_height
+
+
+def test_cesium_u16_becomes_an_editable_model(tmp_path: Path):
+    values = np.arange(16, dtype="<u2").reshape(4, 4)
+    u16 = tmp_path / "dem2m.u16"
+    values.tofile(u16)
+    header = tmp_path / "dem2m.json"
+    header.write_text(json.dumps({
+        "width": 4, "height": 4, "res_m": 2.0, "base": -2400.0, "step": 0.01,
+    }))
+    work = tmp_path / "work"
+    model = import_cesium_height(u16, header, work)
+    assert model["source"] == "cesium_dem2m"
+    assert model["layout"] == "pixel_center"
+    assert model["ops"] == []
+    assert model["size_m"] == 8.0
+    on_disk = json.loads((work / "model.json").read_text())
+    assert on_disk["ops"] == []
+    copied = np.fromfile(work / "baseline" / "height.u16", dtype="<u2").reshape(4, 4)
+    assert np.array_equal(copied, values)
+```
+
+- [ ] **Step 2: Run the test and confirm it fails**
+
+Run: `python3 -m pytest tests/vision_loop/test_drive_surface.py::test_cesium_u16_becomes_an_editable_model -v`
+
+Expected: FAIL, `ModuleNotFoundError: No module named 'vision_loop.drive_surface'`
+
+- [ ] **Step 3: Implement the import**
+
+Read the JSON header, memory-map or `np.fromfile` the uint16 as little-endian, check `width * height` matches the file, and write the model above with an empty `ops` list. Copy the bytes to `baseline/height.u16` unchanged. Copy the header fields into `baseline/height.json` and add `layout`, `size_m`, `center_x`, and `center_y`.
+
+- [ ] **Step 4: Run the test**
+
+Run: `python3 -m pytest tests/vision_loop/test_drive_surface.py::test_cesium_u16_becomes_an_editable_model -v`
+
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add pipeline/vision_loop/drive_surface.py tests/vision_loop/test_drive_surface.py
+git commit -m "$(cat <<'EOF'
+Import the Cesium height grid into the JSON the agent edits.
+
+The uint16 bytes stay next to model.json. The agent changes the ops list.
+EOF
+)"
+```
 
 ---
 
 ### Task 1: Encode heights and sample a vertex grid
 
 **Files:**
-- Create: `pipeline/vision_loop/drive_surface.py`
-- Test: `tests/vision_loop/test_drive_surface.py`
+- Modify: `pipeline/vision_loop/drive_surface.py`
+- Modify: `tests/vision_loop/test_drive_surface.py`
 
 **Interfaces:**
 - Consumes: nothing
@@ -419,6 +512,13 @@ The rover and the Cesium terrain provider can share this one height function.
 EOF
 )"
 ```
+
+## Direction
+
+1. Read his `dem2m.u16` and `dem2m.json`.
+2. Write `model.json` with an empty `ops` list. That is the file the vision agent modifies.
+3. After the agent edits, write a new uint16 grid from `model.json`.
+4. The rover and Cesium sample that grid inside the bubble and the original grid outside it.
 
 ## Handoff, not done in this plan
 
