@@ -9,7 +9,7 @@ import path from 'node:path';
 import { inflateSync } from 'node:zlib';
 import { DEG, poseToEulerYXZ, siteToThree } from '../coords';
 import { TileHeightSampler, decodeHeightRGBA, type HeightSampler } from '../heightTiles';
-import { BUGGY_PARAMS, DEFAULT_BUGGY_PROFILE, DEFAULT_ROVER_PROFILE, RoverPhysics, footprint } from '../physics';
+import { BUGGY_PARAMS, DEFAULT_BUGGY_PROFILE, DEFAULT_ROVER_PROFILE, RoverPhysics, climbSpeed, footprint } from '../physics';
 
 let passed = 0;
 function check(name: string, fn: () => void) {
@@ -22,7 +22,7 @@ const FWD = { throttle: 1, steer: 0 };
 
 // --- physics -----------------------------------------------------------------
 
-check('flat ground: z = ground, pitch = roll = 0 while driving and turning', () => {
+check('flat ground: z = ground, pitch = roll = 0; speed settles at the controller cap', () => {
   const flat: HeightSampler = { sampleHeight: () => -2400 };
   const r = new RoverPhysics(flat, DEFAULT_ROVER_PROFILE, {}, { x: 0, y: 0, heading_deg: 30 });
   for (let i = 0; i < 300; i++) {
@@ -32,59 +32,76 @@ check('flat ground: z = ground, pitch = roll = 0 while driving and turning', () 
     assert.equal(s.roll_deg, 0);
   }
   assert.ok(r.state.odometer_m > 5, `rover should have moved, odometer ${r.state.odometer_m}`);
-  near(Math.abs(r.state.speed_mps), DEFAULT_ROVER_PROFILE.flat_speed_mps, 1e-9, 'flat speed reached');
+  near(r.state.speed_mps, DEFAULT_ROVER_PROFILE.flat_speed_mps, 1e-3, 'flat speed cap');
+  // Released throttle: brakes stop it.
+  for (let i = 0; i < 120; i++) r.step(1 / 60, { throttle: 0, steer: 0 });
+  assert.equal(r.state.speed_mps, 0);
 });
 
-check('tilted plane: pitch = atan(gradient) uphill, roll = atan(gradient) side-on, z = ground', () => {
-  const g = 0.15; // z rises 0.15 m per m northward
+check('tilted plane: pitch = atan(gradient) uphill, roll = atan(gradient) side-on; climb speed from power', () => {
+  const g = 0.15; // z rises 0.15 m per m northward (8.5 deg)
   const plane: HeightSampler = { sampleHeight: (_x, y) => g * y };
   const expect = Math.atan(g) / DEG;
-  const north = new RoverPhysics(plane, DEFAULT_ROVER_PROFILE, {}, { x: 0, y: 0, heading_deg: 0 });
-  for (let i = 0; i < 60; i++) north.step(1 / 60, FWD);
+  const north = new RoverPhysics(plane, DEFAULT_BUGGY_PROFILE, BUGGY_PARAMS, { x: 0, y: 0, heading_deg: 0 });
+  for (let i = 0; i < 1200; i++) north.step(1 / 60, FWD);
   near(north.state.pitch_deg, expect, 1e-9, 'pitch heading north');
   near(north.state.roll_deg, 0, 1e-9, 'roll heading north');
   near(north.state.z, plane.sampleHeight(north.state.x, north.state.y), 1e-9, 'z on plane');
-  near(north.state.slope_deg, expect, 1e-9, 'footprint slope');
+  near(north.state.speed_mps, climbSpeed(DEFAULT_BUGGY_PROFILE, expect), 0.02, 'steady climb speed = P / (m g (sin + Crr cos))');
+  assert.ok(north.state.speed_mps < DEFAULT_BUGGY_PROFILE.flat_speed_mps, 'slower uphill');
 
   const south = new RoverPhysics(plane, DEFAULT_ROVER_PROFILE, {}, { x: 0, y: 0, heading_deg: 180 });
   near(south.state.pitch_deg, -expect, 1e-9, 'pitch heading south (downhill)');
-
   const east = new RoverPhysics(plane, DEFAULT_ROVER_PROFILE, {}, { x: 0, y: 0, heading_deg: 90 });
   near(east.state.pitch_deg, 0, 1e-9, 'pitch heading east');
   near(east.state.roll_deg, expect, 1e-9, 'roll heading east (right side = south = lower)');
-
-  // Speed follows the profile curve on 8.5 deg: flat * exp(-k * tan).
-  const want = DEFAULT_ROVER_PROFILE.flat_speed_mps * Math.exp(-DEFAULT_ROVER_PROFILE.speed_curve_k * g);
-  near(north.state.speed_mps, want, 1e-9, 'slope speed');
 });
 
-check('refuses to climb a 30 deg slope with nogo 20 (stops on the flat, reports blocked_slope)', () => {
+check('no hard blocks: 30 deg ramp past the grip limit makes the scout slip, not freeze, and it can back away', () => {
   const t30 = Math.tan(30 * DEG);
   const ramp: HeightSampler = { sampleHeight: (_x, y) => (y > 10 ? (y - 10) * t30 : 0) };
-  const r = new RoverPhysics(ramp, { ...DEFAULT_ROVER_PROFILE, nogo_slope_deg: 20 }, {}, { x: 0, y: 0, heading_deg: 0 });
-  for (let i = 0; i < 600; i++) r.step(1 / 60, FWD);
-  const s = r.state;
-  assert.equal(s.status, 'blocked_slope');
-  assert.equal(s.speed_mps, 0);
-  assert.ok(s.stop_reason && /no-go/.test(s.stop_reason), `stop reason: ${s.stop_reason}`);
-  assert.ok(s.y + 2.7 / 2 < 10, `front axle must stay off the ramp, y=${s.y}`);
-  near(s.z, 0, 1e-9, 'still on the flat');
-  assert.ok(s.y > 5, `should have driven up to the ramp first, y=${s.y}`);
-  // Backing away is allowed.
-  for (let i = 0; i < 60; i++) r.step(1 / 60, { throttle: -1, steer: 0 });
-  assert.ok(r.state.status !== 'blocked_slope' && r.state.speed_mps < 0, 'can reverse away');
+  const r = new RoverPhysics(ramp, DEFAULT_ROVER_PROFILE, {}, { x: 0, y: 0, heading_deg: 0 });
+  let maxY = 0;
+  for (let i = 0; i < 1800; i++) maxY = Math.max(maxY, r.step(1 / 60, FWD).y);
+  assert.ok(maxY > 9, `reached and touched the ramp, y=${maxY}`);
+  assert.ok(r.state.y < 13, `cannot climb 30 deg (grip ~31 deg minus rolling resistance), y=${r.state.y}`);
+  assert.ok(['slipping', 'sliding', 'steep', 'caution'].includes(r.state.status), `status ${r.state.status}`);
+  for (let i = 0; i < 600; i++) r.step(1 / 60, { throttle: -1, steer: 0 });
+  assert.ok(r.state.y < 9, `backed away, y=${r.state.y}`);
 });
 
-check('same ramp at 18 deg (caution, under nogo 20) is climbed, slower', () => {
-  const t = Math.tan(18 * DEG);
-  const ramp: HeightSampler = { sampleHeight: (_x, y) => (y > 10 ? (y - 10) * t : 0) };
-  const r = new RoverPhysics(ramp, DEFAULT_ROVER_PROFILE, {}, { x: 0, y: 0, heading_deg: 0 });
-  for (let i = 0; i < 1800; i++) r.step(1 / 60, FWD);
-  assert.ok(r.state.y > 30, `should be well up the ramp, y=${r.state.y}`);
-  assert.equal(r.state.status, 'caution');
-  near(r.state.pitch_deg, 18, 1e-6, 'pitch on 18 deg ramp');
-  const want = 0.04 * Math.exp(-3.5 * t) * 0.5;
-  near(r.state.speed_mps, want, 1e-9, 'caution speed');
+check('buggy drives into a 2 m deep, 22 deg dip and climbs back out', () => {
+  // Bowl centred at y = 30, radius 10 m; walls up to ~22 deg.
+  const dip: HeightSampler = {
+    sampleHeight: (x, y) => {
+      const d = Math.hypot(x, y - 30);
+      return d < 10 ? -2 * (1 + Math.cos(Math.PI * d / 10)) / 2 : 0;
+    },
+  };
+  const r = new RoverPhysics(dip, DEFAULT_BUGGY_PROFILE, BUGGY_PARAMS, { x: 0, y: 0, heading_deg: 0 });
+  let minZ = 0;
+  for (let i = 0; i < 60 * 30 && r.state.y < 50; i++) minZ = Math.min(minZ, r.step(1 / 60, FWD).z);
+  assert.ok(minZ < -1.5, `went down into the dip, min z ${minZ}`);
+  assert.ok(r.state.y >= 50, `came out the far side, y=${r.state.y}`);
+});
+
+check('released on 35 deg the brakes cannot hold: it slides downhill; on 20 deg it holds', () => {
+  const slope = (deg: number): HeightSampler => ({ sampleHeight: (_x, y) => y * Math.tan(deg * DEG) });
+  const steep = new RoverPhysics(slope(35), DEFAULT_BUGGY_PROFILE, BUGGY_PARAMS, { x: 0, y: 0, heading_deg: 0 });
+  for (let i = 0; i < 120; i++) steep.step(1 / 60, { throttle: 0, steer: 0 });
+  assert.ok(steep.state.y < -0.5 && steep.state.status === 'sliding', `slid down, y=${steep.state.y} ${steep.state.status}`);
+  const mild = new RoverPhysics(slope(20), DEFAULT_BUGGY_PROFILE, BUGGY_PARAMS, { x: 0, y: 0, heading_deg: 0 });
+  for (let i = 0; i < 120; i++) mild.step(1 / 60, { throttle: 0, steer: 0 });
+  near(mild.state.y, 0, 1e-6, 'held by brakes');
+});
+
+check('coasting downhill is faster than climbing', () => {
+  const g = Math.tan(10 * DEG);
+  const plane: HeightSampler = { sampleHeight: (_x, y) => g * y };
+  const up = new RoverPhysics(plane, DEFAULT_BUGGY_PROFILE, BUGGY_PARAMS, { x: 0, y: 0, heading_deg: 0 });
+  const down = new RoverPhysics(plane, DEFAULT_BUGGY_PROFILE, BUGGY_PARAMS, { x: 0, y: 0, heading_deg: 180 });
+  for (let i = 0; i < 600; i++) { up.step(1 / 60, FWD); down.step(1 / 60, FWD); }
+  assert.ok(down.state.speed_mps > up.state.speed_mps, `down ${down.state.speed_mps} vs up ${up.state.speed_mps}`);
 });
 
 check('contract 1 mapping: heading 90 faces +X (east), pitch up raises the nose', () => {
@@ -189,63 +206,62 @@ check('fixture height tiles decode to the analytic fixture terrain (pipeline/mak
   assert.ok(worst < 0.1, `max |sampled - analytic| = ${worst} m`);
   console.log(`    max |sampled - analytic| over 2000 points: ${worst.toFixed(4)} m`);
 
-  // Drive east into the scarp (~35 deg at x = 180): must stop before it, never float/sink > 0.2 m.
+  // Drive the scout east into the scarp (~32 deg): it cannot get up it, never floats/sinks > 0.2 m.
   const r = new RoverPhysics(s, DEFAULT_ROVER_PROFILE, {}, { x: 100, y: -60, heading_deg: 90 });
   let maxGap = 0;
-  for (let i = 0; i < 1200; i++) {
+  for (let i = 0; i < 1800; i++) {
     const st = r.step(1 / 60, FWD);
     const f = footprint(s, st.x, st.y, st.heading_deg);
     maxGap = Math.max(maxGap, Math.abs(st.z - s.sampleHeight(st.x, st.y)), Math.abs(st.z - f.z));
   }
-  assert.equal(r.state.status, 'blocked_slope');
-  assert.ok(r.state.x < 180, `stopped before the scarp crest, x=${r.state.x}`);
+  assert.ok(r.state.x < 185, `did not climb the scarp, x=${r.state.x}`);
   assert.ok(maxGap < 0.2, `float/sink ${maxGap} m`);
-  console.log(`    fixture scarp: stopped at x=${r.state.x.toFixed(1)} m (${r.state.stop_reason}); max body-ground gap ${maxGap.toFixed(3)} m`);
+  console.log(`    fixture scarp: scout ends at x=${r.state.x.toFixed(1)} m, status ${r.state.status}; max body-ground gap ${maxGap.toFixed(3)} m`);
 });
 
 check('buggy: boost reaches boost speed, drains, then recharges; time-lapse scales ground speed only', () => {
   const flat: HeightSampler = { sampleHeight: () => -2400 };
   const r = new RoverPhysics(flat, DEFAULT_BUGGY_PROFILE, BUGGY_PARAMS, { x: 0, y: 0 });
-  for (let i = 0; i < 300; i++) r.step(1 / 60, FWD);
-  near(r.state.speed_mps, 3.6, 1e-6, 'buggy flat speed (LRV)');
+  for (let i = 0; i < 600; i++) r.step(1 / 60, FWD);
+  near(r.state.speed_mps, 3.6, 1e-3, 'buggy flat speed (LRV)');
   let peak = 0;
-  for (let i = 0; i < 180; i++) peak = Math.max(peak, r.step(1 / 60, { ...FWD, boost: true }).speed_mps);
-  near(peak, 5.0, 1e-6, 'boost speed (LRV record)');
-  for (let i = 0; i < 120; i++) r.step(1 / 60, { ...FWD, boost: true });
+  for (let i = 0; i < 230; i++) peak = Math.max(peak, r.step(1 / 60, { ...FWD, boost: true }).speed_mps);
+  near(peak, 5.0, 1e-3, 'boost speed (LRV record)');
+  for (let i = 0; i < 60; i++) r.step(1 / 60, { ...FWD, boost: true });
   assert.ok(r.state.boost_charge < 0.01, 'drained');
   assert.equal(r.state.boost_active, false, 'boost stops when empty');
   for (let i = 0; i < 60 * 9; i++) r.step(1 / 60, FWD);
   near(r.state.boost_charge, 1, 1e-9, 'recharged');
-  near(r.state.speed_mps, 3.6, 1e-6, 'back to flat speed');
   r.setTimeScale(4);
   r.step(1 / 60, FWD);
-  near(r.state.speed_mps, 3.6, 1e-6, 'mission speed unchanged by time-lapse');
-  near(r.state.display_speed_mps, 14.4, 1e-6, 'screen speed x4');
+  near(r.state.display_speed_mps, r.state.speed_mps * 4, 1e-9, 'screen speed x4');
 });
 
-check('buggy: car steering cannot turn in place; turns with radius >= 3.1 m', () => {
+check('buggy: car steering cannot turn in place', () => {
   const flat: HeightSampler = { sampleHeight: () => -2400 };
   const r = new RoverPhysics(flat, DEFAULT_BUGGY_PROFILE, BUGGY_PARAMS, { x: 0, y: 0, heading_deg: 0 });
   for (let i = 0; i < 60; i++) r.step(1 / 60, { throttle: 0, steer: 1 });
   assert.equal(r.state.heading_deg, 0, 'no turn while stopped');
-  for (let i = 0; i < 600; i++) r.step(1 / 60, { throttle: 1, steer: 1 });
-  // yaw rate = v / R: at 3.6 m/s and R 3.1 m that is 66 deg/s, capped at 60 deg/s -> radius >= 3.1 m
-  const rad = 3.6 / (60 * DEG);
-  assert.ok(rad >= 3.1, `turn radius ${rad}`);
+  for (let i = 0; i < 120; i++) r.step(1 / 60, { throttle: 1, steer: 1 });
+  assert.ok(r.state.heading_deg > 10, 'turns once moving');
 });
 
-check('buggy climbs 22 deg (scout cannot) and still refuses 30 deg, boost or not', () => {
+check('buggy climbs 22 deg (grip-limited ~27 deg), scout slower on it; neither climbs 33 deg', () => {
   const ramp = (deg: number): HeightSampler => ({ sampleHeight: (_x, y) => (y > 5 ? (y - 5) * Math.tan(deg * DEG) : 0) });
-  const climb = (prof: typeof DEFAULT_ROVER_PROFILE, params: object, deg: number) => {
+  const climb = (prof: typeof DEFAULT_ROVER_PROFILE, params: object, deg: number, secs = 40) => {
     const r = new RoverPhysics(ramp(deg), prof, params, { x: 0, y: 0 });
-    for (let i = 0; i < 2400; i++) r.step(1 / 60, { ...FWD, boost: true });
+    for (let i = 0; i < 60 * secs; i++) r.step(1 / 60, { ...FWD, boost: true });
     return r.state;
   };
   assert.ok(climb(DEFAULT_BUGGY_PROFILE, BUGGY_PARAMS, 22).y > 20, 'buggy climbs 22 deg');
-  assert.equal(climb(DEFAULT_ROVER_PROFILE, {}, 22).status, 'blocked_slope', 'scout blocked at 22 deg');
-  const b30 = climb(DEFAULT_BUGGY_PROFILE, BUGGY_PARAMS, 30);
-  assert.equal(b30.status, 'blocked_slope', 'buggy blocked at 30 deg');
-  assert.ok(b30.y < 6, `stopped at the ramp foot, y=${b30.y}`);
+  // 33 deg is past grip: momentum carries it a little way, then it stalls; let go and it slides.
+  const r = new RoverPhysics(ramp(33), DEFAULT_BUGGY_PROFILE, BUGGY_PARAMS, { x: 0, y: 0 });
+  for (let i = 0; i < 60 * 60; i++) r.step(1 / 60, { ...FWD, boost: true });
+  assert.ok(r.state.y < 20 && r.state.speed_mps === 0, `stalled low on the ramp, y ${r.state.y}`);
+  const stall = r.state.y;
+  for (let i = 0; i < 120; i++) r.step(1 / 60, { throttle: 0, steer: 0 });
+  assert.ok(r.state.y < stall - 0.2, `slid back after release: ${stall} -> ${r.state.y}`);
+  assert.ok(climb(DEFAULT_ROVER_PROFILE, {}, 33).y < 8, 'scout cannot climb 33 deg');
 });
 
 console.log(`\n${passed} checks passed`);

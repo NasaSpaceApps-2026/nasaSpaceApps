@@ -33,6 +33,18 @@ const API = (q.get('api') ?? 'http://localhost:8000').replace(/\/$/, '');
 const WS = API.replace(/^http/, 'ws') + '/ws';
 const START = { x: Number(q.get('x') ?? 100), y: Number(q.get('y') ?? -60), heading_deg: Number(q.get('heading') ?? 90) };
 
+/** Start at the site's base POI unless x/y are given in the URL. */
+async function resolveStart(): Promise<void> {
+  if (q.has('x') || q.has('y')) return;
+  try {
+    const r = await fetch(`${BASE}/data/pois.geojson`);
+    const base = (await r.json()).features.find((f: any) => f.properties?.type === 'base')?.properties;
+    if (base) Object.assign(START, { x: base.x + 6, y: base.y });
+  } catch {
+    /* keep the default */
+  }
+}
+
 const $ = (id: string) => document.getElementById(id)!;
 
 async function fetchProfile(): Promise<RoverProfile> {
@@ -162,6 +174,7 @@ async function main() {
     `<b>Imagery</b>: ${ortho ? `${ortho.title} - ${ortho.credit ?? ''}` : 'none'}`;
 
   const profile = await fetchProfile();
+  await resolveStart();
   const controls = new KeyboardControls();
   const link = new RoverLink({ url: WS });
   const driver = new RoverDriver({ sampler, profile, params: BUGGY_PARAMS, controls, link, start: START });
@@ -230,7 +243,8 @@ async function main() {
       const st = driver.physics.state;
       const slopeCls = p.slope_deg > prof.nogo_slope_deg ? 'bad' : p.slope_deg > prof.caution_slope_deg ? 'warn' : '';
       const aheadCls = p.ahead_slope_deg > prof.nogo_slope_deg ? 'bad' : p.ahead_slope_deg > prof.caution_slope_deg ? 'warn' : '';
-      const statusCls = String(p.status).startsWith('blocked') ? 'bad' : p.status === 'caution' ? 'warn' : '';
+      const statusCls = ['sliding', 'slipping', 'tip_risk', 'blocked_edge', 'steep'].includes(String(p.status)) ? 'bad' : p.status === 'caution' ? 'warn' : '';
+      const fc = st.forces;
       hud.innerHTML = `<table>
         <tr><td>x, y</td><td>${f(p.x)} E, ${f(p.y)} N m</td></tr>
         <tr><td>elevation</td><td>${f(p.z, 2)} m</td></tr>
@@ -242,14 +256,15 @@ async function main() {
         <tr><td>boost</td><td class="${p.boost_active ? 'warn' : ''}"><span class="meter"><span style="width:${Math.round(p.boost_charge * 100)}%"></span></span> ${p.boost_active ? 'BOOST' : prof.boost_speed_mps ? `${f(prof.boost_speed_mps * 3.6, 0)} km/h max` : 'n/a'}</td></tr>
         <tr><td>mode</td><td>${p.mode}</td></tr>
         <tr><td>status</td><td class="${statusCls}">${p.status}</td></tr>
-        <tr><td>stop reason</td><td>${p.stop_reason ?? '-'}</td></tr>
+        <tr><td>note</td><td>${p.stop_reason ?? '-'}</td></tr>
+        <tr><td>forces</td><td>motor ${f(fc.motor, 0)} N, gravity ${f(fc.gravity, 0)} N, rolling ${f(fc.resistance, 0)} N (grip limit ${f(fc.grip_limit, 0)} N)</td></tr>
         <tr><td>odometer</td><td>${f(st.odometer_m)} m, mission time ${f(st.mission_time_s / 60)} min</td></tr>
         <tr><td>API link</td><td>${driver.linkStatus} (${WS})</td></tr>
         <tr class="sep"><td>caution slope</td><td>${prof.caution_slope_deg}&deg;</td></tr>
         <tr><td>no-go slope</td><td>${prof.nogo_slope_deg}&deg;</td></tr>
-        <tr><td>flat speed</td><td>${prof.flat_speed_mps} m/s, curve k ${prof.speed_curve_k}${prof.min_turn_radius_m ? `, turn radius ${prof.min_turn_radius_m} m` : ''}</td></tr>
+        <tr><td>vehicle</td><td>${prof.mass_kg} kg, ${prof.power_w} W, grip &mu; ${prof.traction_mu}, rolling ${prof.rolling_coeff}, cap ${prof.flat_speed_mps} m/s${prof.min_turn_radius_m ? `, turn radius ${prof.min_turn_radius_m} m` : ''}</td></tr>
         <tr><td colspan="2" class="src">W/S drive &middot; A/D steer &middot; Shift/Space boost &middot; [ ] time-lapse &middot; R reset &middot; wheel zoom</td></tr>
-        <tr><td colspan="2" class="src">Limits source: ${prof.source}. Speed curve speed = flat &middot; exp(-k&middot;|tan slope|) is an Earth hiking-function shape (placeholder).</td></tr>
+        <tr><td colspan="2" class="src">Limits source: ${prof.source}. Force model: Mars g 3.71 m/s&sup2;; motor limited by power and grip. Slope limits are safety advisories, not walls.</td></tr>
       </table>`;
     }
     requestAnimationFrame(loop);

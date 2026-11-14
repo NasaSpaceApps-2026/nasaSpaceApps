@@ -12,3 +12,6 @@ data/vision/
 !.env.example
 web/.env.local
 .gstack/
+
+# Regenerate with: api/.venv/bin/python api/scripts/make_playground.py
+api/fixtures/playground/

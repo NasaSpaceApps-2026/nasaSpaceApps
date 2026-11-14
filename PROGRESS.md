@@ -15,12 +15,12 @@ Scope tasks from `docs/scope-c-d.md`:
 | 5 | Site search (`/search/targets`, `/search/sites`) | Done on synthetic mineral layers |
 | 6 | Rover sim + WebSocket hub (`/rover/command`, `/rover/state`, `/view`, `/ws`) | Done |
 | 7 | FSD policy (slope stop, caution slowdown, one replan) | Done |
-| 8 | Browser rover driving (`web/src/rover/`) | Done as a standalone module + sandbox (`cd web/src/rover/sandbox && npm install && npm run dev`, port 5174; `npm run check` → 7 physics checks). Waiting on Rithvik's `web/` app to plug in (see `web/src/rover/README.md`) |
+| 8 | Browser rover driving (`web/src/rover/`) | Done as a standalone module + sandbox (`cd web/src/rover/sandbox && npm install && npm run dev`, port 5174; `npm run check` → 10 physics checks). Waiting on Rithvik's `web/` app to plug in (see `web/src/rover/README.md`) |
 | 9 | Science traverse + validation | Done |
 | 10 | Hardening | Partly: readable 422 errors, input validation |
-| 11 | More realistic physics | Started: crewed buggy (`crew_buggy` profile, Apollo LRV specs) with boost, car-like steering (3.1 m radius), time-lapse `[`/`]`, per-profile speed curve. Scout rover limits unchanged |
+| 11 | More realistic physics | Browser rover v2 force model (`web/src/rover/physics.ts`): Mars gravity, power- and grip-limited motor, rolling resistance, brakes; slips/slides instead of hard blocks; slope limits are advisory. Crewed buggy (`crew_buggy`, Apollo LRV-based) with boost, car steering, time-lapse. 12 physics checks |
 | — | Detailed buggy + astronaut model (`web/src/rover/buggyModel.ts`, `buggy/`) | Done: ~120k tris, ~130 draw calls; wired into sandbox with boost dust + suspension |
-| — | Playground test site (`api/fixtures/playground/`, 2 km, delta with gap, breached crater, dunes) | In progress (agent) |
+| — | Playground test site (`api/fixtures/playground/`, `api/scripts/make_playground.py`) | Done: 2 km synthetic site with gullied delta front (detour story works: direct line 36°, route 14° via gully), breached crater, dunes, butte, channels; 22 POIs, 2.5 km traverse. Sandbox serves it by default; run API with `ARES_DATA_DIR=api/fixtures/playground` |
 
 Tests: `api/.venv/bin/python -m pytest api -q` → 17 passed.
 
@@ -45,8 +45,8 @@ Tests: `api/.venv/bin/python -m pytest api -q` → 17 passed.
 - Planning, search and science-traverse run synchronously on the event loop; fine on the 1 km fixture,
   re-check sim smoothness on the 8 km real grid.
 - Markers and routes are in-memory; restart clears them.
-- Browser and API rover share rules: speed curve and limits from `/site`, and a 0.5× caution-slope
-  slowdown (assumed) in every mode. Change both `api/ares_api/rover.py` and `web/src/rover/physics.ts` together.
+- Browser manual driving uses the force model; the API auto/FSD sim still uses the planner speed curve and
+  stops at the no-go slope (that is the safety policy). Vehicle physics params live in `api/profiles.yaml`.
 
 ## Sameer — MCP, agent, chat
 

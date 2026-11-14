@@ -5,7 +5,7 @@ exploration tool** on real NASA data for planning Mars EVAs at Jezero crater —
 Every number shown to a user cites its source (mission/instrument) or is labelled "assumed";
 synthetic data is labelled "not Mars data".
 
-Read first: `PRD.md` (product + six contracts), `docs/scope-c-d.md` (Yousef/Sameer split and
+Read first: `SCIENCE_VALIDITY.md` (what our numbers rest on), `PRD.md` (product + six contracts), `docs/scope-c-d.md` (Yousef/Sameer split and
 the C/D interface — overrides the PRD where they differ), `PROGRESS.md` (current state).
 
 ## Ownership
@@ -25,6 +25,8 @@ Stay inside the folders of the person you're working for.
 python3.11 -m venv api/.venv && api/.venv/bin/pip install -r api/requirements.txt
 api/.venv/bin/python api/scripts/make_dev_layers.py      # synthetic mineral layers (until Stream A ships CRISM)
 api/.venv/bin/uvicorn ares_api.main:app --app-dir api --port 8000
+ARES_DATA_DIR=api/fixtures/playground api/.venv/bin/uvicorn ares_api.main:app --app-dir api --port 8000  # richer 2 km test site
+api/.venv/bin/python api/scripts/make_playground.py   # regenerate the playground (~2 min)
 api/.venv/bin/python -m pytest api -q                     # tests build their own synthetic terrain
 api/.venv/bin/python api/scripts/dump_contract.py         # regenerate OpenAPI + canned responses
 ```
@@ -39,9 +41,14 @@ api/.venv/bin/python api/scripts/dump_contract.py         # regenerate OpenAPI +
 - Positions everywhere accept `{x, y}`, `[x, y]`, `"x,y"`, `"poi:<id>"`, `"marker:<id>"`, `"rover"`, or a bare id.
 - Errors are HTTP 422 `{"error": "<sentence an agent can act on>"}`.
 
+## Rover sandbox (`web/src/rover/sandbox/`)
+
+`npm install && npm run dev` (port 5174) serves `api/fixtures/playground` (or `ARES_SITE_DIR`). Drives the crewed buggy (`crew_buggy` profile); `npm run check` runs the physics checks.
+
 ## Conventions
 
 - Site frame metres: x east, y north, origin at manifest lat0/lon0; headings clockwise from north
   (PRD Contract 1). three.js: X = x, Y = z, Z = -y.
 - Contracts in `PRD.md` and `docs/scope-c-d.md` are frozen; additions are fine, renames are not.
 - Keep `PROGRESS.md` updated after each meaningful change.
+- Log every physics/science number or model change in `SCIENCE_VALIDITY.md` (value, status, basis). Never mark something "cited" without a real source.
