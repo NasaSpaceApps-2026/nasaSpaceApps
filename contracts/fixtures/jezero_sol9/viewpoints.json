@@ -1,0 +1,77 @@
+{
+  "frame": "site_enu",
+  "poses_trusted": true,
+  "requires_human": true,
+  "registration_rms_m": null,
+  "bubble_id": "jezero_sol9_landing",
+  "pose_note": "Waypoint yaw plus rover-relative mast azimuth. Not a PDS site-frame bundle adjustment.",
+  "landing_lat": 18.44462715,
+  "landing_lon": 77.45088572,
+  "cameras": [
+    {
+      "name": "nadir",
+      "role": "nadir",
+      "xyz": [
+        1849.0763871785864,
+        -437.0234536348851,
+        -2529.913818359375
+      ],
+      "heading_deg": 0.0,
+      "pitch_deg": -90.0,
+      "fov_deg": 50.0,
+      "width": 96,
+      "height": 96,
+      "image": null
+    },
+    {
+      "name": "fit_0",
+      "role": "fit",
+      "xyz": [
+        1849.0763871785864,
+        -437.0234536348851,
+        -2567.713818359375
+      ],
+      "heading_deg": 107.64256900000004,
+      "pitch_deg": -45.1065,
+      "fov_deg": 96.0,
+      "width": 160,
+      "height": 160,
+      "image": "refs/fit_0.png"
+    },
+    {
+      "name": "holdout_0",
+      "role": "holdout",
+      "xyz": [
+        1848.8014981716067,
+        -437.3410005351087,
+        -2567.713818359375
+      ],
+      "heading_deg": 108.115569,
+      "pitch_deg": -44.9052,
+      "fov_deg": 96.0,
+      "width": 160,
+      "height": 160,
+      "image": "refs/holdout_0.png"
+    }
+  ],
+  "credits": [
+    {
+      "name": "fit_0",
+      "imageid": "NLE_0009_0667755063_497ECM_N0030000NCAM00102_01_0LLJ",
+      "sol": 9,
+      "mast_az_deg": 336.761,
+      "mast_el_deg": -45.1065,
+      "credit": "NASA/JPL-Caltech",
+      "page": "https://mars.nasa.gov/mars2020/multimedia/raw-images/NLE_0009_0667755063_497ECM_N0030000NCAM00102_01_0LLJ"
+    },
+    {
+      "name": "holdout_0",
+      "imageid": "NRE_0009_0667755063_497ECM_N0030000NCAM00102_01_0LLJ",
+      "sol": 9,
+      "mast_az_deg": 337.234,
+      "mast_el_deg": -44.9052,
+      "credit": "NASA/JPL-Caltech",
+      "page": "https://mars.nasa.gov/mars2020/multimedia/raw-images/NRE_0009_0667755063_497ECM_N0030000NCAM00102_01_0LLJ"
+    }
+  ]
+}

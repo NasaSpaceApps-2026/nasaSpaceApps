@@ -1,0 +1,45 @@
+# Searchable science targets for POST /search/sites. A target is listed by
+# GET /search/targets only when its layer raster is loaded.
+#   kind: abundance -> layer is 0..1, cells >= threshold count
+#   kind: class     -> layer holds class ids, cells == value count
+targets:
+  carbonate:
+    layer: min_carbonate
+    kind: abundance
+    threshold: 0.5
+    mission: MRO
+    instrument: CRISM
+    aliases: [carbonates, mg-carbonate, magnesium carbonate]
+    description: Carbonate minerals; record of past water chemistry, high biosignature-preservation potential.
+  olivine:
+    layer: min_olivine
+    kind: abundance
+    threshold: 0.5
+    mission: MRO
+    instrument: CRISM
+    aliases: [olivines, mafic]
+    description: Olivine-rich igneous rock; often altered to carbonate at Jezero.
+  clay:
+    layer: min_clay
+    kind: abundance
+    threshold: 0.5
+    mission: MRO
+    instrument: CRISM
+    aliases: [clays, phyllosilicate, phyllosilicates, smectite, fe/mg smectite]
+    description: Clay minerals formed in water; good targets for preserved organics.
+  delta:
+    layer: geology
+    kind: class
+    value: 3
+    mission: MRO
+    instrument: HiRISE/CTX geologic map
+    aliases: [delta deposits, delta front, upland]
+    description: Delta sedimentary unit from the geologic map.
+  crater_floor:
+    layer: geology
+    kind: class
+    value: 2
+    mission: MRO
+    instrument: HiRISE/CTX geologic map
+    aliases: [floor, crater floor unit]
+    description: Crater floor unit from the geologic map.

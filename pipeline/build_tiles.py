@@ -20,7 +20,8 @@ from rasterio.crs import CRS as RCRS
 from rasterio.warp import Resampling, reproject
 
 sys.path.insert(0, str(Path(__file__).parent))
-from site_cfg import CRS, LAT0, LON0, R, SIZE  # noqa: E402
+from site_cfg import (CORE_LEVEL, CORE_N, CORE_SIZE, CORE_TX0, CORE_TY0, CORE_X0, CORE_Y1,  # noqa: E402
+                      CRS, CTX_SIZE, LAT0, LON0, R, SIZE)
 
 ROOT = Path(__file__).resolve().parent.parent
 RAW, OUT = ROOT / "data" / "raw", ROOT / "data" / "build"
@@ -105,6 +106,54 @@ def image_tiles(name, rgba, max_px_level=MAX_LEVEL):
                 tile.save(path, "WEBP", quality=80)
 
 
+def build_core(dem1, filled1):
+    """25 cm core: warp the full-resolution ortho window, colourise, cut level-6 tiles, and export a 1 m DEM
+    for the core so the browser terrain has 1 m posts there."""
+    src = RAW / "ortho_core_window.tif"
+    if not src.exists():
+        return None
+    res = 0.25
+    n = int(round(CORE_SIZE / res))
+    dst = np.full((n, n), np.nan, dtype=np.float32)
+    with rasterio.open(src) as s:
+        data = s.read(1).astype(np.float32)
+        if s.nodata is not None:
+            data[data == s.nodata] = np.nan
+        reproject(data, dst, src_transform=s.transform, src_crs=s.crs,
+                  dst_transform=Affine(res, 0, CORE_X0, 0, -res, CORE_Y1), dst_crs=RCRS.from_string(CRS),
+                  resampling=Resampling.bilinear, src_nodata=np.nan, dst_nodata=np.nan)
+    bad = float(np.isnan(dst).mean())
+    gray = np.clip(np.nan_to_num(dst, nan=0.0), 0, 255).astype(np.uint8)
+    del dst, data
+    if (RAW / "viking_color.png").exists():
+        from colorize import colorize_window
+        rgb = colorize_window(gray, RAW, LAT0, LON0, SIZE, CORE_X0, CORE_Y1, res, ref_size_m=CTX_SIZE)
+    else:
+        rgb = np.dstack([gray] * 3)
+    cnt = 0
+    for j in range(CORE_N):
+        for i in range(CORE_N):
+            tile = rgb[j * IMG_PX:(j + 1) * IMG_PX, i * IMG_PX:(i + 1) * IMG_PX]
+            path = OUT / "tiles" / "ortho" / str(CORE_LEVEL) / str(CORE_TX0 + i) / f"{CORE_TY0 + j}.webp"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            Image.fromarray(tile, "RGB").save(path, "WEBP", quality=82)
+            cnt += 1
+    # 1 m DEM for the core block (Uint16, 0.01 m steps from `base`)
+    c0, r0 = int(CORE_X0 + SIZE / 2), int(SIZE / 2 - CORE_Y1)
+    sub = dem1[r0:r0 + int(CORE_SIZE), c0:c0 + int(CORE_SIZE)]
+    base = float(np.floor(sub.min()))
+    v = np.rint((sub - base) / 0.01)
+    assert v.max() < 65536
+    (OUT / "web").mkdir(exist_ok=True)
+    v.astype("<u2").tofile(OUT / "web" / "dem1m_core.u16")
+    (OUT / "web" / "dem1m_core.json").write_text(json.dumps(
+        {"x0": CORE_X0, "y_top": CORE_Y1, "width": sub.shape[1], "height": sub.shape[0], "res_m": 1.0,
+         "base": base, "step": 0.01}))
+    print(f"core: {cnt} level-{CORE_LEVEL} tiles at 0.25 m, ortho nodata share {bad:.4f}, 1 m DEM {sub.shape}")
+    return {"level": CORE_LEVEL, "tx0": CORE_TX0, "ty0": CORE_TY0, "n": CORE_N, "x0": CORE_X0,
+            "y_top": CORE_Y1, "size_m": CORE_SIZE, "res_m": res}
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     dem1, _ = warp(RAW / "dtm_window.tif", 1.0, Resampling.cubic)
@@ -144,10 +193,20 @@ def main():
         o, _ = warp(ortho_src, 1.0, Resampling.lanczos)
         o = np.nan_to_num(o, nan=0.0)
         o8 = np.clip(o, 0, 255).astype(np.uint8)
-        image_tiles("ortho", np.dstack([o8, o8, o8, np.full_like(o8, 255)]))
-        layers.append({"id": "ortho", "title": "HiRISE orthomosaic (greyscale, 1 m here)", "mission": "MRO",
-                       "instrument": "HiRISE", "max_level": MAX_LEVEL, "kind": "base",
-                       "credit": "NASA/JPL/UArizona/USGS", "url": "https://doi.org/10.5066/P9QJDP48"})
+        del o
+        if (RAW / "viking_color.png").exists():
+            from colorize import colorize_banded
+            rgb = colorize_banded(o8, RAW, LAT0, LON0, SIZE, ref_size_m=CTX_SIZE)
+            image_tiles("ortho", np.dstack([rgb, np.full(o8.shape, 255, np.uint8)]))
+            title = "HiRISE orthomosaic, colourised (false colour)"
+            credit = ("NASA/JPL/UArizona/USGS. HiRISE is greyscale: colour from Viking MDIM 2.1 (NASA/JPL/USGS) "
+                      "relative variation, hue anchored to an assumed Mars surface tone. Not true colour.")
+        else:
+            image_tiles("ortho", np.dstack([o8, o8, o8, np.full_like(o8, 255)]))
+            title, credit = "HiRISE orthomosaic (greyscale, 1 m here)", "NASA/JPL/UArizona/USGS"
+        layers.append({"id": "ortho", "title": title, "mission": "MRO", "instrument": "HiRISE",
+                       "max_level": MAX_LEVEL, "kind": "base", "credit": credit,
+                       "url": "https://doi.org/10.5066/P9QJDP48"})
     else:  # fall back to a hillshade so the viewer has a base layer
         h = (hillshade(dem1, 1.0) * 255).astype(np.uint8)
         image_tiles("ortho", np.dstack([h, h, h, np.full_like(h, 255)]))
@@ -163,6 +222,11 @@ def main():
          "url": "https://doi.org/10.5066/P9REJ9JN",
          "legend": [[0, "safe"], [HAZARD[0], "caution"], [HAZARD[1], "no-go"], [None, "unknown"]]},
     ]
+    core = build_core(dem1, filled1)
+    if core:
+        for L in layers:
+            if L["id"] == "ortho":
+                L["core"], L["max_level"] = core, CORE_LEVEL
     manifest = {"site": "jezero", "lat0": LAT0, "lon0": LON0, "radius_m": int(R), "size_m": int(SIZE),
                 "elev_min": math.floor(float(dem1.min())), "elev_max": math.ceil(float(dem1.max())),
                 "height": {"max_level": MAX_LEVEL, "tile_px": HEIGHT_PX}, "layers": layers,

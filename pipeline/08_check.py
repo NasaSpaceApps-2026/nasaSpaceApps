@@ -40,7 +40,9 @@ for lay in m["layers"]:
         check(lay.get(k), f"layer {lay['id']} missing {k}")
     for z in range(lay["max_level"] + 1):
         n = len(list((B / "tiles" / lay["id"] / str(z)).glob("*/*.webp")))
-        check(n == 4 ** z, f"{lay['id']} level {z}: {n} tiles, expected {4 ** z}")
+        core = lay.get("core")
+        want = core["n"] ** 2 if core and z == core["level"] else 4 ** z  # level above the base is the core block only
+        check(n == want, f"{lay['id']} level {z}: {n} tiles, expected {want}")
 
 for z in range(L + 1):
     n = len(list((B / "tiles" / "height" / str(z)).glob("*/*.png")))

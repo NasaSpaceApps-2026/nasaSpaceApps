@@ -1,0 +1,27 @@
+{
+ "request": {
+  "method": "GET",
+  "path": "/route/r1/assess",
+  "body": null
+ },
+ "status": 200,
+ "response": {
+  "route_id": "r1",
+  "go": true,
+  "verdict": "GO",
+  "reasons": [
+   "all checks pass"
+  ],
+  "distance_m": 490,
+  "duration_min": 10.1,
+  "max_slope_deg": 3.5,
+  "consumables": {
+   "used_frac": 0.021,
+   "reserve_frac": 0.2,
+   "margin_frac": 0.779,
+   "eva_limit_min": 480,
+   "basis": "time-based: (drive + stop time) / EVA limit (assumed)"
+  },
+  "warnings": []
+ }
+}

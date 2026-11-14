@@ -21,7 +21,7 @@ import rasterio
 from rasterio.windows import Window
 
 sys.path.insert(0, str(Path(__file__).parent))
-from site_cfg import LAT0, LON0, R, SIZE  # noqa: E402
+from site_cfg import CORE_SIZE, CORE_X0, CORE_Y1, LAT0, LON0, R, SIZE  # noqa: E402
 
 BASE = "https://planetarymaps.usgs.gov/mosaic/mars2020_trn/HiRISE/"
 PRODUCTS = {
@@ -30,6 +30,8 @@ PRODUCTS = {
     "ortho": ("Jezero HiRISE orthomosaic 25 cm (DOI 10.5066/P9QJDP48)",
               "JEZ_hirise_soc_006_orthoMosaic_25cm_Eqc_latTs0_lon0_first.tif"),
 }
+PRODUCTS["ortho_core"] = ("Jezero HiRISE orthomosaic 25 cm, core block at full resolution (DOI 10.5066/P9QJDP48)",
+                          PRODUCTS["ortho"][1])
 PAD = 200.0  # metres of margin so the warp has data past the square's edge
 ROOT = Path(__file__).resolve().parent.parent
 RAW = ROOT / "data" / "raw"
@@ -77,6 +79,10 @@ def fetch(key):
     url = BASE + fname
     cx, cy = R * math.radians(LON0), R * math.radians(LAT0)  # source is eqc, lat_ts 0
     half = SIZE / 2 + PAD
+    if key == "ortho_core":  # centre the window on the core block (site metres -> source metres)
+        ox, oy = CORE_X0 + CORE_SIZE / 2, CORE_Y1 - CORE_SIZE / 2
+        cx, cy = cx + ox / math.cos(math.radians(LAT0)), cy + oy
+        half = CORE_SIZE / 2 + 16.0
     out = RAW / f"{key}_window.tif"
     RAW.mkdir(parents=True, exist_ok=True)
     with rasterio.open("/vsicurl/" + url) as src:
@@ -90,9 +96,9 @@ def fetch(key):
         assert win.col_off >= 0 and win.row_off >= 0 and win.col_off + nx <= src.width \
             and win.row_off + n <= src.height, "site window not inside product footprint"
         # Ortho is 25 cm; read it decimated to 1 m (every 4th row) to keep the transfer ~300 MB.
-        f = int(round(1.0 / res)) if key == "ortho" else 1
+        f = int(round(1.0 / res)) if key == "ortho" else 1  # ortho_core stays at full 25 cm
         m, mx = n // f, nx // f
-        if key == "ortho":
+        if key in ("ortho", "ortho_core"):
             data = read_rows_by_range(src, url, win, f, m, mx)
         else:
             data = src.read(1, window=win, out_shape=(m, mx))

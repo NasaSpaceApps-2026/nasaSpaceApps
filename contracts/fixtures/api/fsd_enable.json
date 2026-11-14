@@ -1,0 +1,42 @@
+{
+ "request": {
+  "method": "POST",
+  "path": "/rover/command",
+  "body": {
+   "cmd": "fsd_enable",
+   "policy": {
+    "max_slope_deg": 18
+   }
+  }
+ },
+ "status": 200,
+ "response": {
+  "ok": true,
+  "cmd": "fsd_enable",
+  "fsd": {
+   "armed": true,
+   "mode": "idle",
+   "policy": {
+    "max_slope_deg": 18,
+    "caution_slope_deg": 15,
+    "caution_speed_factor": 0.5,
+    "replan": true,
+    "max_replans": 1
+   },
+   "route_id": null,
+   "active_command": null,
+   "remaining_route_m": 0,
+   "last_hazard": {
+    "x": 165,
+    "y": -60,
+    "slope_deg": 21.3,
+    "reason": "blocked_slope"
+   },
+   "last_event": "Stopped before 21 deg slope at (165, -60); limit is 20 deg.",
+   "status": "teleported",
+   "profile": "rover_scout",
+   "limits_source": "flat speed close to Perseverance top speed (~4.2 cm/s); slopes assumed"
+  },
+  "hint": "FSD armed. Call follow_route with a route_id to drive under the policy."
+ }
+}

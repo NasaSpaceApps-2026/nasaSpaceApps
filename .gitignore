@@ -1,6 +1,17 @@
 .venv/
 __pycache__/
+.pytest_cache/
+*.pyc
 node_modules/
 .DS_Store
 data/raw/
 data/build/
+data/vision/
+.env
+.env.*
+!.env.example
+web/.env.local
+.gstack/
+
+# Regenerate with: api/.venv/bin/python api/scripts/make_playground.py
+api/fixtures/playground/

@@ -48,3 +48,5 @@ To use the MCP server from Claude Code or Claude Desktop, see `mcp/README.md`.
 - `mcp/README.md`, `agent/README.md`, `devapi/README.md`, `sitebuild/README.md`, `web/src/panels/chat/README.md`
 - `data/SOURCES.md`: data sources and citations
 - `docs/project-page.md`: draft submission text; `docs/demo-script.md`: demo scripts
+
+Bubble imagery is NASA Mars 2020 data via USGS and the PDS. Links, file sizes, and the coordinate mismatch between the HiRISE GeoTIFFs and the rover waypoints are in [docs/bubble-imagery.md](docs/bubble-imagery.md). The rasters and rover frames are not in git.

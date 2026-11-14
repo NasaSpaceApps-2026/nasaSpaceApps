@@ -1,0 +1,16 @@
+{
+ "request": {
+  "method": "POST",
+  "path": "/agent/event",
+  "body": {
+   "tool": "plan_route",
+   "args_summary": "base -> sample1",
+   "result_summary": "490 m, 10 min",
+   "status": "ok"
+  }
+ },
+ "status": 200,
+ "response": {
+  "ok": true
+ }
+}

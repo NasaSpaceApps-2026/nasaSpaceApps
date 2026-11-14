@@ -1,0 +1,43 @@
+{
+ "request": {
+  "method": "POST",
+  "path": "/rover/command",
+  "body": {
+   "cmd": "drive",
+   "distance_m": 300,
+   "heading_deg": 90,
+   "speed_factor": 3000
+  }
+ },
+ "status": 200,
+ "response": {
+  "ok": false,
+  "cmd": "drive",
+  "stop_reason": "blocked_slope",
+  "message": "Stopped before 21 deg slope at (165, -60); limit is 20 deg.",
+  "distance_m": 184.0,
+  "replans": 0,
+  "events": [],
+  "route_id": null,
+  "state": {
+   "x": 163.8,
+   "y": -60.1,
+   "z": -2392.33,
+   "heading_deg": 89.99999999999999,
+   "pitch_deg": 19.7,
+   "roll_deg": -1.5,
+   "speed_mps": 0.0,
+   "mode": "idle",
+   "odometer_m": 674.0,
+   "route_id": null,
+   "status": "blocked_slope",
+   "last_event": "Stopped before 21 deg slope at (165, -60); limit is 20 deg.",
+   "fsd_armed": false,
+   "lat": 18.458986,
+   "lon": 77.412913,
+   "slope_deg": 19.7,
+   "mission_time_min": 323.7
+  },
+  "fsd": null
+ }
+}

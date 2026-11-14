@@ -1,0 +1,23 @@
+{
+ "request": {
+  "method": "POST",
+  "path": "/markers",
+  "body": {
+   "x": -300,
+   "y": -150,
+   "label": "My marker"
+  }
+ },
+ "status": 200,
+ "response": {
+  "id": "m1",
+  "x": -300.0,
+  "y": -150.0,
+  "z": -2404.7,
+  "lat": 18.457469,
+  "lon": 77.404664,
+  "label": "My marker",
+  "created_by": "user",
+  "created_at": 1794692883.959738
+ }
+}

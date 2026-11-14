@@ -1,0 +1,67 @@
+# Traveller profiles. Shown in the app as assumptions; replace each value with a
+# cited one when found and set its source. Both the API rover sim and the
+# browser rover read these through GET /site so manual and auto driving match.
+speed_curve:
+  # speed = flat_speed * exp(-k * |tan(slope)|). Earth hiking-function shape;
+  # placeholder, not measured on Mars.
+  k: 3.5
+  source: "assumed (Tobler-style hiking function, Earth-derived)"
+
+cost_weights:
+  rough: 0.5      # extra cost per metre of 5x5 elevation std dev
+  unknown: 4.0    # extra cost on interpolated (filled) DEM cells
+  nogo_buffer_m: 4  # cells within this distance of a no-go cell are also no-go
+
+stop_minutes: 15   # time spent at each science stop
+
+profiles:
+  astronaut_walk:
+    title: Astronaut on foot
+    flat_speed_mps: 0.9
+    caution_slope_deg: 15
+    nogo_slope_deg: 25
+    eva_limit_min: 480
+    reserve_frac: 0.2
+    source: "assumed"
+  rover_scout:
+    title: Scout rover (Perseverance-like)
+    flat_speed_mps: 0.04
+    display_speed_factor: 200   # sim runs this many times faster than real
+    mass_kg: 1025               # Perseverance
+    power_w: 40                 # wheel drive power (assumed)
+    traction_mu: 0.6
+    rolling_coeff: 0.08
+    caution_slope_deg: 15
+    nogo_slope_deg: 20
+    eva_limit_min: 1440
+    reserve_frac: 0.1
+    source: "flat speed close to Perseverance top speed (~4.2 cm/s); slopes assumed"
+  crew_buggy:
+    title: Crewed buggy (Apollo LRV-derived, unpressurised)
+    flat_speed_mps: 3.6          # LRV ~13 km/h nominal top speed
+    boost_speed_mps: 5.0         # LRV record ~18 km/h (Apollo 17)
+    speed_curve_k: 2.0           # more torque than the scout: loses less speed on slopes (assumed)
+    # Browser force model (web/src/rover/physics.ts):
+    mass_kg: 700                 # LRV 210 kg + 2 suited crew + gear
+    power_w: 1500                # LRV had ~750 W (4 x 0.25 hp); doubled for Mars gravity (assumed)
+    boost_power_factor: 1.6
+    traction_mu: 0.6             # wheel-regolith grip (assumed); climb limit ~atan(mu - Crr) ~ 27 deg
+    rolling_coeff: 0.08          # loose regolith (assumed)
+    display_speed_factor: 1      # real time; the viewer can time-lapse
+    min_turn_radius_m: 3.1       # LRV ~3 m turning radius (4-wheel steering)
+    caution_slope_deg: 15
+    nogo_slope_deg: 25           # LRV rated for 25 deg slopes
+    eva_limit_min: 480
+    reserve_frac: 0.2
+    source: "Apollo LRV specs (NASA): 13 km/h top, 18 km/h record, 25 deg slope rating, ~3 m turn radius; use on Mars assumed"
+  crew_rover:
+    title: Pressurised crew rover (concept)
+    flat_speed_mps: 2.5
+    caution_slope_deg: 10
+    nogo_slope_deg: 15
+    eva_limit_min: 480
+    reserve_frac: 0.2
+    source: "assumed"
+
+default_profile: astronaut_walk
+rover_profile: rover_scout

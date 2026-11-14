@@ -1,0 +1,87 @@
+{
+ "request": {
+  "method": "GET",
+  "path": "/search/targets",
+  "body": null
+ },
+ "status": 200,
+ "response": {
+  "targets": [
+   {
+    "target": "carbonate",
+    "available": true,
+    "layer": "min_carbonate",
+    "kind": "abundance",
+    "mission": "MRO",
+    "instrument": "CRISM",
+    "aliases": [
+     "carbonates",
+     "mg-carbonate",
+     "magnesium carbonate"
+    ],
+    "description": "Carbonate minerals; record of past water chemistry, high biosignature-preservation potential.",
+    "data": "synthetic"
+   },
+   {
+    "target": "olivine",
+    "available": true,
+    "layer": "min_olivine",
+    "kind": "abundance",
+    "mission": "MRO",
+    "instrument": "CRISM",
+    "aliases": [
+     "olivines",
+     "mafic"
+    ],
+    "description": "Olivine-rich igneous rock; often altered to carbonate at Jezero.",
+    "data": "synthetic"
+   },
+   {
+    "target": "clay",
+    "available": true,
+    "layer": "min_clay",
+    "kind": "abundance",
+    "mission": "MRO",
+    "instrument": "CRISM",
+    "aliases": [
+     "clays",
+     "phyllosilicate",
+     "phyllosilicates",
+     "smectite",
+     "fe/mg smectite"
+    ],
+    "description": "Clay minerals formed in water; good targets for preserved organics.",
+    "data": "synthetic"
+   },
+   {
+    "target": "delta",
+    "available": true,
+    "layer": "geology",
+    "kind": "class",
+    "mission": "MRO",
+    "instrument": "HiRISE/CTX geologic map",
+    "aliases": [
+     "delta deposits",
+     "delta front",
+     "upland"
+    ],
+    "description": "Delta sedimentary unit from the geologic map.",
+    "data": "data"
+   },
+   {
+    "target": "crater_floor",
+    "available": true,
+    "layer": "geology",
+    "kind": "class",
+    "mission": "MRO",
+    "instrument": "HiRISE/CTX geologic map",
+    "aliases": [
+     "floor",
+     "crater floor unit"
+    ],
+    "description": "Crater floor unit from the geologic map.",
+    "data": "data"
+   }
+  ]
+ }
+}

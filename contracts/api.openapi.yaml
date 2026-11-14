@@ -1,0 +1,815 @@
+openapi: 3.1.0
+info:
+  title: Ares Atlas API
+  description: Terrain, routes, science search, markers and rover sim for Jezero.
+    All positions are site-frame metres (x east, y north) and also accept 'poi:<id>',
+    'marker:<id>' or 'rover'.
+  version: 0.1.0
+paths:
+  /health:
+    get:
+      summary: Health
+      operationId: health_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /site:
+    get:
+      summary: Site
+      operationId: site_site_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /terrain/sample:
+    get:
+      summary: Terrain Sample
+      operationId: terrain_sample_terrain_sample_get
+      parameters:
+      - name: x
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: X
+      - name: y
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Y
+      - name: at
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: At
+      - name: profile
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Profile
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /terrain/profile:
+    post:
+      summary: Terrain Profile
+      operationId: terrain_profile_terrain_profile_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileReq'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /pois:
+    get:
+      summary: Pois
+      operationId: pois_pois_get
+      parameters:
+      - name: type
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Type
+      - name: q
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Q
+      - name: near
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Near
+      - name: radius
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Radius
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 20
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /route:
+    post:
+      summary: Route
+      operationId: route_route_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RouteReq'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /route/{route_id}:
+    get:
+      summary: Get Route
+      operationId: get_route_route__route_id__get
+      parameters:
+      - name: route_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Route Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /route/{route_id}/assess:
+    get:
+      summary: Assess Route
+      operationId: assess_route_route__route_id__assess_get
+      parameters:
+      - name: route_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Route Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /route/science:
+    post:
+      summary: Route Science
+      operationId: route_science_route_science_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScienceReq'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /search/targets:
+    get:
+      summary: Search Targets
+      operationId: search_targets_search_targets_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /search/sites:
+    post:
+      summary: Search Sites
+      operationId: search_sites_search_sites_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SiteSearchReq'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /markers:
+    get:
+      summary: List Markers
+      operationId: list_markers_markers_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+    post:
+      summary: Add Marker
+      operationId: add_marker_markers_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarkerReq'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /markers/{marker_id}:
+    delete:
+      summary: Delete Marker
+      operationId: delete_marker_markers__marker_id__delete
+      parameters:
+      - name: marker_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Marker Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /rover/state:
+    get:
+      summary: Rover State
+      operationId: rover_state_rover_state_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /fsd/status:
+    get:
+      summary: Fsd Status
+      operationId: fsd_status_fsd_status_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /rover/command:
+    post:
+      summary: Rover Command
+      operationId: rover_command_rover_command_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommandReq'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /view:
+    get:
+      summary: Get View
+      operationId: get_view_view_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+    post:
+      summary: Set View
+      operationId: set_view_view_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ViewReq'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /view/snapshot:
+    post:
+      summary: Snapshot
+      operationId: snapshot_view_snapshot_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SnapshotReq'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /bubble/status:
+    get:
+      summary: Bubble Status
+      operationId: bubble_status_bubble_status_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /validation:
+    get:
+      summary: Validation
+      operationId: validation_validation_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /agent/event:
+    post:
+      summary: Agent Event
+      operationId: agent_event_agent_event_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentEvent'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    AgentEvent:
+      properties:
+        tool:
+          type: string
+          title: Tool
+        args_summary:
+          type: string
+          title: Args Summary
+          default: ''
+        result_summary:
+          type: string
+          title: Result Summary
+          default: ''
+        status:
+          type: string
+          enum:
+          - started
+          - ok
+          - error
+          title: Status
+          default: ok
+      type: object
+      required:
+      - tool
+      title: AgentEvent
+    CommandReq:
+      properties:
+        cmd:
+          type: string
+          enum:
+          - drive
+          - turn
+          - goto
+          - follow_route
+          - stop
+          - teleport
+          - fsd_enable
+          - fsd_disable
+          title: Cmd
+        distance_m:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Distance M
+        heading_deg:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Heading Deg
+        delta_deg:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Delta Deg
+        target:
+          title: Target
+        route_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Route Id
+        speed_factor:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Speed Factor
+        policy:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Policy
+        wait:
+          type: boolean
+          title: Wait
+          default: true
+        timeout_s:
+          type: number
+          maximum: 600.0
+          exclusiveMinimum: 0.0
+          title: Timeout S
+          default: 120.0
+      type: object
+      required:
+      - cmd
+      title: CommandReq
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    LayerView:
+      properties:
+        id:
+          type: string
+          title: Id
+        visible:
+          type: boolean
+          title: Visible
+          default: true
+        opacity:
+          anyOf:
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
+          title: Opacity
+      type: object
+      required:
+      - id
+      title: LayerView
+    MarkerReq:
+      properties:
+        x:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: X
+        y:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Y
+        at:
+          title: At
+        label:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Label
+        created_by:
+          type: string
+          enum:
+          - user
+          - agent
+          title: Created By
+          default: user
+      type: object
+      title: MarkerReq
+    ProfileReq:
+      properties:
+        points:
+          items: {}
+          type: array
+          minItems: 2
+          title: Points
+        spacing_m:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Spacing M
+          default: 10.0
+        profile:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Profile
+      type: object
+      required:
+      - points
+      title: ProfileReq
+    RouteReq:
+      properties:
+        start:
+          title: Start
+          default: rover
+        goal:
+          title: Goal
+        via:
+          items: {}
+          type: array
+          title: Via
+          default: []
+        profile:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Profile
+        max_slope_deg:
+          anyOf:
+          - type: number
+            exclusiveMaximum: 90.0
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Max Slope Deg
+        time_budget_min:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Time Budget Min
+      type: object
+      required:
+      - goal
+      title: RouteReq
+    ScienceReq:
+      properties:
+        start:
+          title: Start
+          default: rover
+        time_budget_min:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Time Budget Min
+        interests:
+          items:
+            type: string
+          type: array
+          title: Interests
+          default: []
+        profile:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Profile
+        max_stops:
+          type: integer
+          maximum: 12.0
+          minimum: 1.0
+          title: Max Stops
+          default: 6
+      type: object
+      required:
+      - time_budget_min
+      title: ScienceReq
+    SiteSearchReq:
+      properties:
+        target:
+          type: string
+          title: Target
+        near:
+          title: Near
+        radius_m:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Radius M
+        max_slope_deg:
+          anyOf:
+          - type: number
+            exclusiveMaximum: 90.0
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Max Slope Deg
+        top_k:
+          type: integer
+          maximum: 20.0
+          minimum: 1.0
+          title: Top K
+          default: 5
+        profile:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Profile
+      type: object
+      required:
+      - target
+      title: SiteSearchReq
+    SnapshotReq:
+      properties:
+        direction:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Direction
+      type: object
+      title: SnapshotReq
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    ViewReq:
+      properties:
+        mode:
+          anyOf:
+          - type: string
+            enum:
+            - globe
+            - orbit
+            - chase
+            - ground
+          - type: 'null'
+          title: Mode
+        target:
+          title: Target
+        heading_deg:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Heading Deg
+        pitch_deg:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Pitch Deg
+        distance_m:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Distance M
+        layers:
+          items:
+            $ref: '#/components/schemas/LayerView'
+          type: array
+          title: Layers
+          default: []
+        highlights:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Highlights
+      type: object
+      title: ViewReq

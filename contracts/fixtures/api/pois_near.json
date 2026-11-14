@@ -1,0 +1,47 @@
+{
+ "request": {
+  "method": "GET",
+  "path": "/pois?near=poi:base&radius=300",
+  "body": null
+ },
+ "status": 200,
+ "response": {
+  "count": 2,
+  "pois": [
+   {
+    "id": "base",
+    "name": "Fixture base",
+    "type": "base",
+    "x": -380,
+    "y": -380,
+    "z": -2403.86,
+    "lat": 18.453589,
+    "lon": 77.403241,
+    "mission": "fixture",
+    "source_url": "https://example.invalid/fixture",
+    "description": "Synthetic habitat site, SW corner.",
+    "science_value": 0.0,
+    "sol": null,
+    "image_urls": [],
+    "distance_m": 0
+   },
+   {
+    "id": "wp1",
+    "name": "Waypoint sol 100",
+    "type": "rover_waypoint",
+    "x": -300,
+    "y": -300,
+    "z": -2403.12,
+    "lat": 18.454939,
+    "lon": 77.404664,
+    "mission": "fixture",
+    "source_url": "https://example.invalid/fixture",
+    "description": "Rover waypoint.",
+    "science_value": 0.1,
+    "sol": 100,
+    "image_urls": [],
+    "distance_m": 113
+   }
+  ]
+ }
+}
