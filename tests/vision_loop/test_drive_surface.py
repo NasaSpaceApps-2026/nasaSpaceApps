@@ -4,7 +4,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from vision_loop.drive_surface import encode_heights, import_cesium_height, sample_vertex
+from vision_loop.drive_surface import (
+    encode_heights,
+    import_cesium_height,
+    sample_pixel_center,
+    sample_vertex,
+)
 
 
 def test_cesium_u16_becomes_an_editable_model(tmp_path: Path):
@@ -41,3 +46,13 @@ def test_vertex_sample_hits_the_northwest_sample_and_rejects_outside():
     values, base = encode_heights(elev)
     assert sample_vertex(-2, 2, values=values, base=base, res_m=1, x0=-2, y0=2) == pytest.approx(10, abs=0.005)
     assert np.isnan(sample_vertex(-3, 2, values=values, base=base, res_m=1, x0=-2, y0=2))
+
+
+def test_pixel_center_matches_the_cesium_site_formula():
+    # 4x4 samples, 2 m, covering a square of 8 m centered on the origin.
+    # Column 0 center is x = -3. Row 0 center is y = 3.
+    values = np.zeros((4, 4), np.uint16)
+    values[0, 0] = 1000  # 10.00 m above base 0
+    got = sample_pixel_center(-3, 3, values=values, base=0.0, res_m=2.0, size_m=8.0, center_x=0.0, center_y=0.0)
+    assert got == pytest.approx(10.0, abs=0.005)
+    assert np.isnan(sample_pixel_center(20, 0, values=values, base=0.0, res_m=2.0, size_m=8.0, center_x=0.0, center_y=0.0))

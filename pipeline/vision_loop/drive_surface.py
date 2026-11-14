@@ -54,6 +54,26 @@ def sample_vertex(x: float, y: float, *, values, base: float, res_m: float, x0: 
     return base + STEP * value
 
 
+def sample_pixel_center(
+    x: float,
+    y: float,
+    *,
+    values,
+    base: float,
+    res_m: float,
+    size_m: float,
+    center_x: float,
+    center_y: float,
+) -> float:
+    half = size_m / 2.0
+    cf = ((x - center_x) + half) / res_m - 0.5
+    rf = (half - (y - center_y)) / res_m - 0.5
+    value = _bilinear(values, cf, rf)
+    if value != value:
+        return value
+    return base + STEP * value
+
+
 def import_cesium_height(
     u16_path,
     json_path,
