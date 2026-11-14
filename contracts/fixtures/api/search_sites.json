@@ -1,0 +1,116 @@
+{
+ "request": {
+  "method": "POST",
+  "path": "/search/sites",
+  "body": {
+   "target": "carbonate",
+   "near": "poi:base",
+   "top_k": 3
+  }
+ },
+ "status": 200,
+ "response": {
+  "target": "carbonate",
+  "description": "Carbonate minerals; record of past water chemistry, high biosignature-preservation potential.",
+  "count": 3,
+  "near": "Fixture base",
+  "max_slope_deg": 25,
+  "profile": "astronaut_walk",
+  "sites": [
+   {
+    "x": -299,
+    "y": 251,
+    "z": -2408.8,
+    "score": 0.53,
+    "area_m2": 1136,
+    "mean_slope_deg": 2.2,
+    "slope_at_site_deg": 1.5,
+    "lat": 18.464235,
+    "lon": 77.404682,
+    "distance_m": 636,
+    "reachable": true,
+    "travel_min": 14.5,
+    "evidence": [
+     {
+      "layer": "min_carbonate",
+      "mission": "MRO",
+      "instrument": "CRISM",
+      "data": "synthetic",
+      "mean_value": 0.618,
+      "peak_value": 0.748,
+      "threshold": 0.5
+     },
+     {
+      "layer": "slope",
+      "source": "synthetic fixture",
+      "mean_slope_deg": 2.2
+     }
+    ],
+    "id": "site4"
+   },
+   {
+    "x": -61,
+    "y": -351,
+    "z": -2397.8,
+    "score": 0.362,
+    "area_m2": 208,
+    "mean_slope_deg": 2.2,
+    "slope_at_site_deg": 2.2,
+    "lat": 18.454078,
+    "lon": 77.408915,
+    "distance_m": 320,
+    "reachable": true,
+    "travel_min": 7.3,
+    "evidence": [
+     {
+      "layer": "min_carbonate",
+      "mission": "MRO",
+      "instrument": "CRISM",
+      "data": "synthetic",
+      "mean_value": 0.553,
+      "peak_value": 0.597,
+      "threshold": 0.5
+     },
+     {
+      "layer": "slope",
+      "source": "synthetic fixture",
+      "mean_slope_deg": 2.2
+     }
+    ],
+    "id": "site5"
+   },
+   {
+    "x": -151,
+    "y": 101,
+    "z": -2426.1,
+    "score": 0.726,
+    "area_m2": 4080,
+    "mean_slope_deg": 4.6,
+    "slope_at_site_deg": 1.4,
+    "lat": 18.461704,
+    "lon": 77.407314,
+    "distance_m": 533,
+    "reachable": false,
+    "travel_min": null,
+    "evidence": [
+     {
+      "layer": "min_carbonate",
+      "mission": "MRO",
+      "instrument": "CRISM",
+      "data": "synthetic",
+      "mean_value": 0.701,
+      "peak_value": 0.949,
+      "threshold": 0.5
+     },
+     {
+      "layer": "slope",
+      "source": "synthetic fixture",
+      "mean_slope_deg": 4.6
+     }
+    ],
+    "id": "site6"
+   }
+  ],
+  "caveat": "Layer 'min_carbonate' is a synthetic placeholder, not Mars data."
+ }
+}

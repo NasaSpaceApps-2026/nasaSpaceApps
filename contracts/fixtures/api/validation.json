@@ -1,0 +1,43 @@
+{
+ "request": {
+  "method": "GET",
+  "path": "/validation",
+  "body": null
+ },
+ "status": 200,
+ "response": {
+  "available": true,
+  "profile": "rover_scout",
+  "traverse_length_m": 370,
+  "hazard_agreement": 1.0,
+  "hazard_share": {
+   "safe": 1.0,
+   "caution": 0.0,
+   "no-go": 0.0
+  },
+  "hazard_agreement_note": "Share of the real traverse our map classes as safe or caution for rover_scout (no-go >= 20 deg). Higher supports the hazard map.",
+  "route_realism": [
+   {
+    "from": "Waypoint sol 100",
+    "to": "Waypoint sol 110",
+    "actual_m": 250,
+    "planned_m": 263,
+    "ratio": 1.05,
+    "planned_max_slope_deg": 3.2
+   },
+   {
+    "from": "Waypoint sol 110",
+    "to": "Waypoint sol 120",
+    "actual_m": 120,
+    "planned_m": 123,
+    "ratio": 1.02,
+    "planned_max_slope_deg": 2.2
+   }
+  ],
+  "route_realism_note": "Planned vs actually driven length between consecutive real waypoints. Ratios below 1 mean our planner found a shorter path the rover did not take, often because real drives detour for science and rocks below DEM resolution.",
+  "sources": {
+   "traverse": "fixture",
+   "slope": "synthetic fixture"
+  }
+ }
+}

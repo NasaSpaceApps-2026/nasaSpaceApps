@@ -1,0 +1,24 @@
+{
+  "name": "ares-rover-sandbox",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Standalone sandbox for web/src/rover (manual rover driving on fixture terrain).",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "check": "esbuild physics.check.ts --bundle --platform=node --format=esm --log-level=warning --outfile=node_modules/.cache/physics.check.mjs && node node_modules/.cache/physics.check.mjs"
+  },
+  "dependencies": {
+    "three": "0.169.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.9.0",
+    "@types/three": "0.169.0",
+    "esbuild": "0.21.5",
+    "typescript": "5.6.3",
+    "vite": "5.4.10"
+  }
+}

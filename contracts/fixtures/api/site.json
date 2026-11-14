@@ -1,0 +1,168 @@
+{
+ "request": {
+  "method": "GET",
+  "path": "/site",
+  "body": null
+ },
+ "status": 200,
+ "response": {
+  "manifest": {
+   "site": "fixture",
+   "fixture": true,
+   "lat0": 18.46,
+   "lon0": 77.41,
+   "radius_m": 3396190,
+   "size_m": 1024,
+   "elev_min": -2427,
+   "elev_max": -2359,
+   "height": {
+    "max_level": 2,
+    "tile_px": 257
+   },
+   "layers": [
+    {
+     "id": "ortho",
+     "title": "Synthetic hillshade",
+     "mission": "fixture",
+     "instrument": "synthetic",
+     "max_level": 2,
+     "kind": "base",
+     "credit": "Synthetic test data, not Mars",
+     "url": "https://example.invalid/fixture"
+    },
+    {
+     "id": "slope",
+     "title": "Slope",
+     "mission": "fixture",
+     "instrument": "synthetic DTM",
+     "max_level": 2,
+     "kind": "overlay",
+     "credit": "Synthetic test data, not Mars",
+     "url": "https://example.invalid/fixture",
+     "legend": [
+      [
+       0,
+       "flat"
+      ],
+      [
+       15,
+       "steep"
+      ],
+      [
+       30,
+       "very steep"
+      ]
+     ]
+    },
+    {
+     "id": "hazard",
+     "title": "Slope hazard",
+     "mission": "fixture",
+     "instrument": "synthetic DTM",
+     "max_level": 2,
+     "kind": "overlay",
+     "credit": "Synthetic test data, not Mars",
+     "url": "https://example.invalid/fixture",
+     "legend": [
+      [
+       0,
+       "safe"
+      ],
+      [
+       15,
+       "caution"
+      ],
+      [
+       25,
+       "no-go"
+      ],
+      [
+       null,
+       "unknown"
+      ]
+     ]
+    }
+   ],
+   "vectors": {
+    "pois": "/data/pois.geojson",
+    "traverse": "/data/traverse.geojson"
+   }
+  },
+  "bounds": {
+   "half_size_m": 512.0,
+   "res_m": 2.0,
+   "planning_res_m": 4.0
+  },
+  "profiles": {
+   "astronaut_walk": {
+    "title": "Astronaut on foot",
+    "flat_speed_mps": 0.9,
+    "caution_slope_deg": 15,
+    "nogo_slope_deg": 25,
+    "eva_limit_min": 480,
+    "reserve_frac": 0.2,
+    "source": "assumed"
+   },
+   "rover_scout": {
+    "title": "Scout rover (Perseverance-like)",
+    "flat_speed_mps": 0.04,
+    "display_speed_factor": 200,
+    "caution_slope_deg": 15,
+    "nogo_slope_deg": 20,
+    "eva_limit_min": 1440,
+    "reserve_frac": 0.1,
+    "source": "flat speed close to Perseverance top speed (~4.2 cm/s); slopes assumed"
+   },
+   "crew_rover": {
+    "title": "Pressurised crew rover (concept)",
+    "flat_speed_mps": 2.5,
+    "caution_slope_deg": 10,
+    "nogo_slope_deg": 15,
+    "eva_limit_min": 480,
+    "reserve_frac": 0.2,
+    "source": "assumed"
+   }
+  },
+  "default_profile": "astronaut_walk",
+  "rover_profile": "rover_scout",
+  "speed_curve": {
+   "k": 3.5,
+   "source": "assumed (Tobler-style hiking function, Earth-derived)"
+  },
+  "stop_minutes": 15,
+  "layers_loaded": {
+   "geology": "data",
+   "min_carbonate": "synthetic",
+   "min_clay": "synthetic",
+   "min_olivine": "synthetic"
+  },
+  "search_targets": [
+   "carbonate",
+   "olivine",
+   "clay",
+   "delta",
+   "crater_floor"
+  ],
+  "rover": {
+   "x": -380,
+   "y": -380,
+   "z": -2403.86,
+   "heading_deg": 0.0,
+   "pitch_deg": -2.4,
+   "roll_deg": -1.5,
+   "speed_mps": 0.0,
+   "mode": "idle",
+   "odometer_m": 0.0,
+   "route_id": null,
+   "status": "ready",
+   "last_event": null,
+   "fsd_armed": false,
+   "lat": 18.453589,
+   "lon": 77.403241,
+   "slope_deg": 2.9,
+   "mission_time_min": 0.0
+  },
+  "markers": [],
+  "poi_count": 9
+ }
+}

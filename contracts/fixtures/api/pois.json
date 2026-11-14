@@ -1,0 +1,45 @@
+{
+ "request": {
+  "method": "GET",
+  "path": "/pois?type=science_target",
+  "body": null
+ },
+ "status": 200,
+ "response": {
+  "count": 2,
+  "pois": [
+   {
+    "id": "scarp_top",
+    "name": "Scarp upland",
+    "type": "science_target",
+    "x": 260,
+    "y": 40,
+    "z": -2370.15,
+    "lat": 18.460675,
+    "lon": 77.414624,
+    "mission": "fixture",
+    "source_url": "https://example.invalid/fixture",
+    "description": "Layered upland beyond the scarp.",
+    "science_value": 0.9,
+    "sol": null,
+    "image_urls": []
+   },
+   {
+    "id": "floor",
+    "name": "Crater floor sample",
+    "type": "science_target",
+    "x": -150,
+    "y": 100,
+    "z": -2426.02,
+    "lat": 18.461687,
+    "lon": 77.407332,
+    "mission": "fixture",
+    "source_url": "https://example.invalid/fixture",
+    "description": "Fine-grained floor material.",
+    "science_value": 0.8,
+    "sol": null,
+    "image_urls": []
+   }
+  ]
+ }
+}

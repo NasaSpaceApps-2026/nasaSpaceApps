@@ -1,0 +1,42 @@
+{
+ "request": {
+  "method": "POST",
+  "path": "/view",
+  "body": {
+   "mode": "orbit",
+   "target": "poi:floor",
+   "distance_m": 400,
+   "layers": [
+    {
+     "id": "hazard",
+     "visible": true,
+     "opacity": 0.6
+    }
+   ],
+   "highlights": [
+    "floor"
+   ]
+  }
+ },
+ "status": 200,
+ "response": {
+  "ok": true,
+  "camera": {
+   "mode": "orbit",
+   "heading": null,
+   "pitch": null,
+   "distance": 400.0,
+   "x": -150,
+   "y": 100,
+   "z": -2426.0,
+   "target": "Crater floor sample"
+  },
+  "highlights": [
+   "floor"
+  ],
+  "layers": [
+   "hazard"
+  ],
+  "viewers_connected": 0
+ }
+}

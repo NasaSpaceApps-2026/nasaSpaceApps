@@ -1,0 +1,14 @@
+{
+ "request": {
+  "method": "POST",
+  "path": "/route",
+  "body": {
+   "start": "poi:base",
+   "goal": "poi:scarp_top"
+  }
+ },
+ "status": 422,
+ "response": {
+  "error": "No route from Fixture base to Scarp upland stays under 25 deg slope for profile astronaut_walk. Nearest reachable point is (162, 38), 96 m from the goal. Use that point as the goal, pick a different goal, or (if the limit was tightened with max_slope_deg) relax it up to the profile's 25 deg."
+ }
+}
