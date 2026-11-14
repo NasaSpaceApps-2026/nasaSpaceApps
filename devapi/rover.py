@@ -258,6 +258,7 @@ class Rover:
                     new["replan_of"] = route["route_id"]
                     await self.w.add_route(new)
                     self.route_id = rid
+                    self.w.last_planned = rid
                     self.remaining_m = new["distance_m"]
                     self.last_hazard = dict(self.last_hazard or {}, replanned_as=rid)
                     reason = "replanned"
@@ -321,6 +322,7 @@ class Rover:
                 self.w.get_route(rid)
                 self.route_id = rid
                 self.w.active_route = rid
+                self.w.last_planned = rid
             self.last_event = "FSD armed"
             await self._emit()
             return {"state": self.state(), "fsd": self.fsd_status(), "stop_reason": None}
@@ -413,7 +415,10 @@ class Rover:
                                           {"x": tgt["x"], "y": tgt["y"]})
 
         if cmd == "follow_route":
-            rid = body.get("route_id") or self.w.active_route
+            rid = body.get("route_id")
+            defaulted = not rid
+            if defaulted:
+                rid = self.w.last_planned or self.w.active_route
             if not rid:
                 raise AtlasError("No route to follow.", hint="Call plan_route first and pass its route_id.")
             route = self.w.get_route(rid)
@@ -423,11 +428,19 @@ class Rover:
             d0 = math.hypot(p0["x"] - self.x, p0["y"] - self.y)
             if d0 > ARRIVE_TOL_M:
                 raise AtlasError(
-                    f"The rover is {d0:.0f} m from the start of {rid} ({p0['x']:.0f}, {p0['y']:.0f}).",
-                    hint='Plan the route with start="rover", or goto/teleport the rover to the route start first.')
+                    f"The rover is {d0:.0f} m from the start of {rid} ({p0['x']:.0f}, {p0['y']:.0f})"
+                    + (" (route_id was not given, so the most recently planned route was used)." if defaulted else "."),
+                    hint=(f"Move the rover to the route start first: teleport_rover(x={p0['x']:.0f}, y={p0['y']:.0f}) "
+                          f"(instant) or goto_location(x={p0['x']:.0f}, y={p0['y']:.0f}) (drives), or plan the route "
+                          'again with start="rover".'))
             goal = {"x": route["goal"]["x"], "y": route["goal"]["y"]}
             async with self._motion():
-                return await self._follow(route, params, realtime, factor, timeout_s, goal)
+                res = await self._follow(route, params, realtime, factor, timeout_s, goal)
+            res["route_used"] = rid
+            if defaulted:
+                res["note"] = (f"route_id was not given, so the most recently planned route {rid} was used. "
+                               "Pass route_id explicitly to avoid surprises.")
+            return res
         raise AtlasError(f"Unhandled command {cmd}.")  # pragma: no cover
 
 

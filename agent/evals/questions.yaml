@@ -152,8 +152,10 @@ cases:
   - id: q09_rover_confirmed_carbonate
     source: mcp-tools q9 (needs mineral data)
     prompt: "Where has carbonate been confirmed by the rover?"
+    # find_sites(target="carbonate", min_tier="confirmed_in_situ") is the direct route (its description says so);
+    # find_regions with an evidence condition at tier 4 gives the same answer, so all three are accepted.
     tool_path:
-      required: [[find_regions, find_locations]]
+      required: [[find_sites, find_regions, find_locations]]
     checks:
       reply_contains_any: ["confirmed_in_situ", "in situ", "in-situ", "sample site"]
 

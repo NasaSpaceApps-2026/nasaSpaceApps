@@ -26,9 +26,11 @@ for _p in (str(_HERE.parent), str(_HERE)):
         sys.path.insert(0, _p)
 
 import httpx  # noqa: E402
+from pydantic import ValidationError  # noqa: E402
 import numpy as np  # noqa: E402
 from mcp_types import CallToolResult, TextContent, ToolAnnotations  # noqa: E402
 from mcp.server.mcpserver import MCPServer  # noqa: E402
+from mcp.server.mcpserver.exceptions import ToolError  # noqa: E402
 
 import format as fmt  # noqa: E402  (mcp/format.py)
 
@@ -39,10 +41,11 @@ DEFAULT_API_URL = "http://localhost:8000"
 UNITS = ("Units: distances in site-frame metres (x east, y north, origin at site centre); "
          "walking time in minutes; slope in degrees; area in m2; headings in degrees clockwise from north.")
 LOCATION_REFS = (
-    'Location references (`at`, `from`, `start`, `goal`, `target`): a point {"x": 120, "y": -340}; lat/lon '
-    '{"lat": 18.44, "lon": 77.45}; a POI id "poi:<id>" (see get_site_overview or search_pois); a marker '
-    '"marker:<id>" (see list_markers); the keywords "base" and "rover" (current rover position); a stored set '
-    '"set:3" (every member) or one member "3.2"; or a list of these.')
+    'Location reference (`at`, `near`, `start`, `goal`, `target`, `points`, `highlights`, `from_ref`, `to_ref`): '
+    'an object {"x": 120, "y": -340} (site metres) OR an object {"lat": 18.44, "lon": 77.45} OR a string: '
+    '"poi:<id>" (see get_site_overview or search_pois), "marker:<id>" (see list_markers), "base", "rover" '
+    '("here" and "me" mean "rover"), a stored set "set:3" (every member) or ONE member of a set written '
+    'WITHOUT the prefix, e.g. "3.2" ("set:3.2" is also accepted); or a list of these.')
 CONDITIONS = (
     "Condition language (conditions are ANDed; use any_of for OR; unknown/no-data cells always FAIL): "
     '{"layer": "slope_2m", "op": "<=", "value": 10}; '
@@ -53,14 +56,99 @@ CONDITIONS = (
     "not_detected, inferred_from_unit, weak_orbital, strong_orbital, confirmed_in_situ.")
 WITHIN = (
     'within = {"from": <location ref>, "max": number, "metric": "straight_m"|"walk_m"|"walk_time_min", '
-    '"profile": "eva_walkable"}, e.g. {"from": "base", "max": 60, "metric": "walk_time_min"} keeps only places '
+    '"profile": "eva_walkable"|"rover_scout"} (from, max and metric are all required), e.g. {"from": "base", "max": 60, "metric": "walk_time_min"} keeps only places '
     "reachable on foot from the base in 60 minutes (walk metrics use a placeholder, approximate speed model).")
 PROFILES = ('profile: "rover_scout" (rover, 0.04 m/s real speed, no-go slope 20 deg) or "eva_walkable" '
             '(astronaut on foot, no-go slope 25 deg); exact limits are in get_site_overview / the result.')
 DRIVE_NOTE = ("Blocking: returns when the rover stops, with the final state and a stop_reason: arrived, "
               "blocked_slope, blocked_hazard, replanned, stopped_by_user or timeout. animate=true plays the motion "
-              "live in the viewer at 10 Hz (takes real seconds; speed_factor scales simulated speed, default shows "
-              "about 8 m/s); the default computes the drive instantly.")
+              "live in the viewer at 10 Hz (takes real seconds; speed_factor is a multiplier of real rover speed, "
+              "default about 200 for rover_scout, which shows about 8 m/s on screen); the default computes the drive "
+              "instantly. Driving advances simulated time and the odometer (the result reports the minutes).")
+
+
+# ---- JSON schemas (patched into the tools' input schemas; runtime validation stays lenient) -----
+
+_NUM = {"type": "number"}
+_PT_XY = {"type": "object", "properties": {"x": _NUM, "y": _NUM}, "required": ["x", "y"],
+          "description": "site-frame metres"}
+_PT_LL = {"type": "object", "properties": {"lat": _NUM, "lon": _NUM}, "required": ["lat", "lon"],
+          "description": "planetocentric degrees, east longitude"}
+_REF_ONE = [_PT_XY, _PT_LL, {"type": "string", "description": 'e.g. "poi:base", "marker:m1", "rover", "set:3", "3.2"'}]
+
+
+def _loc(description: str, many: bool = False) -> dict:
+    alts = list(_REF_ONE)
+    if many:
+        alts.append({"type": "array", "items": {"anyOf": list(_REF_ONE)}})
+    return {"anyOf": alts, "description": description}
+
+
+_LOC_NOTE = ' Location reference: {x,y} | {lat,lon} | "poi:<id>" | "marker:<id>" | "base" | "rover" | "set:N" | "N.K".'
+TIERS = ["not_detected", "inferred_from_unit", "weak_orbital", "strong_orbital", "confirmed_in_situ"]
+METRICS = ["straight_m", "walk_m", "walk_time_min"]
+PROFILES_ENUM = ["rover_scout", "eva_walkable"]
+VIEW_MODES = ["globe", "orbit", "chase", "ground"]
+CONDITION_SCHEMA = {
+    "type": "object",
+    "description": ('One condition: {"layer": id, "op": ..., "value": ...} or {"evidence": id, "min_tier": tier} or '
+                    '{"any_of": [conditions]}. Example: {"layer": "slope_2m", "op": "<=", "value": 10}'),
+    "properties": {
+        "layer": {"type": "string"},
+        "op": {"enum": ["<", "<=", ">", ">=", "between", "==", "!=", "in", "not_in"]},
+        "value": {"description": "number, [lo, hi] for between, class name, or list of class names for in/not_in"},
+        "evidence": {"type": "string", "description": "evidence layer id, e.g. carbonate"},
+        "min_tier": {"enum": TIERS},
+        "any_of": {"type": "array", "items": {"type": "object"}, "description": "OR of conditions"},
+    },
+}
+CONDITIONS_SCHEMA = {"type": "array", "items": CONDITION_SCHEMA, "description": "ANDed conditions (a LIST of objects)"}
+WITHIN_SCHEMA = {
+    "type": "object", "required": ["from", "max", "metric"],
+    "description": 'Reachability limit, e.g. {"from": "base", "max": 60, "metric": "walk_time_min"}',
+    "properties": {
+        "from": _loc("where the distance is measured from"),
+        "max": {"type": "number", "description": "limit in the unit of metric (m or minutes)"},
+        "metric": {"enum": METRICS},
+        "profile": {"enum": PROFILES_ENUM, "description": "speed/slope model for walk metrics"},
+    },
+}
+_BEST_EV = r"best_evidence:[A-Za-z0-9_]+"
+
+SCHEMA_PATCH: dict[str, dict[str, dict]] = {
+    "list_layers": {"kind": {"enum": ["continuous", "categorical", "evidence"]}},
+    "describe_location": {"at": _loc("place(s) to describe (list of up to 10 allowed)", many=True)},
+    "get_elevation_profile": {"points": {"type": "array", "minItems": 2, "items": {"anyOf": list(_REF_ONE)},
+                                         "description": "at least 2 location references"}},
+    "search_pois": {"near": _loc("centre for radius_m / distance ranking")},
+    "find_locations": {
+        "conditions": CONDITIONS_SCHEMA, "within": WITHIN_SCHEMA,
+        "objective": {"type": "string", "pattern": r"^(flattest|largest_clear_area|closest|highest|lowest|" + _BEST_EV + r")$",
+                      "description": "flattest (default) | largest_clear_area | closest (needs within) | highest | lowest | best_evidence:<layer>"}},
+    "find_regions": {
+        "conditions": CONDITIONS_SCHEMA, "within": WITHIN_SCHEMA,
+        "objective": {"type": "string", "pattern": r"^(largest|closest|flattest|" + _BEST_EV + r")$",
+                      "description": "largest (default) | closest (needs within) | flattest | best_evidence:<layer>"}},
+    "find_sites": {"near": _loc("centre of the search (default: the rover)"), "min_tier": {"enum": TIERS}},
+    "nearest": {"from_ref": _loc("members to start from (usually a set id)", many=True),
+                "to_ref": _loc("members to look for (usually a set id)", many=True),
+                "metric": {"enum": METRICS}, "profile": {"enum": PROFILES_ENUM}},
+    "plan_route": {"goal": _loc("destination"), "start": _loc("start (default: the rover)"),
+                   "via": {"type": "array", "items": {"anyOf": list(_REF_ONE)}, "description": "waypoints in order"},
+                   "profile": {"enum": PROFILES_ENUM}},
+    "plan_science_traverse": {"start": _loc("start (default: the rover)"), "profile": {"enum": PROFILES_ENUM}},
+    "goto_location": {"target": _loc("destination")},
+    "teleport_rover": {"target": _loc("destination")},
+    "set_view": {"mode": {"enum": VIEW_MODES}, "target": _loc("camera target"),
+                 "layers": {"anyOf": [{"type": "object", "additionalProperties": {"type": "boolean"}},
+                                  {"type": "array", "items": {"type": "string"}}],
+                            "description": '{layer_id: true|false}, e.g. {"carbonate": true}, or a list of ids to show'},
+                 "highlights": {"anyOf": [{"type": "array", "items": {"anyOf": list(_REF_ONE)}}] + list(_REF_ONE),
+                                "description": "POIs, markers, set members or whole sets (first 50 shown)"}},
+    "fly_camera": {"target": _loc("place to look at"), "mode": {"enum": VIEW_MODES}},
+    "place_marker": {"at": _loc("alternative to x and y")},
+}
+ALIASES = {"nearest": {"from": "from_ref", "to": "to_ref"}}
 
 # ---- helpers ------------------------------------------------------------------------------------
 
@@ -231,9 +319,10 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
         "FIRST CALL in every session. Returns the site extent and coordinate frame, all layers grouped by kind "
         "with what each measures, profile names (named bundles of conditions such as landing_pad or "
         "eva_walkable), key points of interest with coordinates, the rover position and mode, user and agent "
-        "markers, the searchable targets for find_sites (minerals and geologic units with their source mission), "
-        "and the evidence tier scale. Use it to learn valid layer ids, POI ids, marker ids and targets before "
-        "calling other tools. " + UNITS + " Example: get_site_overview()"))
+        "markers, the searchable targets for find_sites (minerals and geologic units with their source mission; the "
+        "line says \"none (terrain-only site: no mineral or geology layers)\" when there are none, in which case "
+        "mineral questions cannot be answered) and the evidence tier scale. Use it to learn valid layer ids, POI "
+        "ids, marker ids and targets before calling other tools. " + UNITS + " Example: get_site_overview()"))
     async def get_site_overview() -> CallToolResult:
         return await call("GET", "/overview", fmt.fmt_overview)
 
@@ -275,7 +364,8 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
         "footprint statistics (mean/min/max, class shares, best evidence tier, unknown share): use it for pads, "
         "walking safety or outcrop checks, and read the MAX, not only the mean. 'unknown' means no data, never "
         "safe or absent. Accepts a set or list of up to 10 locations (compact table). Use for 'what is at X?'; "
-        "use find_locations/find_regions/find_sites to search. " + LOCATION_REFS + " " + UNITS + " "
+        "use find_locations/find_regions/find_sites to search. Use this (not sample_terrain) for any 'what is "
+        "here?' question; radius_m=0 is a point lookup. " + LOCATION_REFS + " " + UNITS + " "
         'Example: describe_location(at="poi:base", radius_m=50, layers=["slope_2m","carbonate"])'))
     async def describe_location(at: Any, radius_m: float = 0.0, layers: list[str] | None = None) -> CallToolResult:
         return await _describe(at, radius_m, layers)
@@ -294,8 +384,9 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
 
     @tool("sample_terrain", (
         "Point values of every layer at an {x, y} site-frame point (metres), plus the hazard class for the rover "
-        "(safe, caution, no-go or unknown, from slope). Same data as describe_location(at, radius_m=0). Use for a "
-        "quick 'is this ground drivable?' check. " + UNITS + " Example: sample_terrain(x=120, y=-340)"))
+        "(safe, caution, no-go or unknown, from slope). Same layer values as describe_location(at, radius_m=0): "
+        "prefer describe_location unless you specifically need the safe/caution/no-go hazard class for one {x, y} "
+        "point ('is this ground drivable?'). " + UNITS + " Example: sample_terrain(x=120, y=-340)"))
     async def sample_terrain(x: float, y: float) -> CallToolResult:
         return await call("GET", "/terrain/sample", _fmt_sample, params={"x": x, "y": y}, adapt=_adapt_sample)
 
@@ -313,8 +404,9 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
         "Find named points of interest (landing sites, sample sites, science targets, landmarks, hazards) by text "
         "query, type and/or distance from a place. Returns id (usable as a location, e.g. poi:<id>), coordinates, "
         "type, science value (0 to 1, null if not recorded) and distance. Use to resolve a name such as 'the delta "
-        "front' to coordinates; use find_sites to search for a mineral or geologic unit instead. near accepts "
-        "{x, y}, a POI id, a marker or 'rover'. radius_m needs near. " + UNITS + " "
+        "front' to coordinates. Use this for NAMED places; use find_sites for a mineral or geologic unit, "
+        "find_locations for flat pads, find_regions for areas matching conditions. near accepts {x, y} (or the "
+        "string \"x,y\"), a POI id, a marker or 'rover'; radius_m needs near. A miss lists the known POI ids. " + UNITS + " "
         'Example: search_pois(query="delta", type="science_target", near="rover", radius_m=500, limit=5)'))
     async def search_pois(query: str | None = None, type: str | None = None, near: Any = None,
                           radius_m: float | None = None, limit: int = 10) -> CallToolResult:
@@ -334,9 +426,11 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
         "spread apart (spacing_m), ranked by objective, and stored as a set (set_id) for describe_location, "
         "get_set and nearest. Use find_regions instead for connected areas such as outcrops or a geologic unit, "
         "and find_sites for ranked mineral or unit targets with evidence. "
-        "An empty result includes per-condition pass rates showing which condition to relax. "
+        "An empty result includes per-condition pass rates and the real range of the failing layer, so you can pick a "
+        "realistic threshold. "
         "profile = a named bundle of conditions and footprint (see get_site_overview); explicit conditions "
-        "override it; thresholds are reported as cited or assumed. objective: flattest (default), "
+        "override it; thresholds are reported as cited or assumed. Use this when the answer is a SPOT of a given "
+        "size; use find_regions for areas, find_sites for minerals/units, search_pois for named places. objective: flattest (default), "
         "largest_clear_area, closest (needs within), highest, lowest, best_evidence:<layer>. limit 1-50 (default 5). "
         + CONDITIONS + " " + WITHIN + " " + UNITS + " "
         'Example: find_locations(profile="landing_pad", footprint_radius_m=50, '
@@ -355,7 +449,9 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
         "e.g. carbonate outcrops, a geologic unit, or flat terrain patches. Each region reports area, a "
         "representative interior point, bounding box and statistics. Stored as a set (set_id). Use "
         "find_locations instead for footprint-sized spots, and find_sites when you want the best places for a "
-        "mineral or unit ranked with evidence and reachability. Empty results include per-condition pass rates. "
+        "mineral or unit ranked with evidence and reachability; search_pois for named places. Do NOT use "
+        "profile=\"landing_pad\" here (that profile is for find_locations; with a pad profile this returns huge flat "
+        "regions, not pads). Empty results include per-condition pass rates and the real range of the failing layer. "
         "objective: largest (default), closest (needs within), flattest, best_evidence:<layer>. limit 1-50 "
         "(default 5). " + CONDITIONS + " " + WITHIN + " " + UNITS + " "
         'Example: find_regions(conditions=[{"evidence": "carbonate", "min_tier": "weak_orbital"}], '
@@ -376,8 +472,10 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
         "minerals the best evidence tier (confirmed_in_situ > strong_orbital > weak_orbital) from orbital "
         "instruments such as CRISM, the area, mean slope, distance from `near` and whether the rover can reach it "
         "(slope-limited walk). Evidence tiers are detections, NOT abundance: say so and cite the layer and mission. "
-        "Use for 'where are the best places to find carbonates?'. Use find_regions with custom conditions, find_locations "
-        "for flat pads, search_pois for named places. near defaults to the rover; radius_m is a straight-line limit "
+        "Use for 'where are the best places to find carbonates?' and, with min_tier=\"confirmed_in_situ\", for 'where "
+        "has the rover confirmed carbonate?'. Only works when get_site_overview lists Search targets (otherwise it "
+        "errors: say the data cannot answer). Use find_regions instead for custom conditions or combined "
+        "constraints, find_locations for flat pads, search_pois for named places. near defaults to the rover; radius_m is a straight-line limit "
         "from near; max_slope_deg drops steeper ground; min_tier (default weak_orbital) is the weakest evidence "
         "accepted for minerals. Stored as a set; site ids work as locations (e.g. plan_route(goal=\"2.1\"))."
         + targets_txt + " " + UNITS + " "
@@ -389,9 +487,9 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
         return await call("POST", "/search/sites", fmt.fmt_sites, body={k: v for k, v in body.items() if v is not None})
 
     @tool("nearest", (
-        "For each member of `from_ref`, find the nearest member of `to_ref` by metric, and rank the pairs by cost. "
+        "For each member of `from_ref` (alias `from`), find the nearest member of `to_ref` by metric, and rank the pairs by cost. "
         "Typical use: nearest landing pad (a find_locations set) to each carbonate outcrop (a find_regions set). "
-        "Both arguments take any location reference, usually a set id. Walk metrics are approximate (isotropic "
+        "Both arguments (`from_ref`/`to_ref`, aliases `from`/`to`) take any location reference, usually a set id. Walk metrics are approximate (isotropic "
         "placeholder speed model; uphill = downhill) and unreachable members are listed. Returns a new set of "
         "pairs. metric: walk_time_min (default, minutes), walk_m, straight_m (metres); profile: eva_walkable "
         "(default) sets speed and maximum slope. limit 1+ (default 5). For the actual path use plan_route. "
@@ -489,8 +587,9 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
     @tool("goto_location", (
         "Plan a route from the rover to a place and drive it (one call). target is any location reference (POI, "
         "marker, point); or pass x and y. If the place is unreachable it does not move and returns the reason and "
-        "the nearest reachable point. Use for 'drive to the landing site'; use plan_route + assess_route + "
-        "follow_route when the user wants to review the route first; use teleport_rover to jump instantly. "
+        "the nearest reachable point. Use goto_location only when the user asks to DRIVE ('drive to the landing "
+        "site'); it advances simulated time and odometer. Use plan_route + assess_route + follow_route when the user "
+        "wants to review the route first, and teleport_rover for 'take me to X' (instant, no time cost). "
         + DRIVE_NOTE + " " + LOCATION_REFS + " " + UNITS + " Example: goto_location(target=\"poi:landing\")"), act)
     async def goto_location(target: Any = None, x: float | None = None, y: float | None = None,
                             animate: bool = False, speed_factor: float | None = None) -> CallToolResult:
@@ -509,7 +608,10 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
         "start (plan with start=\"rover\" or goto/teleport first). With FSD armed (fsd_enable) caution slopes slow "
         "it and a blocked route is replanned once (stop_reason replanned, a new route_id is returned and the rover "
         "waits for you to call follow_route again); without FSD it stops on a no-go slope (blocked_slope) and "
-        "reports the hazard. Use for 'scout that route'. Omit route_id to use the route armed with fsd_enable. "
+        "reports the hazard. Use for 'scout that route'. Always pass route_id from the most recent plan_route. If omitted, it uses the "
+        "MOST RECENTLY PLANNED route (or the one bound by fsd_enable(route_id=...), whichever is newer) and the "
+        "result says which route it used. If the rover is not at the route start the error gives the "
+        "teleport_rover/goto_location call to get there. "
         + DRIVE_NOTE + " " + UNITS + " Example: follow_route(route_id=\"route-3\", animate=true, speed_factor=200)"), act)
     async def follow_route(route_id: str | None = None, animate: bool = False,
                            speed_factor: float | None = None) -> CallToolResult:
@@ -524,7 +626,7 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
     @tool("fsd_enable", (
         "Arm FSD (full self-driving) mode: the rover follows routes with the slope policy (halved speed on caution "
         "slopes, stop at no-go slopes or unknown ground, one automatic replan with a 10% lower slope limit when "
-        "blocked). Optionally bind a route_id so follow_route needs no argument. policy keys (booleans): "
+        "blocked). Optionally bind a route_id (it then becomes the default for follow_route). policy keys (booleans): "
         "replan_on_block, caution_slowdown. Arming does not move the rover. Use before follow_route when scouting; "
         "fsd_status shows blockers; fsd_disable disarms. "
         "Example: fsd_enable(route_id=\"route-3\", policy={\"replan_on_block\": true})"), act_idem)
@@ -554,8 +656,9 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
         return await call("POST", "/rover/command", fmt.fmt_command, body={"cmd": "stop"})
 
     @tool("teleport_rover", (
-        "Place the rover at a location instantly (no driving, no time cost), optionally with a heading. Use for "
-        "'take me to the delta front' together with fly_camera, after search_pois or find_sites gives a place. "
+        "Place the rover at a location instantly (no driving, no time cost, odometer unchanged), optionally with a "
+        "heading. Use for 'take me to the delta front' together with fly_camera, after search_pois or find_sites "
+        "gives a place; use goto_location instead only when the user wants the rover to drive there. "
         "Refuses ground above the no-go slope or without data and names the nearest walkable point. target is any "
         "location reference or give x and y. " + LOCATION_REFS + " " + UNITS + " "
         'Example: teleport_rover(target="poi:landing", heading_deg=90)'), act)
@@ -579,7 +682,8 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
         "Control the viewer: camera mode (globe, orbit, chase, ground), the camera target (any location), layer "
         "visibility ({layer_id: true|false}, ids from list_layers) and highlights (POIs, markers, set members or "
         "whole sets such as a find_sites result). Use after searches to show results ('highlights=[\"set:2\"]'). "
-        "Use fly_camera for a plain 'show me X'. The reply says whether a viewer is connected. "
+        "Use set_view when you need layers or highlights or several things at once; use fly_camera instead for a "
+        "plain 'show me X' (camera only). Highlighting a whole set shows at most the first 50 members. The reply says whether a viewer is connected. "
         "Example: set_view(mode=\"orbit\", target=\"poi:landing\", layers={\"carbonate\": true}, highlights=[\"set:2\"])"), act)
     async def set_view(mode: str | None = None, target: Any = None, layers: Any = None,
                        highlights: Any = None) -> CallToolResult:
@@ -589,7 +693,8 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
     @tool("fly_camera", (
         "Fly the viewer camera to a place: a point, POI, marker or search result. mode: orbit (default), chase, "
         "ground, globe; distance_m is the camera distance. Use for 'show me the delta front' (with teleport_rover "
-        "if the rover should go too). Does not move the rover. " + LOCATION_REFS + " "
+        "if the rover should go too). Does not move the rover. Use set_view instead to toggle layers or highlight "
+        "results. " + LOCATION_REFS + " "
         'Example: fly_camera(target="poi:landing", mode="orbit", distance_m=300)'), act)
     async def fly_camera(target: Any, mode: str = "orbit", distance_m: float | None = None) -> CallToolResult:
         body = {"target": _coerce(target), "mode": mode, "distance_m": distance_m}
@@ -610,6 +715,68 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
                            at: Any = None) -> CallToolResult:
         body = {"x": x, "y": y, "at": _coerce(at), "label": label, "created_by": "agent"}
         return await call("POST", "/markers", fmt.fmt_marker, body={k: v for k, v in body.items() if v is not None})
+
+    # ---- schema patch, aliases and friendly validation errors ----------------------------------
+    import re as _re
+
+    def _example(desc: str) -> str | None:
+        m = _re.search(r"Example: (.+)$", desc, _re.S)
+        return m.group(1).strip() if m else None
+
+    def _describe_type(v: Any) -> str:
+        return {dict: "an object", list: "a list", str: "a string", int: "a number", float: "a number",
+                bool: "a boolean", type(None): "null"}.get(type(v), type(v).__name__)
+
+    def _wrap_tool(tname: str, t) -> None:
+        props_schema = t.parameters.setdefault("properties", {})
+        for pname, patch in SCHEMA_PATCH.get(tname, {}).items():
+            if pname in props_schema:
+                old = props_schema[pname]
+                new = dict(patch)
+                if "description" not in new and old.get("description"):
+                    new["description"] = old["description"]
+                props_schema[pname] = new
+        valid = list(props_schema)
+        required = list(t.parameters.get("required", []))
+        aliases = ALIASES.get(tname, {})
+        example = _example(t.description)
+        orig = t.run
+
+        def bad(msg: str) -> CallToolResult:
+            hint = (f"Valid arguments: {', '.join(valid) or 'none'} (required: {', '.join(required) or 'none'}). "
+                    if valid else "This tool takes no arguments. ")
+            return err(msg, hint + ((f"Example: {example}" if example.startswith(tname + "(") else f"Example: {tname}({example})")
+                       if example else ""))
+
+        async def run(arguments, context, convert_result=False):
+            args = dict(arguments or {})
+            for a, real in aliases.items():
+                if a in args and real not in args:
+                    args[real] = args.pop(a)
+            unknown = [k for k in args if k not in valid]
+            if unknown:
+                return await bad(f"Unknown argument(s) for {tname}: {', '.join(unknown)}.")
+            missing = [k for k in required if k not in args]
+            if missing:
+                return await bad(f"Missing required argument(s) for {tname}: {', '.join(missing)}.")
+            try:
+                return await orig(args, context, convert_result=convert_result)
+            except ToolError as e:
+                if not isinstance(e.__cause__, ValidationError):
+                    raise
+                parts, seen = [], set()
+                for ve in e.__cause__.errors():
+                    name = str(ve["loc"][0]) if ve["loc"] else "?"
+                    if name in seen:
+                        continue
+                    seen.add(name)
+                    got = args.get(name)
+                    parts.append(f'"{name}" has the wrong type or form (got {_describe_type(got)}): {ve["msg"]}')
+                return await bad(f"Invalid argument(s) for {tname}. " + " ".join(parts))
+        object.__setattr__(t, "run", run)
+
+    for _t in list(mcp._tool_manager.list_tools()):
+        _wrap_tool(_t.name, _t)
 
     return mcp
 

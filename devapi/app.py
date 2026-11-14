@@ -26,7 +26,12 @@ from .util import clean
 from .validation import run_validation
 from .world import World
 
+MAX_HIGHLIGHTS = 50
 VIEW_MODES = ("globe", "orbit", "chase", "ground")
+
+
+def _g(v) -> str:
+    return f"{float(v):.4g}"
 
 
 class CleanJSONResponse(JSONResponse):
@@ -130,6 +135,10 @@ def create_app(site: Site | None = None, synthetic: bool | None = None, traverse
         d["rover"] = {**(d["rover"] or {}), **{k: v for k, v in rover.state().items()
                                                 if k in ("x", "y", "heading_deg", "mode", "fsd_armed")}}
         d["markers"] = list(world.markers.values())
+        order = {t: i for i, t in enumerate(("base", "landmark"))}
+        d["pois"] = [{"id": p.get("id"), "name": p.get("name"), "type": p.get("type"), "x": p.get("x"),
+                      "y": p.get("y"), "science_value": p.get("science_value")}
+                     for p in sorted(site.pois, key=lambda p: order.get(p.get("type"), 9))]
         d["search_targets"] = search_targets(site)
         d["synthetic"] = world.synthetic
         return d
@@ -144,12 +153,45 @@ def create_app(site: Site | None = None, synthetic: bool | None = None, traverse
         await hub.broadcast("search.results", {"source": source, "set_id": res.get("set_id"),
                                                "sites": res.get("sites", res.get("results", []))})
 
+    def _add_range_hint(res: dict) -> None:
+        """Empty search: append the real range of the layers behind the failing conditions to the hint."""
+        if res.get("hint"):
+            res["hint"] = res["hint"].replace("nearest(from=", "nearest(from_ref=").replace("to=<pad set>", "to_ref=<pad set>")
+        if res.get("count") or not res.get("diagnostics"):
+            return
+        notes, seen = [], set()
+        steps = sorted((d for d in res["diagnostics"] if d["step"] != "all conditions"
+                        and not d["step"].startswith("+")), key=lambda d: d["pass_fraction"])
+        for d in steps:
+            lid = d["step"].split(" ")[0]
+            if lid in seen or lid not in site.layers:
+                continue
+            seen.add(lid)
+            try:
+                info = catalog.describe_layer(site, lid)
+            except AtlasError:
+                continue
+            if info["kind"] == "continuous" and info.get("min") is not None:
+                notes.append(f'Layer {lid} on this site: range {_g(info["min"])} to {_g(info["max"])}, median '
+                             f'{_g(info["median"])}{(" " + info["units"]) if info.get("units") else ""}; '
+                             f'"{d["step"]}" passes {d["pass_fraction"] * 100:.2g}% of cells. Pick a threshold inside '
+                             "that range.")
+            elif info.get("classes"):
+                notes.append(f'Layer {lid} classes on this site: {", ".join(info["classes"])}'
+                             + (f'; "{d["step"]}" passes {d["pass_fraction"] * 100:.2g}% of cells, so that class '
+                                "is absent or tiny here." if d["pass_fraction"] < 0.001 else "."))
+            if len(notes) >= 2:
+                break
+        if notes:
+            res["hint"] = ((res.get("hint") or "").replace(" Relax that condition.", "") + " " + " ".join(notes)).strip()
+
     @app.post("/search/locations")
     async def search_locations(body: dict = Body(...)):
         b = take(body, ("conditions", "profile", "footprint_radius_m", "within", "objective", "spacing_m", "limit"))
         res = search.find_locations(site, store, b.get("conditions"), b.get("profile"), b.get("footprint_radius_m"),
                                     b.get("within"), b.get("objective", "flattest"), b.get("spacing_m"),
                                     b.get("limit", 5))
+        _add_range_hint(res)
         await _announce("find_locations", res)
         return res
 
@@ -158,6 +200,7 @@ def create_app(site: Site | None = None, synthetic: bool | None = None, traverse
         b = take(body, ("conditions", "profile", "min_area_m2", "within", "objective", "limit"))
         res = search.find_regions(site, store, b.get("conditions"), b.get("profile"), b.get("min_area_m2", 400.0),
                                   b.get("within"), b.get("objective", "largest"), b.get("limit", 5))
+        _add_range_hint(res)
         await _announce("find_regions", res)
         return res
 
@@ -251,7 +294,8 @@ def create_app(site: Site | None = None, synthetic: bool | None = None, traverse
         else:
             out.sort(key=lambda d: (-(d.get("science_value") if d.get("science_value") is not None else -1), str(d["id"])))
         types = sorted({p.get("type") for p in site.pois if p.get("type")})
-        return {"count": len(out), "pois": out[:limit], "types": types,
+        known = [str(p.get("id")) for p in site.pois[:25]]
+        return {"count": len(out), "pois": out[:limit], "types": types, "known_ids": known,
                 "note": "science_value is null where the POI has none recorded."}
 
     # ---- routes ---------------------------------------------------------------------------------
@@ -263,6 +307,7 @@ def create_app(site: Site | None = None, synthetic: bool | None = None, traverse
         if res["feasible"]:
             res["route_id"] = world.new_route_id()
             await world.add_route(res)
+            world.last_planned = res["route_id"]
         return res
 
     @app.get("/route/{route_id}")
@@ -280,6 +325,7 @@ def create_app(site: Site | None = None, synthetic: bool | None = None, traverse
         if r and r["feasible"] and r["points"] and res["stops"]:
             r["route_id"] = world.new_route_id()
             await world.add_route(r)
+            world.last_planned = r["route_id"]
         return res
 
     # ---- rover ----------------------------------------------------------------------------------
@@ -354,11 +400,14 @@ def create_app(site: Site | None = None, synthetic: bool | None = None, traverse
                 if isinstance(val, dict) and "opacity" in val:
                     ch["opacity"] = float(val["opacity"])
                 layer_changes.append(ch)
-        highlights = []
+        highlights, capped = [], None
         if b.get("highlights") is not None:
             for r in (b["highlights"] if isinstance(b["highlights"], list) else [b["highlights"]]):
                 for m in resolve_ref(site, r, store):
                     highlights.append({"id": m.get("id"), "name": m.get("name"), "x": m["x"], "y": m["y"]})
+            if len(highlights) > MAX_HIGHLIGHTS:
+                capped = len(highlights)
+                highlights = highlights[:MAX_HIGHLIGHTS]
         if mode is not None or target is not None:
             await hub.broadcast("view.camera", {"mode": mode, "target": target, "heading_deg": b.get("heading_deg"),
                                                 "pitch_deg": b.get("pitch_deg"), "distance_m": b.get("distance_m")})
@@ -368,8 +417,11 @@ def create_app(site: Site | None = None, synthetic: bool | None = None, traverse
             await hub.broadcast("view.highlight", {"ids": [h["id"] for h in highlights], "points": highlights})
         res = {"ok": True, "mode": mode, "target": target, "layers": layer_changes, "highlights": highlights,
                "viewers": hub.count}
+        if capped:
+            res["note"] = (f"Only the first {MAX_HIGHLIGHTS} of {capped} highlights (best-ranked first) were shown; "
+                           "pass fewer or specific members such as \"2.1\" to choose which.")
         if hub.count == 0:
-            res["note"] = "No viewer is connected, so nothing was displayed; the request was accepted."
+            res["note"] = (res.get("note", "") + " No viewer is connected, so nothing was displayed; the request was accepted.").strip()
         return res
 
     @app.post("/view/snapshot")

@@ -86,7 +86,11 @@ def fmt_overview(d: dict) -> str:
     for kind, ls in by_kind.items():
         layer_lines.append(f"{kind}: " + "; ".join(f"{l['id']} ({l['measures'].rstrip('.')})" for l in ls))
     prof = "Profiles: " + (", ".join(p["name"] for p in d["profiles"]) or "none")
-    pois = "POIs: " + "; ".join(f"{p['id']} {xy(p['x'], p['y'])}" for p in d["pois"]) if d["pois"] else None
+    pois = ("POIs (use as poi:<id>): " + "; ".join(
+        f"poi:{p['id']} {xy(p['x'], p['y'])}" + (f" \"{p['name']}\"" if p.get("name") and p["name"] != p["id"] else "")
+        + (f" [{p['type']}]" if p.get("type") else "")
+        + (f" science_value {num(p['science_value'])}" if p.get("science_value") is not None else "")
+        for p in d["pois"]) + ".") if d["pois"] else "POIs: none."
     rv = d.get("rover")
     rover = (f"Rover: {xy(rv['x'], rv['y'])}" + (f", mode {rv['mode']}" if rv.get("mode") else "")
              + (", FSD armed" if rv.get("fsd_armed") else "")) if rv else "Rover: position not known."
@@ -97,7 +101,9 @@ def fmt_overview(d: dict) -> str:
     tg = d.get("search_targets")
     targets = ("Search targets for find_sites: " + "; ".join(
         f"{t['target']} ({t.get('mission') or '?'}{('/' + t['instrument']) if t.get('instrument') else ''})"
-        for t in tg) + ".") if tg else None
+        for t in tg) + ".") if tg else (
+        "Search targets for find_sites: none (terrain-only site: no mineral or geology layers). find_sites and "
+        "evidence/geologic conditions will fail; say the data cannot answer such questions.")
     tiers = "Evidence tiers (ascending): " + " < ".join(d["evidence_tiers"]) + "."
     return _lines(head, "Layers:", *["  " + x for x in layer_lines], prof, pois, rover, markers, targets, tiers,
                   d.get("next"))
@@ -322,8 +328,8 @@ def fmt_route(d: dict) -> str:
                       for s in d.get("stops", []))
     head = (f"Route {d['route_id']} ({d['profile']}, slope limit {num(d['max_slope_limit_deg'])} deg): "
             f"{num(d['distance_m'], 0)} m, {num(d['duration_min'])} min, ascent {num(d['ascent_m'], 0)} m, "
-            f"max slope {num(d['max_slope_deg'])} deg, {d['hazard_cells']} caution cell(s) "
-            f"(>{num(d['caution_slope_deg'])} deg).")
+            f"max slope {num(d['max_slope_deg'])} deg ({_limits(d)}), {d['hazard_cells']} cell(s) steeper "
+            f"than {num(d['caution_slope_deg'])} deg.")
     warn = [w for w in d.get("warnings", []) if w not in (d.get("assessment") or {}).get("reasons", [])
             and w not in (d.get("assessment") or {}).get("caution", [])]
     return _lines(
@@ -334,6 +340,13 @@ def fmt_route(d: dict) -> str:
         f"Next: assess_route(\"{d['route_id']}\"), then follow_route(\"{d['route_id']}\") (rover must be at the start).")
 
 
+def _limits(d: dict) -> str:
+    lim, cau = d["max_slope_limit_deg"], d["caution_slope_deg"]
+    if cau >= lim:
+        return f"no-go above {num(lim)} deg, no separate caution band"
+    return f"caution above {num(cau)} deg, no-go above {num(lim)} deg"
+
+
 def fmt_assess(d: dict) -> str:
     if not d["feasible"]:
         return f"Route {d.get('route_id')} is NOT feasible: {d['reason']}"
@@ -341,8 +354,7 @@ def fmt_assess(d: dict) -> str:
     verdict = "GO" if a["go"] else "NO-GO"
     return _lines(
         f"{verdict} for {d['route_id']} ({d['profile']}): {num(d['distance_m'], 0)} m, {num(d['duration_min'])} min, "
-        f"max slope {num(d['max_slope_deg'])} deg (no-go limit {num(d['max_slope_limit_deg'])}, caution "
-        f"{num(d['caution_slope_deg'])}), ascent {num(d['ascent_m'], 0)} m.",
+        f"max slope {num(d['max_slope_deg'])} deg ({_limits(d)}), ascent {num(d['ascent_m'], 0)} m.",
         _consumables_line(d.get("consumables")),
         ("Reasons: " + " ".join(a["reasons"])) if a["reasons"] else None,
         ("Cautions: " + " ".join(a["caution"])) if a["caution"] else None,
@@ -357,7 +369,8 @@ def fmt_science(d: dict) -> str:
     if not d["stops"]:
         return _lines(f"No science stops fit (budget {num(t['budget_min'], 0)} min, {d['candidates_considered']} "
                       "candidate(s) considered).", "Hint: " + d["hint"])
-    lines = [f"Traverse with {len(d['stops'])} stop(s), science value {num(d['science_value_total'], 2)}; "
+    lines = [f"Considered {d['candidates_considered']} candidate stop(s); selected {len(d['stops'])}. "
+             f"Traverse with {len(d['stops'])} stop(s), science value {num(d['science_value_total'], 2)}; "
              f"{num(t['total_min'], 0)} of {num(t['budget_min'], 0)} min ({num(t['travel_min'], 0)} travel + "
              f"{num(t['stops_min'], 0)} at stops{', returns to start' if t['return_to_start'] else ''})."]
     for i, s in enumerate(d["stops"], 1):
@@ -394,7 +407,11 @@ def fmt_profile(d: dict) -> str:
 def fmt_pois(d: dict) -> str:
     ps = d["pois"]
     if not ps:
-        return f"No POIs match. Known types: {', '.join(d['types'])}.\nTry: search_pois() with fewer filters."
+        ids = d.get("known_ids") or []
+        known = f" Known POIs: {', '.join(ids)}." if ids else ""
+        return (f"No POIs match.{known} Known types: {', '.join(d['types']) or 'none'}.\n"
+                "Try: a shorter query (the query matches id, name, type and description), or search_pois() with no "
+                "filters to list them all.")
     rows = []
     for p in ps[:12]:
         sv = p.get("science_value")
@@ -446,6 +463,7 @@ def fmt_command(d: dict) -> str:
         (f"New route {nr['route_id']}: {num(nr['distance_m'], 0)} m, {num(nr['duration_min'])} min, max slope "
          f"{num(nr['max_slope_deg'])} deg. Next: follow_route(\"{nr['route_id']}\").") if nr else None,
         ("Replan failed: " + d["replan_failed"]) if d.get("replan_failed") else None,
+        ("Note: " + d["note"]) if d.get("note") else None,
         ("Hint: " + d["hint"]) if d.get("hint") else None)
 
 

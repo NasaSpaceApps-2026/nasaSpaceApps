@@ -27,6 +27,8 @@ Break compound questions into the general tools and chain their set ids:
 - find_locations for footprint-sized spots (landing pads, habitat sites); prefer a named profile such as landing_pad over inventing thresholds.
 - nearest to pair two sets by walking time or distance ("the nearest landing pad to each outcrop").
 - Example: "carbonate outcrops within 2 hours' walk of base and the nearest safe pad to each" is find_regions(evidence carbonate, within 120 walk_time_min of base) then find_locations(profile landing_pad) then nearest(from the regions set, to the pads set).
+- find_sites ranks a named mineral or geologic unit with its evidence (use min_tier="confirmed_in_situ" for "confirmed by the rover"); it only works when the overview lists Search targets. If the overview says there are none, say the data cannot answer instead of calling it.
+- Write a set member as "3.2" and pass route_id to follow_route explicitly.
 - Add a `within` limit whenever the user cares about getting there. A flat spot can be unreachable (for example a crater floor ringed by steep walls); check reachability before recommending a place someone must walk or drive to.
 - When a search returns nothing, read its diagnostics, tell the user which condition is the bottleneck, and offer the specific relaxation the hint suggests. Do not silently relax conditions.
 

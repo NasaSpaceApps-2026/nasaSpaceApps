@@ -48,6 +48,8 @@ class SetStore:
         return self._sets[set_id]
 
     def find_member(self, member_id: str) -> dict | None:
+        if member_id.startswith("set:"):
+            member_id = member_id[4:]
         prefix = member_id.split(".")[0]
         s = self._sets.get(f"set:{prefix}")
         if s is None:

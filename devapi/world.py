@@ -24,6 +24,7 @@ class World:
         self.markers: dict[str, dict] = site.markers          # shared with resolve_ref
         self.routes: OrderedDict[str, dict] = OrderedDict()
         self.active_route: str | None = None
+        self.last_planned: str | None = None        # newest route from plan_route / science / replan / fsd_enable(route_id)
         self._route_n = 0
         self._marker_n = 0
         self.snapshots: dict[str, object] = {}                 # request id -> asyncio.Future
