@@ -191,7 +191,8 @@ def test_science_traverse(c):
     assert set(ids) == {"poi:outcrop_a", "poi:landing", "poi:east_point"}
     assert all(s["value_assumed"] for s in r["stops"]) and any("0.5" in n for n in r["notes"])
     t = r["time"]
-    assert t["total_min"] <= 240 and t["stops_min"] == 45 and r["science_value_total"] == 1.5
+    assert t["total_min"] <= 240 and t["stops_min"] == 45 and r["science_value_total"] is None
+    assert "no science weighting" in r["science_weighting_note"]
     assert r["route"]["feasible"] and r["route"]["route_id"]
     assert r["route"]["consumables"]["stops_min"] == 45
     assert r["stops"][0]["arrive_min"] < r["stops"][-1]["arrive_min"]

@@ -49,3 +49,21 @@ def test_no_science_layers_gives_honest_error():
     for k in ("carbonate", "geologic_unit"):
         del site.layers[k]
     assert search_targets(site) == []
+
+
+def test_source_label_user_or_default_is_not_cited():
+    assert _format_module().source_label("user-specified or default") == "user-specified or default"
+
+
+def test_describe_groups_not_detected_layers_on_one_line():
+    f = _format_module()
+    d = {"radius_m": 0, "locations": [{
+        "id": "p", "x": 0, "y": 0, "lat": 0, "lon": 0, "quality": "hirise_dtm",
+        "values": {"carbonate": {"tier": 0, "tier_name": "not_detected"},
+                   "kaolinite": {"tier": 0, "tier_name": "not_detected"},
+                   "olivine": {"unknown": True}},
+        "evidence": {"carbonate": {}, "kaolinite": {}, "olivine": {}},
+        "nearest_ground_truth": None}]}
+    text = f.fmt_describe(d)
+    assert text.count("absence of evidence") == 1
+    assert "carbonate, kaolinite" in text and "no_coverage" in text and "olivine" in text

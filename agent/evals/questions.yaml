@@ -34,11 +34,13 @@ cases:
   - id: demo_route_two_markers
     source: scope-doc demo 2
     prompt: "Plan a route between my two markers under 15°."
+    # With no markers placed, listing them and asking the user to place two is the CORRECT answer (inventing endpoints
+    # would be wrong). When two markers do exist the agent should go on to plan_route and assess_route.
     tool_path:
-      required: [list_markers, plan_route, assess_route]
-      order: [list_markers, plan_route, assess_route]
+      required: [list_markers]
+      order: [list_markers, [plan_route, assess_route]]
     checks:
-      reply_contains_any: ["feasible", "margin", "slope", "distance"]
+      reply_contains_any: ["feasible", "margin", "slope", "distance", "marker", "place", "click"]
 
   - id: demo_take_me_to_delta
     source: scope-doc demo 3

@@ -585,7 +585,21 @@ def science_traverse(site: Site, store: SetStore | None, start, time_budget_min:
                           "stop_min": stop_minutes})
     travel_min = route["duration_min"] if route else 0.0
     total = travel_min + stop_minutes * len(order)
-    value = round(sum(s["science_value"] for s in stops_out), 3)
+    recorded = [s for s in stops_out if not s["value_assumed"]]
+    all_assumed = bool(stops_out) and not recorded
+    # a summed "science value" is only reported over stops that have a recorded value; when every stop's value is
+    # assumed there is nothing to sum and the stops were ordered by travel time alone
+    value = None if all_assumed else round(sum(s["science_value"] for s in recorded), 3)
+    weighting = None
+    if all_assumed:
+        weighting = (f"No stop has a recorded science value, so every candidate counted equally ({DEFAULT_SCIENCE_VALUE} assumed). "
+                     "Stops were chosen and ordered by travel time only, with no science weighting; this is not a ranking of "
+                     "the best science targets. Use interests= to narrow by text, mineral layer or unit, or max_stops to cap the count.")
+        notes.append(weighting)
+    elif stops_out and len(recorded) < len(stops_out):
+        weighting = (f"{len(stops_out) - len(recorded)} of {len(stops_out)} stops have an assumed value ({DEFAULT_SCIENCE_VALUE}); "
+                     "science_value_total sums only the stops with a recorded value.")
+        notes.append(weighting)
     if not order:
         hint = ("No stop fits the budget or matches: try a larger time_budget_min, different interests, or "
                 "search_pois to see candidates." if pool or interests else
@@ -593,7 +607,7 @@ def science_traverse(site: Site, store: SetStore | None, start, time_budget_min:
     else:
         hint = "Call assess_route(route_id) for go/no-go and the consumables margin, then follow_route."
     return {
-        "stops": stops_out, "route": route, "science_value_total": value,
+        "stops": stops_out, "route": route, "science_value_total": value, "science_weighting_note": weighting,
         "time": {"travel_min": round(travel_min, 1), "stops_min": round(stop_minutes * len(order), 1),
                  "total_min": round(total, 1), "budget_min": float(time_budget_min),
                  "return_to_start": bool(return_to_start)},

@@ -363,7 +363,7 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
         "values (elevation interpolated; classes and evidence tiers from the containing 2 m cell). radius_m>0 gives "
         "footprint statistics (mean/min/max, class shares, best evidence tier, unknown share): use it for pads, "
         "walking safety or outcrop checks, and read the MAX, not only the mean. 'unknown' means no data, never "
-        "safe or absent. Accepts a set or list of up to 10 locations (compact table). Use for 'what is at X?'; "
+        "safe or absent. Accepts a set or list; more than 10 locations are cut to the first 10 with a note (page the rest with get_set). Evidence lines carry per-tier area with provenance (tier 4 = rover sample, named) and a registration caveat near unit contacts or tier changes. Use for 'what is at X?'; "
         "use find_locations/find_regions/find_sites to search. Use this (not sample_terrain) for any 'what is "
         "here?' question; radius_m=0 is a point lookup. " + LOCATION_REFS + " " + UNITS + " "
         'Example: describe_location(at="poi:base", radius_m=50, layers=["slope_2m","carbonate"])'))
@@ -403,7 +403,7 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
     @tool("search_pois", (
         "Find named points of interest (landing sites, sample sites, science targets, landmarks, hazards) by text "
         "query, type and/or distance from a place. Returns id (usable as a location, e.g. poi:<id>), coordinates, "
-        "type, science value (0 to 1, null if not recorded) and distance. Use to resolve a name such as 'the delta "
+        "type (sample sites also give region, in-situ minerals and the full description with its source for up to 3 hits), science value (0 to 1, null if not recorded) and distance. Use to resolve a name such as 'the delta "
         "front' to coordinates. Use this for NAMED places; use find_sites for a mineral or geologic unit, "
         "find_locations for flat pads, find_regions for areas matching conditions. near accepts {x, y} (or the "
         "string \"x,y\"), a POI id, a marker or 'rover'; radius_m needs near. A miss lists the known POI ids. " + UNITS + " "

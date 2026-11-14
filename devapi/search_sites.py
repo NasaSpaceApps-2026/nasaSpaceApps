@@ -11,7 +11,7 @@ import math
 import numpy as np
 from scipy import ndimage
 
-from atlas_core import AtlasError, resolve_ref, route as R, search, travel
+from atlas_core import AtlasError, evidence as EV, resolve_ref, route as R, search, travel
 from atlas_core.conditions import combine, compile_all
 from atlas_core.site import TIER_NAMES, TIERS, Site
 
@@ -124,13 +124,23 @@ def search_sites(site: Site, store, body: dict) -> dict:
             tiers = layer.data[sl][cells]
             best = int(tiers.max())
             share = float((tiers >= TIERS[min_tier]).mean())
+            rr_, cc_ = np.nonzero(cells)
+            sm = EV.summarize(site, layer, rr_ + sl[0].start, cc_ + sl[1].start)
             evidence.append({"layer": layer.id, **src, "value": TIER_NAMES[best], "tier": best,
-                             "area_at_or_above_min_tier_m2": round(float(cells.sum()) * site.res_m ** 2, 1)})
+                             "area_at_or_above_min_tier_m2": round(float(cells.sum()) * site.res_m ** 2, 1),
+                             "area_by_tier_m2": sm["area_by_tier_m2"], "orbital_source": sm["orbital_source"],
+                             "best_tier_basis": ("rover sample: " + ("; ".join(x["name"] for x in sm["in_situ"]["samples"])
+                                                                      or "sample not identified")
+                                                 if best == 4 and sm.get("in_situ") else f"orbital: {sm['orbital_source']}"),
+                             **({"in_situ": sm["in_situ"]} if sm.get("in_situ") else {})})
             best_tier, best_name = best, TIER_NAMES[best]
+            area_by_tier = sm["area_by_tier_m2"]
+            basis = evidence[-1]["best_tier_basis"]
         else:
             evidence.append({"layer": layer.id, **src, "value": t["class"],
                              "area_m2": round(float(cells.sum()) * site.res_m ** 2, 1)})
             best_tier = best_name = None
+            area_by_tier = basis = None
         mean_slope = None
         if slope is not None:
             vals = slope[sl][cells]
@@ -144,7 +154,8 @@ def search_sites(site: Site, store, body: dict) -> dict:
         sites.append({
             "id": m["id"], "x": m["x"], "y": m["y"], "z": round(z, 2) if math.isfinite(z) else None,
             "lat": m["lat"], "lon": m["lon"], "best_tier": best_tier, "best_tier_name": best_name,
-            "area_m2": m["area_m2"], "mean_slope_deg": mean_slope,
+            "area_m2": m["area_m2"], "area_by_tier_m2": area_by_tier, "best_tier_basis": basis,
+            "mean_slope_deg": mean_slope,
             "distance_m": round(math.hypot(m["x"] - near["x"], m["y"] - near["y"]), 1),
             "reachable": bool(math.isfinite(reach_m)),
             "walk_distance_m": round(reach_m, 1) if math.isfinite(reach_m) else None,
@@ -161,4 +172,5 @@ def search_sites(site: Site, store, body: dict) -> dict:
         "filters": {"min_tier": min_tier, "radius_m": body.get("radius_m"), "max_slope_deg": body.get("max_slope_deg"),
                     "min_area_m2": min_area, "reachability_profile": profile},
         "assumptions": res["assumptions"], "diagnostics": res["diagnostics"], "hint": hint,
+        "registration_notes": EV.caveat_texts(site, [layer.id]),
     }

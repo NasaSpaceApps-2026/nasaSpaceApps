@@ -92,6 +92,28 @@ An **evidence layer** stores the tier per cell plus the contributing source ids.
 are built by the pipeline from mineral and geology sources. Tier definitions per source live in
 the catalogue, with citations.
 
+**Provenance per tier (honesty fields).** Tier 4 is a statement about a rover sample, never about an orbital
+instrument; orbital tiers (2, 3, and 0) belong to the orbital instrument. The catalogue entry of an evidence layer may carry
+`tier_sources`: `{tier name: {kind: "orbital"|"rover_sample", platform, instrument, citation, samples?}}`; for
+`confirmed_in_situ`, `samples` lists `{poi, name, sample_no, x, y, radius_m, citation}` for every sample POI that justifies a
+tier-4 mark. A layer may also carry `registration` (`contact_caveat_m`, plus for the geologic map `shift_applied`,
+`mosaic_offset_*`, `applied_shift_*`, `residual_spread_*`; for CRISM `pixel_m`, `residual_measured`). Results derive from these:
+
+- `find_regions` members, `find_locations` members (top spots), `describe_location` locations and `find_sites` sites carry
+  `evidence: {layer: {best_tier, best_tier_name, area_by_tier_m2 {tier name: m2}, total_area_m2, orbital_source, in_situ?}}`
+  where `in_situ = {area_m2, platform, samples: [{poi, name, citation}]}`. `area_m2` of a region is the whole connected region;
+  read the size of a tier from `area_by_tier_m2` only. `no_coverage` appears as a key when cells have no data.
+- `near_boundary_of: [layer ids]` on a member or location means its footprint is within `contact_caveat_m` (100 m for the
+  geologic map, 36 m for CRISM) of a unit contact or tier change. The result then has `registration_notes: {key: text}`
+  (always present for region searches on a registration layer, because region edges follow the layer boundary).
+- `nearest` pairs keep `from_evidence` / `to_evidence` of regions, and `to_x`, `to_y`.
+- `describe_location.nearest_ground_truth` names the `sample` (`name`, `poi`, `source`, `in_situ_minerals`,
+  `mineral_statement`) and a `citation`; with more than 10 locations it describes the first 10 and sets
+  `truncated: {shown, total, note}` instead of failing.
+- `plan_science_traverse`: `science_value_total` is `null` when every stop's value is assumed (`science_weighting_note` says
+  stops were ordered by travel time only); with a mix it sums recorded values only.
+- `follow_route` adds `profile_warning` when the route was planned under a different profile than the rover drives with.
+
 ### 3.4 Profiles
 
 A profile is a named, cited bundle of conditions and parameters, stored in `profiles.yaml`

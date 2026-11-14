@@ -111,10 +111,16 @@ def main():
         res["median_dy_north_m"] = round(float(np.median(good[:, 1])), 1)
         res["median_magnitude_m"] = round(float(np.median(mag)), 1)
         res["tile_magnitude_range_m"] = [round(float(mag.min()), 1), round(float(mag.max()), 1)]
+        # consistency of the shift VECTOR across tiles: distance of each tile's shift from the median shift vector
+        dev = np.hypot(good[:, 0] - np.median(good[:, 0]), good[:, 1] - np.median(good[:, 1]))
+        res["tile_spread_max_m"] = round(float(dev.max()), 1)
+        res["tile_spread_rms_m"] = round(float(np.sqrt((dev ** 2).mean())), 1)
+        res["consistent_lt_30m"] = bool(dev.max() < 30.0)
     res["summary"] = (f"cross-correlating the SIM 3464 base CTX mosaic (Caltech Feb 2018) with a hillshade of our elevation (best sun azimuth {az} deg, "
                       f"best whole-site correlation peak {best[1]:.2f}) gives a whole-site shift of the mosaic of {whole[0]*RES:+.0f} m east, {whole[1]*RES:+.0f} m north "
                       f"(correlation peak {whole[2]:.2f}); per-tile (2 km) shifts of {len(good)} tiles have median magnitude "
                       f"{res.get('median_magnitude_m', float('nan')):.0f} m (range {res.get('tile_magnitude_range_m', ['n/a','n/a'])[0]}-{res.get('tile_magnitude_range_m', ['n/a','n/a'])[1]} m). "
+                      f"Spread of the tile shift vectors about their median: max {res.get('tile_spread_max_m', float('nan')):.0f} m, rms {res.get('tile_spread_rms_m', float('nan')):.0f} m. "
                       "Positive east/north = features in the mosaic (and so the unit polygons) lie that far east/north of the same features in our elevation frame. "
                       "This is an image-to-hillshade correlation (illumination and albedo differ), accurate to roughly one 8 m pixel at best.")
     OUTJ.write_text(json.dumps(res, indent=1))

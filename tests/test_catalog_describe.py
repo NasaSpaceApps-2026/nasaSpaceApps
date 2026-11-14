@@ -116,9 +116,9 @@ def test_layer_subset_and_unknown_layer(site, store):
 def test_set_and_limit(site, store):
     members = [{"x": float(i), "y": 0.0, "lat": 0, "lon": 0, "score": i} for i in range(1, 12)]
     s = store.create("spots", "test", {}, members)
-    with pytest.raises(AtlasError) as e:
-        describe_location(site, store, s.set_id)
-    assert "get_set" in e.value.hint
+    big = describe_location(site, store, s.set_id)          # 11 members: first 10 described, the rest summarised
+    assert len(big["locations"]) == 10
+    assert big["truncated"]["total"] == 11 and "get_set" in big["truncated"]["note"]
     ok = describe_location(site, store, [m["id"] for m in s.members[:10]])
     assert len(ok["locations"]) == 10
     with pytest.raises(AtlasError):

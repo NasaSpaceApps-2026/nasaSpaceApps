@@ -353,13 +353,19 @@ def nearest(site: Site, store: SetStore, from_ref, to_ref, metric: str = "walk_t
             unreachable.append(f.get("id"))
             continue
         t = tp[ti]
-        members.append({
+        pair = {
             "from_id": f.get("id"), "from_name": f.get("name"),
             "to_id": t.get("id"), "to_name": t.get("name"),
             "x": f["x"], "y": f["y"], "lat": f.get("lat"), "lon": f.get("lon"),
             "cost": round(float(cost), 3), "cost_metric": metric,
             "straight_m": round(_euclid(f, t), 2), "score": round(float(cost), 3),
-        })
+        }
+        for side, mem in (("from", f), ("to", t)):       # keep the evidence tiers of regions/spots (with provenance)
+            if mem.get("evidence"):
+                pair[f"{side}_evidence"] = mem["evidence"]
+        if t.get("x") is not None:
+            pair["to_x"], pair["to_y"] = t["x"], t["y"]
+        members.append(pair)
     members.sort(key=lambda m: m["cost"])     # stable: ties keep `from` order
     ps = store.create("pairs", "nearest",
                       {"from": from_ref, "to": to_ref, "metric": metric, "profile": profile}, members)

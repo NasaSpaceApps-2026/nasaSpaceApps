@@ -200,6 +200,10 @@ AMALIK = ("Williams et al. 2023, LPSC 54 abstract (NTRS 20230000588): at Cape Nu
           "were detected by SCAM LIBS and VISIR'; Amalik is the location of cores Shuyak and Mageik. Hurowitz et al. 2023 "
           "(Goldschmidt, doi:10.7185/gold2023.18487): PIXL finds an 'altered olivine-dominated' source at the base of the Cape Nukshak "
           "section (Amalik member). Section-level statements applied at the sample site; no per-sample mineralogy was read.")
+SEITAH_CITE = "Farley et al. 2022, Science 377, doi:10.1126/science.abo2196 (Seitah unit statement, unit-level)"
+AMALIK_CITE = ("Williams et al. 2023, LPSC 54 (NTRS 20230000588) and Hurowitz et al. 2023 (doi:10.7185/gold2023.18487) "
+               "(Cape Nukshak / Amalik section-level statements)")
+INSITU_CITE = {4: SEITAH_CITE, 5: SEITAH_CITE, 6: SEITAH_CITE, 7: SEITAH_CITE, 14: AMALIK_CITE, 15: AMALIK_CITE}
 INSITU = {
     4: {"olivine": SEITAH, "carbonate": SEITAH}, 5: {"olivine": SEITAH, "carbonate": SEITAH},
     6: {"olivine": SEITAH, "carbonate": SEITAH}, 7: {"olivine": SEITAH, "carbonate": SEITAH},
@@ -240,11 +244,28 @@ def sim_gdb() -> Path:
     return gdb
 
 
+# Apply the measured registration shift to the geologic polygons (sitebuild/measure_geo_offset.py). Applied only when
+# the measurement is consistent across tiles (spread of the per-tile shift vectors < GEO_SHIFT_MAX_SPREAD_M).
+APPLY_GEO_SHIFT = True
+GEO_SHIFT_MAX_SPREAD_M = 30.0
 UNIT_FIX = {"Crater riim unit": "Crater rim unit"}      # typo in the database attribute table (1 polygon)
 
 
-def build_geologic_unit():
+def geo_shift(info=None):
+    """(dx, dy) in metres to ADD to the polygon coordinates so they line up with our elevation frame, or None.
+    The measurement says the mosaic (and polygons) lie +dx east / +dy north of our frame, so we move them by -dx, -dy."""
+    info = info if info is not None else geo_offset_info()
+    if not APPLY_GEO_SHIFT or not info or not info.get("consistent_lt_30m"):
+        return None
+    if info.get("tile_spread_max_m", 1e9) >= GEO_SHIFT_MAX_SPREAD_M:
+        return None
+    return (-float(info["median_dx_east_m"]), -float(info["median_dy_north_m"]))
+
+
+def build_geologic_unit(shift=None):
     from pyogrio.raw import read
+    from shapely.affinity import translate
+    from shapely.geometry import shape as _shape
     from shapely import from_wkb
     from shapely.geometry import mapping
     gdb = sim_gdb()
@@ -263,6 +284,8 @@ def build_geologic_unit():
     items = []
     for name, sym, g in recs:
         gg = transform_geom(src, dst, mapping(g))
+        if shift is not None:
+            gg = mapping(translate(_shape(gg), shift[0], shift[1]))
         items.append((name, sym, gg, g.area))
     # class codes: unit names sorted by area inside the site, largest first -> stable and readable
     tr = site_transform(N, RES)
@@ -405,6 +428,20 @@ def disc_mask(shape_xy, cx, cy, r):
     return m
 
 
+def tier_sources(lid, crism_src, samples):
+    """Per-tier provenance. Orbital tiers: MRO/CRISM. confirmed_in_situ: the rover samples that justify it (never CRISM)."""
+    orb = dict(kind="orbital", platform=crism_src["mission"], instrument=crism_src["instrument"], citation=crism_src["citation"])
+    out = {"not_detected": dict(orb, note="CRISM classified the pixel as a different prototype; absence of evidence"),
+           "weak_orbital": dict(orb), "strong_orbital": dict(orb)}
+    if samples:
+        out["confirmed_in_situ"] = dict(
+            kind="rover_sample", platform="Mars 2020 Perseverance (rover), NOT an orbital instrument",
+            instrument="not stated per sample: the cited statements are unit/section-level, read from abstracts",
+            citation="; ".join(sorted({x["citation"] for x in samples})), samples=samples,
+            note="placed at a position derived from rover waypoints (10-50 m radius); not an official sample coordinate")
+    return out
+
+
 def geo_offset_info():
     p = RAW / "usgs_sim3464/offset_measurement.json"
     return json.loads(p.read_text()) if p.exists() else None
@@ -494,16 +531,35 @@ def run(out_dir: Path = OUT, make_figure: bool = True):
     report["samples_excluded"] = [d["no"] for d in der if d not in inside]
 
     # ---- 3. geologic units
-    unit, uclasses = build_geologic_unit()
+    off_info = geo_offset_info()
+    shift = geo_shift(off_info)
+    unit, uclasses = build_geologic_unit(shift)
     write_tif(OUT / "geologic_unit.tif", unit, "int16", -1)
     sh = {uclasses[int(k)]: round(float((unit == k).mean()), 4) for k in uclasses}
     report["geologic_shares"] = sh
     report["geologic_unassigned"] = float((unit < 0).mean())
-    off_info = geo_offset_info()
+    report["geologic_shift_applied_m"] = shift
     if off_info:
         off_txt = (f" Measured by this build (sitebuild/measure_geo_offset.py): {off_info['summary']}")
     else:
         off_txt = " (This build did not measure the offset.)"
+    if shift is not None:
+        shift_txt = (f" SHIFT APPLIED: the polygons were moved {shift[0]:+.1f} m east and {shift[1]:+.1f} m north (the inverse of the measured "
+                     f"mosaic offset, per-tile median) because the per-tile shift vectors agree (max deviation {off_info['tile_spread_max_m']:.0f} m, "
+                     f"rms {off_info['tile_spread_rms_m']:.0f} m, below {GEO_SHIFT_MAX_SPREAD_M:.0f} m). Residual error is not zero: expect "
+                     "up to about 25 m of unexplained spread plus contact-drawing error at 1:75,000, so unit boundaries remain approximate.")
+        registration = dict(shift_applied=True, mosaic_offset_east_m=off_info["median_dx_east_m"],
+                            mosaic_offset_north_m=off_info["median_dy_north_m"],
+                            applied_shift_east_m=round(shift[0], 1), applied_shift_north_m=round(shift[1], 1),
+                            residual_spread_max_m=off_info["tile_spread_max_m"], residual_spread_rms_m=off_info["tile_spread_rms_m"],
+                            n_tiles=off_info["n_tiles_used"], contact_caveat_m=100.0,
+                            note="measured by image-to-hillshade correlation; residual spread across tiles, not absolute accuracy")
+    else:
+        shift_txt = " No shift has been applied."
+        registration = dict(shift_applied=False, contact_caveat_m=100.0,
+                            mosaic_offset_east_m=(off_info or {}).get("median_dx_east_m"),
+                            mosaic_offset_north_m=(off_info or {}).get("median_dy_north_m"),
+                            note="offset not applied (measurement missing or inconsistent)")
     geo_entry = dict(
         id="geologic_unit", kind="categorical", file="geologic_unit.tif",
         title="Geologic units (USGS SIM 3464, interim)", units=None, resolution_m=RES,
@@ -517,10 +573,11 @@ def run(out_dir: Path = OUT, make_figure: bool = True):
         quality=("REGISTRATION: the USGS readme states the map 'will have random offsets of about 100-200 meters from the surface operations CTX mosaic' "
                  "(the controlled mosaic our HiRISE/CTX elevation is tied to), i.e. 50-100 cells at 2 m; unit boundaries will NOT line up with the "
                  "HiRISE hillshade at cell level and a point within about 200 m of a contact may be on either unit." + off_txt +
-                 " No shift has been applied. One database polygon is labelled 'Upper etched unit' with symbol Nnp and code 5 (an attribute "
+                 shift_txt +
+                 " One database polygon is labelled 'Upper etched unit' with symbol Nnp and code 5 (an attribute "
                  "inconsistency in the source); this and a typo ('riim') are kept/fixed by name only. -1 = no polygon "
                  f"({report['geologic_unassigned']:.2%} of the site). " + INTERIM),
-        coverage="site",
+        coverage="site", registration=registration,
         source=dict(mission="USGS Astrogeology (map based on MRO CTX)", instrument="geologic mapping on a semi-controlled CTX mosaic",
                     product="SIM 3464 database, Nili.gdb / GeoUnits_v1 (MTM central meridian 77.5 E, Mars 2000 sphere R=3396190 m)",
                     citation="Sun, V.Z. and Stack, K.M., 2020, Geologic map of Jezero crater and the Nili Planum region, Mars: USGS SIM 3464, doi:10.3133/sim3464",
@@ -540,6 +597,7 @@ def run(out_dir: Path = OUT, make_figure: bool = True):
 
     # ---- 5. confirmed_in_situ at sample sites (only where INSITU says a source states the mineral)
     marked = []
+    insitu_samples: dict[str, list] = {}
     for p in sample_pois:
         no = int(p["id"].split("_")[1])
         for lid in INSITU.get(no, {}):
@@ -547,6 +605,8 @@ def run(out_dir: Path = OUT, make_figure: bool = True):
             m = disc_mask(None, p["x"], p["y"], r)
             ev[lid][m] = TIERS["confirmed_in_situ"]
             marked.append((no, lid, r, int(m.sum())))
+            insitu_samples.setdefault(lid, []).append(dict(
+                poi=p["id"], name=p["name"], sample_no=no, x=p["x"], y=p["y"], radius_m=r, citation=INSITU_CITE[no]))
     report["in_situ_marked"] = marked
 
     crism_src = dict(
@@ -583,7 +643,10 @@ def run(out_dir: Path = OUT, make_figure: bool = True):
                      "brightness, so each colour is fitted as s x (bold prototype RGB); s >= 0.8 is read as bold (the documented bold and subdued tones are 1.0 and 0.6 of the bold "
                      "RGB), 0.4 <= s < 0.8 as subdued, s < 0.4 as undecodable. The 0.8 split and the 14-unit tolerance are our choices. Four CRISM scenes of different dates and "
                      "observing conditions were mosaicked, so detection sensitivity varies spatially. " + INTERIM),
-            coverage="partial", source=dict(crism_src), )
+            coverage="partial", source=dict(crism_src),
+            tier_sources=tier_sources(lid, crism_src, insitu_samples.get(lid)),
+            registration=dict(pixel_m=36.0, residual_measured=False, contact_caveat_m=36.0,
+                              note="CRISM-to-terrain registration residual was not measured"), )
         cfg["layers"].append(entry)
         write_tif(OUT / f"{lid}.tif", t, "int8", -1)
         report.setdefault("tier_shares", {})[lid] = tier_shares(t)
@@ -639,7 +702,7 @@ def figure(out_dir, unit, uclasses, ev, wps, sample_pois, region_pois, cls):
         ax[0].annotate(p["name"].replace(" (sampling area)", ""), (p["x"], p["y"]), (p["x"] - 450, p["y"] + 120), color="yellow", fontsize=8)
     ax[0].plot(*lonlat_to_xy(77.4508, 18.4447), "r+", ms=16, mew=2)
     ax[0].set_xlim(-HALF, HALF); ax[0].set_ylim(-HALF, HALF)
-    base(ax[1], "geologic units (USGS SIM 3464), outlines on hillshade; NOT shifted (mosaic ~100 m offset, see catalogue)")
+    base(ax[1], "geologic units (USGS SIM 3464), outlines on hillshade (registration shift per catalogue)")
     xs = np.linspace(-HALF, HALF, unit[::st, ::st].shape[1]); ys = np.linspace(HALF, -HALF, unit[::st, ::st].shape[0])
     handles = []
     for k, nm in uclasses.items():
@@ -704,7 +767,7 @@ All entries below are interim layers for the query engine, to be replaced by the
 | traverse.geojson, waypoints | NASA/JPL-Caltech Mars 2020 MMGIS: {URL_TRAVERSE} ; {URL_WAYPOINTS} (ETags fafb42a0..., 6e29cc7b...; last modified 2026-10-28) | No licence text on the endpoints; NASA content generally not copyrighted, credit NASA/JPL-Caltech | Lat is planetocentric, lon east. Clipped to the site + 100 m. First waypoint (sol 13, RMC 3_0, 'Site increment, no motion') equals the PDS PLACES SITE 1 position. |
 | sample_site POIs ({report['n_sample_pois']}) | NASA Mars Rock Samples list {URL_SAMPLES}; positions derived from the MMGIS waypoint at or before the sol sealed | NASA/JPL-Caltech | Positions are APPROXIMATE and derived, not official. Samples {', '.join(map(str, report['samples_excluded']))} fall outside the site or have no derived position inside it. |
 | named_region POIs ({report['n_region_pois']}) | Centroids of derived sample positions per NASA 'Sampling Location' | derived | Mark where the rover sampled, not the region's extent. No gazetteer coordinates used. |
-| geologic_unit | USGS SIM 3464 database {URL_SIM} (GeoUnits_v1) | USGS; public-domain status not verified | 100-200 m registration offset to CTX per the readme. {('Measured: ' + off_info['summary']) if off_info else ''} |
+| geologic_unit | USGS SIM 3464 database {URL_SIM} (GeoUnits_v1) | USGS; public-domain status not verified | 100-200 m registration offset to CTX per the readme. {('Measured: ' + off_info['summary']) if off_info else ''} Polygon shift applied (east, north m): {report.get('geologic_shift_applied_m')}. |
 | carbonate, olivine, fe_mg_smectite, high_ca_pyroxene, low_ca_pyroxene, kaolinite, mg_smectite_2 | Parente et al. 2021, Zenodo {URL_PARENTE} (doi:10.5281/zenodo.5575824), jezeroFinal.tif + Jezero_readme.pdf | CC BY 4.0 | 36 m native, nearest to 2 m. Black = no_coverage. Tier mapping per docs/data-inventory-minerals.md section 1e with our decode rules (see layer 'quality'). |
 | confirmed_in_situ marks | Farley et al. 2022 (Seitah olivine, Mg-Fe carbonate; Europe PMC abstract); Williams et al. 2023 LPSC (olivine, pyroxene at Cape Nukshak; Amalik serpentine); Hurowitz et al. 2023 Goldschmidt (olivine-dominated source, Amalik) | papers / abstracts | Only at sample POIs {sorted(INSITU)}; unit/section-level statements applied at derived positions. Delta-front Fe-bearing carbonate (Hurowitz) is NOT marked: it is stated per section, not per sample. |
 

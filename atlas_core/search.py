@@ -58,6 +58,7 @@ import numpy as np
 from scipy import ndimage
 from scipy.signal import fftconvolve
 
+from . import evidence as ev
 from . import travel
 from .conditions import combine, compile_all, merge_profile
 from .errors import AtlasError
@@ -73,6 +74,18 @@ _REG_OBJECTIVES = ("largest", "closest", "flattest")
 
 
 # ---------------------------------------------------------------- helpers
+
+
+def _evidence_layers(site: Site, conds, objective_layer) -> list[str]:
+    ids = [l for l in ev.referenced_layers(conds) if l in site.layers and site.layers[l].kind == "evidence"]
+    if objective_layer and objective_layer not in ids:
+        ids.append(objective_layer)
+    return list(dict.fromkeys(ids))
+
+
+def _registration_notes(site: Site, conds, objective_layer) -> dict:
+    ids = ev.referenced_layers(conds) + ([objective_layer] if objective_layer else [])
+    return ev.caveat_texts(site, ids)
 
 
 def _pct(f: float) -> str:
@@ -373,6 +386,18 @@ def find_locations(site: Site, store: SetStore, conditions: list[dict] | None = 
         members.append({"x": x, "y": y, "lat": lat, "lon": lon, "score": score,
                         "clear_radius_m": round(clear, 4), "attributes": attrs})
 
+    # evidence tiers / registration flags for the top spots only (the stored tail stays lean)
+    ev_ids = _evidence_layers(site, conds, ev_layer)
+    reg_ids = ev.referenced_layers(conds) + ([ev_layer] if ev_layer else [])
+    if ev_ids or reg_ids:
+        for m in members[:max(limit, 50)]:
+            fr, fc = ev.disc_cells(site, m["x"], m["y"], R)
+            if ev_ids:
+                m["evidence"] = {lid: ev.summarize(site, site.layers[lid], fr, fc) for lid in ev_ids}
+            fl = ev.boundary_flags(site, reg_ids, fr, fc)
+            if fl:
+                m["near_boundary_of"] = fl
+
     query = {"tool": "find_locations", "conditions": copy.deepcopy(conds), "profile": profile,
              "footprint_radius_m": R, "within": copy.deepcopy(within), "objective": objective,
              "spacing_m": spacing_m, "limit": limit}
@@ -386,9 +411,13 @@ def find_locations(site: Site, store: SetStore, conditions: list[dict] | None = 
         assumptions.append({"what": f"stored set truncated at {MAX_STORED_SPOTS} spots", "source": "implementation limit"})
 
     hint = _loc_hint(s.set_id, s.count, compiled, diagnostics, R, within, objective, valid, rr.size)
-    return {"set_id": s.set_id, "count": s.count,
-            "results": copy.deepcopy(s.members[:limit]), "objective": objective,
-            "assumptions": assumptions, "diagnostics": diagnostics, "hint": hint}
+    out = {"set_id": s.set_id, "count": s.count,
+           "results": copy.deepcopy(s.members[:limit]), "objective": objective,
+           "assumptions": assumptions, "diagnostics": diagnostics, "hint": hint}
+    notes = _registration_notes(site, conds, ev_layer)
+    if notes:
+        out["registration_notes"] = notes
+    return out
 
 
 def _fmt_num(v: float) -> str:
@@ -450,6 +479,7 @@ def find_regions(site: Site, store: SetStore, conditions: list[dict] | None = No
     slope = site.layers["slope_2m"].data if "slope_2m" in site.layers else None
     metric = within["metric"] if within is not None else None
 
+    ev_ids = _evidence_layers(site, conds, ev_layer)
     recs = []
     for i in keep_ids:
         sl = slices[i - 1]
@@ -479,8 +509,9 @@ def find_regions(site: Site, store: SetStore, conditions: list[dict] | None = No
             attrs[metric] = round(wmin, 4)
         if ev_layer is not None:
             tmax = int(site.layers[ev_layer].data[rows, cols].max())
+        evd = {lid: ev.summarize(site, site.layers[lid], rows, cols) for lid in ev_ids} if ev_ids else None
         recs.append({"i": i, "x": x, "y": y, "area": float(areas[i]), "bbox": [xmin, ymin, xmax, ymax],
-                     "attrs": attrs, "smean": smean, "wmin": wmin,
+                     "attrs": attrs, "smean": smean, "wmin": wmin, "evidence": evd,
                      "tmax": tmax if ev_layer is not None else None})
 
     def key(rec):
@@ -507,8 +538,11 @@ def find_regions(site: Site, store: SetStore, conditions: list[dict] | None = No
             score = rec["smean"]
         else:
             score = rec["tmax"]
-        members.append({"x": rec["x"], "y": rec["y"], "lat": lat, "lon": lon, "score": score,
-                        "area_m2": rec["area"], "bbox": rec["bbox"], "attributes": rec["attrs"]})
+        mem = {"x": rec["x"], "y": rec["y"], "lat": lat, "lon": lon, "score": score,
+               "area_m2": rec["area"], "bbox": rec["bbox"], "attributes": rec["attrs"]}
+        if rec["evidence"]:
+            mem["evidence"] = rec["evidence"]
+        members.append(mem)
 
     query = {"tool": "find_regions", "conditions": copy.deepcopy(conds), "profile": profile,
              "min_area_m2": float(min_area_m2), "within": copy.deepcopy(within),
@@ -536,5 +570,9 @@ def find_regions(site: Site, store: SetStore, conditions: list[dict] | None = No
             biggest = float(areas[1:].max())
             hint = (f"{nlab} connected area(s) match, but the largest is {biggest:.0f} m2, below "
                     f"min_area_m2 = {_fmt_num(float(min_area_m2))}. Lower min_area_m2 or relax the conditions.")
-    return {"set_id": s.set_id, "count": s.count, "results": copy.deepcopy(s.members[:limit]),
-            "objective": objective, "assumptions": assumptions, "diagnostics": diagnostics, "hint": hint}
+    out = {"set_id": s.set_id, "count": s.count, "results": copy.deepcopy(s.members[:limit]),
+           "objective": objective, "assumptions": assumptions, "diagnostics": diagnostics, "hint": hint}
+    notes = _registration_notes(site, conds, ev_layer)
+    if notes:
+        out["registration_notes"] = notes
+    return out

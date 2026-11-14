@@ -47,6 +47,8 @@ def source_label(src) -> str:
         return "citation pending"
     if low in ("user-specified", "user-supplied", "user"):
         return "user-specified"
+    if low.startswith("user") or "default" in low:
+        return s                                         # user input or tool default, not a citation
     if low.startswith("default"):
         return s                                         # a tool default, not a citation
     return f"cited: {s}"
@@ -65,6 +67,86 @@ def with_banner(text: str, synthetic: bool) -> str:
 
 def _lines(*items) -> str:
     return "\n".join(i for i in items if i)
+
+
+# ---- evidence provenance, per-tier areas, registration caveats --------------------------------
+
+_TIER_ORDER = ("confirmed_in_situ", "strong_orbital", "weak_orbital", "inferred_from_unit", "not_detected", "no_coverage")
+TIER_GLOSS = {
+    "not_detected": "covered, nothing detected (absence of evidence, not absence of the mineral)",
+    "no_coverage": "no data here (cannot answer)",
+}
+
+
+def area_text(m2) -> str:
+    if m2 is None:
+        return "n/a"
+    return f"{m2 / 1e6:.2f} km2" if m2 >= 1e5 else f"{num(m2, 0)} m2"
+
+
+def _samples_text(e: dict) -> str:
+    s = (e.get("in_situ") or {}).get("samples") or []
+    return "; ".join(x["name"] for x in s) or "sample not identified"
+
+
+def ev_breakdown(e: dict) -> str:
+    """Per-tier areas with provenance: orbital tiers cite the orbital instrument, tier 4 names the rover sample(s)."""
+    by = e.get("area_by_tier_m2") or {}
+    parts = []
+    for n in _TIER_ORDER:
+        if n not in by:
+            continue
+        tag = ""
+        if n == "confirmed_in_situ":
+            tag = f" [rover sample: {_samples_text(e)}]" if e.get("in_situ") else " [rover sample, source not recorded]"
+        elif n in ("strong_orbital", "weak_orbital"):
+            tag = f" [orbital: {e.get('orbital_source', '?')}]"
+        elif n == "not_detected":
+            tag = f" [covered by {e.get('orbital_source', '?')}, nothing detected: absence of evidence]"
+        elif n == "no_coverage":
+            tag = " [no data, cannot answer]"
+        parts.append(f"{n} {area_text(by[n])}{tag}")
+    return ", ".join(parts)
+
+
+def ev_headline(layer: str, e: dict) -> str:
+    """Best tier with its basis, then the area split (never the region total next to the best tier)."""
+    if e.get("best_tier") is None:
+        return f"{layer}: no_coverage (no data here, cannot answer)"
+    return f"{layer} best tier {e['best_tier']} {e['best_tier_name']}; area by tier: {ev_breakdown(e)}"
+
+
+def insitu_sources_line(evs) -> str | None:
+    """One line naming each rover sample behind a tier-4 mark, with its citation."""
+    by_cite: dict = {}
+    for e in evs:
+        for s in (e.get("in_situ") or {}).get("samples") or []:
+            names = by_cite.setdefault(s.get("citation"), [])
+            if s["name"] not in names:
+                names.append(s["name"])
+    if not by_cite:
+        return None
+    return ("Tier 4 (confirmed_in_situ) is a rover sample claim, placed at a derived position (10-50 m), NOT an orbital detection. Sources: "
+            + "; ".join(f"{', '.join(n)}: {c}" for c, n in by_cite.items()) + ".")
+
+
+def _short_cite(c) -> str | None:
+    import re
+    if not c:
+        return None
+    m = re.match(r"[^,(;]*?\d{4}", str(c))
+    return m.group(0) if m else str(c)[:60]
+
+
+def registration_lines(d: dict) -> list[str]:
+    return list((d.get("registration_notes") or {}).values())
+
+
+def _flags(m: dict) -> str:
+    f = m.get("near_boundary_of")
+    if not f:
+        return ""
+    return f" [footprint near a boundary of {', '.join(f) if len(f) <= 3 else str(len(f)) + ' layers'}: see caveat]"
 
 
 # ---- errors -------------------------------------------------------------------------------
@@ -144,15 +226,16 @@ def fmt_layer(d: dict) -> str:
 
 # ---- describe_location --------------------------------------------------------------------
 
-def _value_text(v: dict, area: bool) -> str:
+def _value_text(v: dict, area: bool, evidence_layer: bool = False) -> str:
     if v.get("unknown"):
-        return "unknown (no data)"
+        return ("unknown = no_coverage: " + TIER_GLOSS["no_coverage"]) if evidence_layer else "unknown (no data)"
     if "value" in v:
         return f"{num(v['value'])}{(' ' + v['units']) if v.get('units') else ''}"
     if "class" in v:
         return v["class"]
     if "tier" in v:
-        return f"tier {v['tier']} {v['tier_name']}"
+        gl = TIER_GLOSS.get(v["tier_name"])
+        return f"tier {v['tier']} {v['tier_name']}" + (f" = {gl}" if gl else "")
     if "best_tier" in v:
         top = sorted(v["shares"].items(), key=lambda kv: -kv[1])[:3]
         s = ", ".join(f"{k} {num(f * 100, 0)}%" for k, f in top)
@@ -179,16 +262,51 @@ def fmt_describe(d: dict) -> str:
     for loc in locs:
         name = f" {loc['name']}" if loc.get("name") else ""
         out.append(f"{loc['id']}{name} {xy(loc['x'], loc['y'])} m ({loc['lat']:.4f}, {loc['lon']:.4f}):")
+        evs = loc.get("evidence") or {}
+        grouped: dict[str, list[str]] = {"not_detected": [], "no_coverage": []}
         for lid, v in loc["values"].items():
-            out.append(f"  {lid}: {_value_text(v, r > 0)}")
+            e = evs.get(lid)
+            if e is not None and r == 0 and (v.get("unknown") or v.get("tier") in (0, -1)):
+                # One line per state instead of repeating the gloss for every evidence layer.
+                grouped["no_coverage" if (v.get("unknown") or v.get("tier") == -1) else "not_detected"].append(lid)
+                continue
+            if e is not None and (r > 0 or v.get("tier") in (2, 3, 4)):
+                if v.get("unknown") or e.get("best_tier") is None:
+                    out.append(f"  {lid}: unknown = no_coverage: {TIER_GLOSS['no_coverage']}"
+                               + (f" ({num(v['unknown_fraction'] * 100, 0)}% of footprint)" if v.get("unknown_fraction") else ""))
+                elif r > 0:
+                    out.append(f"  {ev_headline(lid, e)}")
+                else:
+                    t = v["tier_name"]
+                    basis = (f"rover sample: {_samples_text(e)}" if t == "confirmed_in_situ" else f"orbital: {e.get('orbital_source', '?')}")
+                    out.append(f"  {lid}: tier {v['tier']} {t} ({basis})")
+            else:
+                out.append(f"  {lid}: {_value_text(v, r > 0, e is not None)}")
+        for state, lids in grouped.items():
+            if lids:
+                out.append(f"  {state} ({TIER_GLOSS[state]}): " + ", ".join(lids))
         out.append(f"  data quality: {loc['quality']}")
         g = loc.get("nearest_ground_truth")
         if g:
-            out.append(f"  nearest ground truth: {g['what']} at {xy(g['x'], g['y'])}, {num(g['distance_m'], 0)} m away")
+            smp = g.get("sample") or {}
+            mins = smp.get("in_situ_minerals") or []
+            cite = _short_cite(g.get("citation") if mins else None)
+            who = (f" ({smp['name']}, {smp.get('source', 'source not recorded')}; minerals measured in situ per source: "
+                   f"{', '.join(mins) if mins else 'none read (rock-type label only)'}"
+                   f"{'; ' + cite + ', full citation under the Tier 4 sources line or describe_layer' if cite else ''})") if smp else ""
+            out.append(f"  nearest ground truth: {g['what']} at {xy(g['x'], g['y'])}, {num(g['distance_m'], 0)} m away{who}")
         else:
             out.append("  nearest ground truth: none in this site")
-        if len(locs) > 1:
-            pass
+        if loc.get("near_boundary_of"):
+            nb = loc["near_boundary_of"]
+            out.append("  near a boundary of: " + (", ".join(nb) if len(nb) <= 3 else f"{', '.join(nb[:2])} and {len(nb) - 2} more layers")
+                       + " (see caveats below)")
+    src = insitu_sources_line([e for loc in locs for e in (loc.get("evidence") or {}).values()])
+    if src:
+        out.append(src)
+    out += registration_lines(d)
+    if d.get("truncated"):
+        out.append(d["truncated"]["note"])
     if r > 0:
         out.append("Note: slope/roughness max and unknown shares matter more than the mean for hazards.")
     out.append("Unknown means no data, not safe or absent. Next: describe_layer(id) for a layer's limits.")
@@ -215,7 +333,13 @@ def _member_line(m: dict, kind: str) -> str:
     if m.get("score") is not None:
         base += f", score {num(m['score'], 2)}"
     at = _attrs(m)
-    return base + (f", {at}" if at else "")
+    ev = m.get("evidence")
+    if ev:
+        if kind != "spots":
+            base = base.replace(", area ", ", region area ", 1) + " (whole region, not the area at the best tier)"
+        base += "; " + "; ".join(
+            (f"{k}: no_coverage" if e.get("best_tier") is None else ev_headline(k, e)) for k, e in ev.items())
+    return base + (f", {at}" if at else "") + _flags(m)
 
 
 def fmt_search(d: dict, kind: str) -> str:
@@ -239,6 +363,12 @@ def fmt_search(d: dict, kind: str) -> str:
     a = assumptions_line(d.get("assumptions"))
     if a:
         out.append(a)
+    src = insitu_sources_line([e for m in res for e in (m.get("evidence") or {}).values()])
+    if src:
+        out.append(src)
+    out += registration_lines(d)
+    if d.get("registration_notes") and kind != "spots":
+        out.append("Region extents follow that layer's boundaries, so their edges are uncertain by the stated distance.")
     if d.get("hint"):
         out.append("Hint: " + d["hint"])
     elif n:
@@ -254,8 +384,17 @@ def fmt_nearest(d: dict) -> str:
            + (" Walk times/distances are approximate." if d.get("approximate") else "")]
     for i, p in enumerate(res, 1):
         unit = {"walk_time_min": "min", "walk_m": "m walk", "straight_m": "m straight"}.get(p.get("cost_metric"), "")
-        out.append(f"{i}. {p['from_id']} -> {p['to_id']}: {num(p['cost'])} {unit}, straight {num(p['straight_m'], 0)} m, "
-                   f"from {xy(p['x'], p['y'])} m")
+        to_at = f" at {xy(p['to_x'], p['to_y'])}" if p.get("to_x") is not None else ""
+        evtxt = ""
+        for side in ("from", "to"):
+            for k, e in (p.get(f"{side}_evidence") or {}).items():
+                evtxt += (f"; {side} {k}: " + ("no_coverage" if e.get("best_tier") is None else
+                                               f"best tier {e['best_tier_name']} (area by tier: {ev_breakdown(e)})"))
+        out.append(f"{i}. {p['from_id']} -> {p['to_id']}{to_at}: {num(p['cost'])} {unit}, straight {num(p['straight_m'], 0)} m, "
+                   f"from {xy(p['x'], p['y'])} m" + evtxt)
+    src = insitu_sources_line([e for p in res for side in ("from", "to") for e in (p.get(f"{side}_evidence") or {}).values()])
+    if src:
+        out.append(src)
     if d.get("unreachable"):
         out.append("Unreachable from: " + ", ".join(d["unreachable"][:10]) + ".")
     for note in (d.get("notes") or [])[:4]:
@@ -305,8 +444,9 @@ def _consumables_line(c: dict | None) -> str | None:
     if not c:
         return None
     u, m = c["used"], c["margin"]
+    stops = f" including {num(c['stops_min'], 0)} min at stops" if c.get("stops_min") else ""
     return (f"Consumables (time only; EVA limit {num(c['eva_limit_min'], 0)} min, reserve "
-            f"{num(c['reserve_fraction'] * 100, 0)}%): used {num(u['minutes'])} min ({num(u['fraction'] * 100, 0)}%), "
+            f"{num(c['reserve_fraction'] * 100, 0)}%): used {num(u['minutes'])} min{stops} ({num(u['fraction'] * 100, 0)}%), "
             f"margin above reserve {num(m['minutes'])} min ({num(m['fraction'] * 100, 0)}%).")
 
 
@@ -353,7 +493,8 @@ def fmt_assess(d: dict) -> str:
     a = d["assessment"]
     verdict = "GO" if a["go"] else "NO-GO"
     return _lines(
-        f"{verdict} for {d['route_id']} ({d['profile']}): {num(d['distance_m'], 0)} m, {num(d['duration_min'])} min, "
+        f"{verdict} for {d['route_id']} ({d['profile']}): {num(d['distance_m'], 0)} m, "
+        f"{'travel ' if (d.get('consumables') or {}).get('stops_min') else ''}{num(d['duration_min'])} min, "
         f"max slope {num(d['max_slope_deg'])} deg ({_limits(d)}), ascent {num(d['ascent_m'], 0)} m.",
         _consumables_line(d.get("consumables")),
         ("Reasons: " + " ".join(a["reasons"])) if a["reasons"] else None,
@@ -369,14 +510,19 @@ def fmt_science(d: dict) -> str:
     if not d["stops"]:
         return _lines(f"No science stops fit (budget {num(t['budget_min'], 0)} min, {d['candidates_considered']} "
                       "candidate(s) considered).", "Hint: " + d["hint"])
+    sv = d.get("science_value_total")
+    sv_txt = (f"science value {num(sv, 2)} (recorded values only)" if sv is not None
+              else "no science value reported: none recorded, stops ordered by travel time only")
     lines = [f"Considered {d['candidates_considered']} candidate stop(s); selected {len(d['stops'])}. "
-             f"Traverse with {len(d['stops'])} stop(s), science value {num(d['science_value_total'], 2)}; "
+             f"Traverse with {len(d['stops'])} stop(s), {sv_txt}; "
              f"{num(t['total_min'], 0)} of {num(t['budget_min'], 0)} min ({num(t['travel_min'], 0)} travel + "
              f"{num(t['stops_min'], 0)} at stops{', returns to start' if t['return_to_start'] else ''})."]
     for i, s in enumerate(d["stops"], 1):
         v = f"{num(s['science_value'], 2)}{' (assumed, no value recorded)' if s['value_assumed'] else ''}"
         lines.append(f"{i}. {s['id']} {s.get('name') or ''} {xy(s['x'], s['y'])} m, arrive {num(s['arrive_min'], 0)} min, "
                      f"value {v}" + (f", matched: {'; '.join(s['matched_by'])}" if s["matched_by"] else ""))
+    if d.get("science_weighting_note"):
+        lines.append("Note: " + d["science_weighting_note"])
     if r:
         lines.append(f"Route {r['route_id']}: {num(r['distance_m'], 0)} m, max slope {num(r['max_slope_deg'])} deg, "
                      f"{_go_line(r.get('assessment')) or ''}")
@@ -385,7 +531,7 @@ def fmt_science(d: dict) -> str:
             lines.append(c)
     if d["skipped"]:
         lines.append("Skipped: " + "; ".join(f"{s['id']} ({s['reason']})" for s in d["skipped"][:4]) + ".")
-    for n in d.get("notes", [])[1:3]:
+    for n in [x for x in d.get("notes", [])[1:3] if x != d.get("science_weighting_note")]:
         lines.append("Note: " + n)
     lines.append("Next: assess_route(route_id) for go/no-go; set_view(highlights=[...]) to show the stops.")
     return "\n".join(lines)
@@ -415,9 +561,19 @@ def fmt_pois(d: dict) -> str:
     rows = []
     for p in ps[:12]:
         sv = p.get("science_value")
+        extra = ""
+        if p.get("type") == "sample_site":
+            mins = p.get("in_situ_minerals") or []
+            extra = (f" (region {p.get('region')}, rock type {p.get('rock_type')}; minerals measured in situ per source: "
+                     f"{', '.join(mins) if mins else 'none read'}; position approximate"
+                     + (f" +-{num(p['position_uncertainty_m'], 0)} m" if p.get("position_uncertainty_m") is not None else "") + ")")
         rows.append(f"- {p['ref']} {p.get('name') or ''} [{p.get('type')}] {xy(p['x'], p['y'])} m"
                     + (f", {num(p['distance_m'], 0)} m away" if p.get("distance_m") is not None else "")
-                    + (f", science value {num(sv, 2)}" if sv is not None else ", science value not recorded"))
+                    + (f", science value {num(sv, 2)}" if sv is not None else ", science value not recorded") + extra)
+        if p.get("description") and len(ps) <= 3:
+            rows.append("  description: " + p["description"][:900] + ("..." if len(p["description"]) > 900 else ""))
+            if p.get("source_url"):
+                rows.append(f"  source: {p['source_url']}")
     more = f" (showing {len(ps[:12])})" if d["count"] > 12 else ""
     return _lines(f"{d['count']} POI(s){more}:", *rows,
                   "Next: goto_location(target=\"poi:<id>\"), plan_route(goal=...), or fly_camera(target=...).")
@@ -524,9 +680,21 @@ def fmt_sites(d: dict) -> str:
         tier = f"best tier {s['best_tier']} {s['best_tier_name']}, " if s.get("best_tier") is not None else ""
         reach = "reachable" if s["reachable"] else "NOT reachable"
         walk = f" ({num(s['walk_distance_m'], 0)} m walk)" if s.get("walk_distance_m") is not None else ""
-        out.append(f"{i}. {s['id']} {xy(s['x'], s['y'])} m, {tier}area {num(s['area_m2'], 0)} m2, mean slope "
-                   f"{num(s['mean_slope_deg'])} deg, {num(s['distance_m'], 0)} m away, {reach}{walk}; "
-                   f"{ev['layer']} from {ev.get('mission') or '?'}/{ev.get('instrument') or '?'}")
-    out.append("Evidence is orbital detection tiers, not abundance; cite layer and mission. Hint: " + d["hint"])
+        if s.get("area_by_tier_m2"):
+            e = {"area_by_tier_m2": s["area_by_tier_m2"], "in_situ": ev.get("in_situ"),
+                 "orbital_source": ev.get("orbital_source") or f"{ev.get('mission') or '?'}/{ev.get('instrument') or '?'}"}
+            area = (f"region area {area_text(s['area_m2'])} in total (whole region, not the area at the best tier); "
+                    f"by tier: {ev_breakdown(e)}; ")
+            tier = f"best tier {s['best_tier']} {s['best_tier_name']}, "
+        else:
+            area = f"area {num(s['area_m2'], 0)} m2, "
+        out.append(f"{i}. {s['id']} {xy(s['x'], s['y'])} m, {tier}{area}mean slope "
+                   f"{num(s['mean_slope_deg'])} deg, {num(s['distance_m'], 0)} m away, {reach}{walk}; layer {ev['layer']}")
+    src = insitu_sources_line([{"in_situ": s["evidence"][0].get("in_situ")} for s in ss if s["evidence"][0].get("in_situ")])
+    if src:
+        out.append(src)
+    out += registration_lines(d)
+    out.append("Orbital tiers are detections from orbit, not abundance; region extents follow pixel/polygon boundaries and are "
+               "uncertain by the stated distance. Hint: " + d["hint"])
     out.append("Next: set_view(highlights=[ids]) to show them, plan_route(goal=\"<id>\") to get there.")
     return "\n".join(out)

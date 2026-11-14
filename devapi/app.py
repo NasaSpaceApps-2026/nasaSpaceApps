@@ -256,7 +256,8 @@ def create_app(site: Site | None = None, synthetic: bool | None = None, traverse
         z = R.terrain_z(site, p["x"], p["y"])
         lat, lon = site.xy_to_latlon(p["x"], p["y"])
         d = {k: p.get(k) for k in ("id", "name", "type", "description", "mission", "science_value", "sol",
-                                   "source_url")}
+                                   "source_url", "region", "rock_type", "in_situ_minerals",
+                                   "position_method", "position_uncertainty_m")}
         d.update({"id": p.get("id"), "x": p["x"], "y": p["y"], "z": round(z, 2) if math.isfinite(z) else None,
                   "lat": round(lat, 5), "lon": round(lon, 5), "ref": f"poi:{p.get('id')}"})
         if near is not None:

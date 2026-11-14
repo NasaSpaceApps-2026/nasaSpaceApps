@@ -264,6 +264,9 @@ class Rover:
                     reason = "replanned"
                     detail = (f"{detail}. FSD replanned from ({self.x:.0f}, {self.y:.0f}) with a {limit:g} degree "
                               f"slope limit: {new['distance_m']:.0f} m, {new['duration_min']:.0f} min as {rid}. "
+                              f"The new route plans straight from here to the original final goal and does not revisit "
+                              f"the original route's intermediate stops; about {max(route['distance_m'] - travelled, 0):.0f} m "
+                              f"of {route['route_id']} were left. "
                               "The rover has stopped; call follow_route to continue.")
                     extra = {"new_route": _brief(new)}
                 else:
@@ -437,9 +440,17 @@ class Rover:
             async with self._motion():
                 res = await self._follow(route, params, realtime, factor, timeout_s, goal)
             res["route_used"] = rid
+            if route.get("profile") and route["profile"] != self.profile:
+                rp, _ = R.route_params(self.w.site, route["profile"])
+                res["profile_warning"] = (
+                    f"Route {rid} was planned and assessed for profile {route['profile']} (no-go above "
+                    f"{rp['max_slope_deg']:g} deg) but the rover drives with profile {self.profile} (no-go above "
+                    f"{params['max_slope_deg']:g} deg), so a GO assessment does not guarantee the rover can drive it.")
+                res["note"] = ((res.get("note") + " ") if res.get("note") else "") + res["profile_warning"]
             if defaulted:
-                res["note"] = (f"route_id was not given, so the most recently planned route {rid} was used. "
-                               "Pass route_id explicitly to avoid surprises.")
+                res["note"] = ((res.get("note") + " ") if res.get("note") else "") + (
+                    f"route_id was not given, so the most recently planned route {rid} was used. "
+                    "Pass route_id explicitly to avoid surprises.")
             return res
         raise AtlasError(f"Unhandled command {cmd}.")  # pragma: no cover
 
