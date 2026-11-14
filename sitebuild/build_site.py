@@ -210,6 +210,10 @@ def main():
         for p in pois]}
     (OUT / "pois.geojson").write_text(json.dumps(fc, indent=1))
 
+    # --- INTERIM science layers + points (traverse, samples, geologic units, CRISM evidence) ---
+    import science
+    science.run(OUT)
+
     # --- reports + figures -------------------------------------------------------------
     s = slope[np.isfinite(slope)]
     h0 = q == 0
