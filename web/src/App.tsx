@@ -133,6 +133,7 @@ export default function App() {
           document.title = 'READY'
         }
       })
+      ;(window as unknown as { __viewer?: Cesium.Viewer }).__viewer = v
       setSite(s)
       setViewer(v)
       fly(v, s, (new URLSearchParams(location.search).get('view') as Mode) || 'site', 0)
@@ -167,6 +168,7 @@ export default function App() {
             {L.title} <small>({L.mission} {L.instrument})</small>
           </label>
         ))}
+        <small>Ground: drag = look · Orbit/site: drag = rotate, right-drag = tilt · wheel = zoom</small>
         <small>{status}</small>
         <small>{hud}</small>
       </div>
@@ -174,8 +176,27 @@ export default function App() {
   )
 }
 
+/** Mouse controls per camera mode. Ground = first-person look; orbit/site = rotate planet + tilt. */
+function applyControls(v: Cesium.Viewer, mode: Mode) {
+  const c = v.scene.screenSpaceCameraController
+  const T = Cesium.CameraEventType, K = Cesium.KeyboardEventModifier
+  const ctl = c as unknown as Record<string, unknown>
+  if (mode === 'ground') {
+    ctl.lookEventTypes = T.LEFT_DRAG // drag = look around (yaw + pitch)
+    ctl.rotateEventTypes = { eventType: T.LEFT_DRAG, modifier: K.SHIFT } // shift+drag = swing around
+    ctl.tiltEventTypes = [T.MIDDLE_DRAG, T.PINCH]
+    ctl.zoomEventTypes = [T.WHEEL, T.PINCH, T.RIGHT_DRAG] // wheel / right-drag = move forward/back
+  } else {
+    ctl.rotateEventTypes = T.LEFT_DRAG // drag = rotate planet
+    ctl.tiltEventTypes = [T.RIGHT_DRAG, T.MIDDLE_DRAG, T.PINCH] // right-drag up/down = tilt
+    ctl.lookEventTypes = { eventType: T.LEFT_DRAG, modifier: K.SHIFT }
+    ctl.zoomEventTypes = [T.WHEEL, T.PINCH]
+  }
+}
+
 function fly(v: Cesium.Viewer, s: Site, mode: Mode, duration: number) {
   const lat0 = s.manifest.lat0, lon0 = s.manifest.lon0
+  applyControls(v, String(mode).startsWith('alt:') ? 'site' : mode)
   if (String(mode).startsWith('alt:')) {
     // test hook: straight-down view from a given altitude in metres, e.g. ?view=alt:40000
     v.camera.setView({
