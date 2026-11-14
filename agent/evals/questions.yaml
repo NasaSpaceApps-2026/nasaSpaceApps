@@ -169,3 +169,84 @@ cases:
     checks:
       reply_contains_any: ["orbital", "in situ", "in-situ", "tier", "no coverage", "cannot", "not available"]
       reply_not_contains: ["% chance", "probability"]
+
+  # ---- sun position and illumination ----
+  - id: sun_local_time_now
+    source: sun tools
+    prompt: "What is the local time at Jezero right now, and how high is the sun?"
+    tool_path:
+      required: [sun_position]
+    checks:
+      max_tool_calls: 3
+      reply_contains_all: [["LTST", "true solar time", "local true solar"], ["LMST", "mean solar time", "local mean"]]
+      reply_not_contains: ["% chance"]
+
+  - id: sun_pad_shadow_1600
+    source: sun tools
+    prompt: "Is the landing site in shadow at 16:00 local solar time? When is it lit well enough to image (sun at least 20 degrees up)?"
+    tool_path:
+      required: [illumination_at, find_lit_windows]
+      order: [illumination_at, find_lit_windows]
+    checks:
+      reply_contains_any: ["direct sun", "twilight", "scatter", "geometric", "not modelled", "not modeled"]
+
+  # ---- line of sight ----
+  - id: los_radio_base_from_marker
+    source: visibility tools
+    prompt: "Is the base in radio line of sight from my marker, with a 3 m mast on the base?"
+    tool_path:
+      required: [list_markers, line_of_sight]
+      order: [list_markers, line_of_sight]
+    checks:
+      reply_contains_any: ["clear", "blocked", "no marker", "place", "marker"]
+      reply_contains_all: [["Fresnel", "not modelled", "not modeled", "optical", "geometric"]]
+      reply_not_contains: ["guaranteed link"]
+
+  - id: vantage_overlook_outcrop
+    source: visibility tools
+    prompt: "Find a spot where I can stand that overlooks the biggest carbonate outcrop, gentle ground, within a 30 minute walk of base."
+    tool_path:
+      required: [[find_regions, find_sites], find_vantage_points]
+      order: [[find_regions, find_sites], find_vantage_points]
+    checks:
+      reply_contains_any: ["1.7", "eye", "assumed", "sees", "visible"]
+      max_tool_calls: 8
+
+  # ---- ancient lake and EVA safety ----
+  - id: lake_landing_underwater
+    source: lake tools
+    prompt: "Would the landing site have been underwater at the highest lake level recorded by the delta, and how deep?"
+    tool_path:
+      required: [flood_at_level]
+    checks:
+      reply_contains_any: ["present-day", "today's topography", "modern topography", "current topography"]
+      reply_contains_all: [["Mangold", "LPSC", "delta"]]
+      max_tool_calls: 4
+
+  - id: lake_shoreline_level
+    source: lake tools
+    prompt: "Show me the shoreline if the lake stood at -2450 m."
+    tool_path:
+      required: [flood_at_level, [set_view, fly_camera]]
+      order: [flood_at_level, [set_view, fly_camera]]
+    checks:
+      reply_contains_any: ["present-day", "today's topography", "modern topography", "datum", "approximation"]
+
+  - id: eva_envelope_8h
+    source: eva tools
+    prompt: "How far from base can the crew walk in an 8 hour EVA and still get back with a 20% reserve?"
+    tool_path:
+      required: [eva_envelope]
+    checks:
+      reply_contains_any: ["assumed", "placeholder", "isotropic", "twice"]
+      max_tool_calls: 4
+
+  - id: eva_route_point_of_no_return
+    source: eva tools
+    prompt: "Plan a walk from base to the Swift Run sample site and tell me whether the crew can always get back within a 4 hour EVA with 20% reserve."
+    tool_path:
+      required: [plan_route, check_eva_return]
+      order: [plan_route, check_eva_return]
+    checks:
+      reply_contains_any: ["margin", "point of no return", "walk back", "walk-back"]
+

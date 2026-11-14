@@ -717,6 +717,16 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
         body = {"x": x, "y": y, "at": _coerce(at), "label": label, "created_by": "agent"}
         return await call("POST", "/markers", fmt.fmt_marker, body={k: v for k, v in body.items() if v is not None})
 
+    import tools_visibility  # mcp/tools_visibility.py: viewshed, line_of_sight, find_vantage_points
+    tools_visibility.register(tool, call, _loc, _coerce, SCHEMA_PATCH, UNITS, LOCATION_REFS, CONDITIONS, WITHIN,
+                              CONDITIONS_SCHEMA, WITHIN_SCHEMA)
+
+    import tools_sun  # mcp/tools_sun.py: sun_position, illumination_at, find_lit_windows
+    tools_sun.register(tool, call, _coerce, LOCATION_REFS, SCHEMA_PATCH, _loc)
+
+    import tools_lake  # mcp/tools_lake.py: flood_at_level, eva_envelope, check_eva_return
+    tools_lake.register(tool, call, _coerce, LOCATION_REFS, SCHEMA_PATCH, _loc)
+
     # ---- schema patch, aliases and friendly validation errors ----------------------------------
     import re as _re
 

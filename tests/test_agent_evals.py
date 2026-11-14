@@ -134,7 +134,7 @@ def test_prompt_and_context_numbers_count_as_grounded():
 def test_questions_file_complete_and_consistent():
     cases, allowed = run_evals.load_cases()
     ids = [c["id"] for c in cases]
-    assert len(cases) == 16 and len(set(ids)) == 16
+    assert len(cases) >= 16 and len(set(ids)) == len(ids)
     assert sum(i.startswith("demo_") for i in ids) == 6 and sum(i.startswith("q") for i in ids) == 10
     for c in cases:
         assert c["prompt"] and c["tool_path"].get("required"), c["id"]

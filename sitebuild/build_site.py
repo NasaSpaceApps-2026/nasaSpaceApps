@@ -214,6 +214,10 @@ def main():
     import science
     science.run(OUT)
 
+    # --- terrain-science layers (aspect, curvature, TPI, TRI, relief, outcrop exposure, distances, diversity) ---
+    import geomorph
+    geomorph.run(OUT)
+
     # --- reports + figures -------------------------------------------------------------
     s = slope[np.isfinite(slope)]
     h0 = q == 0

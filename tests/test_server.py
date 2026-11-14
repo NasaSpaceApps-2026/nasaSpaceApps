@@ -94,7 +94,10 @@ def test_lists_tools_and_descriptions():
         "find_regions", "nearest", "get_set",
         "plan_route", "assess_route", "plan_science_traverse", "get_elevation_profile", "search_pois",
         "get_rover_state", "drive_rover", "goto_location", "follow_route", "fsd_enable", "fsd_disable", "fsd_status",
-        "stop_rover", "set_view", "list_markers", "place_marker", "find_sites", "teleport_rover", "fly_camera"}
+        "stop_rover", "set_view", "list_markers", "place_marker", "find_sites", "teleport_rover", "fly_camera",
+        "viewshed", "line_of_sight", "find_vantage_points",
+        "flood_at_level", "eva_envelope", "check_eva_return",
+        "sun_position", "illumination_at", "find_lit_windows"}
     for name, t in tools.items():
         assert "Example" in t.description, name
         assert len(t.description) > 80, name

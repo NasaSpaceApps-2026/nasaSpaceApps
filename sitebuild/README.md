@@ -20,4 +20,18 @@ The shared site frame (LAT0, LON0, SIZE, CRS) comes from `pipeline/site_cfg.py`,
 
 Raw downloads are cached under `data/raw/science/` (the 349 MB SIM zip is fetched with curl resume; only `Nili.gdb` is extracted). Extra packages installed into `.venv`: `pyogrio`, `shapely`. Findings and caveats: `docs/data-inventory-minerals.md` section 8.
 
-Files: `science.py` (interim science step), `measure_geo_offset.py` (registration offset of the SIM mosaic), `build_site.py` (main), `site_frame.py` (frame/transform), `fetch_hirise.py` (windowed cached reads), `seams.py` (seam detector), `noise.py` (noisy-DTM detector), `compare_ctx_hirise.py` (CTX vs HiRISE comparison).
+## Terrain-science layers (`geomorph.py`)
+
+`build_site.py` calls `geomorph.run()` after `science.run()` (`.venv/bin/python -m sitebuild.geomorph` reruns it alone, idempotent; about 1 min). The maths is in `atlas_core/terrain.py` (tested on analytic surfaces in `tests/test_geomorph.py`); the catalogue entries carry `measures` / `does_not_measure` / `quality` / `method` and a citation. 2 m grid, NaN = unknown; windowed layers are NaN within one window radius of the grid edge.
+
+- `aspect_deg`, `aspect_class`: downslope bearing clockwise from north (Horn 1981); NaN / `flat` below 1 deg slope. "North-facing" = `aspect_class in [N, NE, NW]`.
+- `curvature_profile`, `curvature_plan`: Zevenbergen and Thorne (1987) on a Gaussian-smoothed DEM (sigma 5 m, FWHM about 12 m). Positive = convex (crest), negative = concave, both layers (plan sign flipped from Z&T's raw formula), 1/m.
+- `tpi_50m`: Weiss (2001), elevation minus mean of the other cells in a 50 m disc. `tri`: Riley et al. (1999), 3x3.
+- `local_relief_50m`, `local_relief_200m`: max - min elevation in a disc (Evans 1972).
+- `outcrop_exposure`: heuristic (ours): `local_relief_50m` where >= 2 % of the 50 m disc has slope_2m >= 25 deg, else 0. Cannot tell rock from sand or talus.
+- `dist_to_traverse_m`: Euclidean distance (EDT) to the traverse polyline, including parts off the grid. `dist_to_unit_contact_m`: distance to boundaries between two known geologic units (after the registration shift; about +-25 m residual plus 1:75,000 generalisation).
+- `unit_diversity_100m`, `mineral_diversity_100m`: counts within 100 m. Mineral count uses tier >= weak_orbital over the 7 CRISM layers; `no_coverage` is never absence, so it is a lower bound.
+
+All inherit the elevation caveats (noisy / seam / CTX-fill zones: see `quality_flag`). Check figure: `docs/geomorph_check.png`.
+
+Files: `geomorph.py` (terrain-science layers), `science.py` (interim science step), `measure_geo_offset.py` (registration offset of the SIM mosaic), `build_site.py` (main), `site_frame.py` (frame/transform), `fetch_hirise.py` (windowed cached reads), `seams.py` (seam detector), `noise.py` (noisy-DTM detector), `compare_ctx_hirise.py` (CTX vs HiRISE comparison).

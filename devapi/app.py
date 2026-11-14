@@ -81,7 +81,15 @@ def create_app(site: Site | None = None, synthetic: bool | None = None, traverse
                   description="Stand-in for api/ (Yousef). Reference implementation over atlas_core.")
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
     app.state.world = world
+    from .routes_visibility import visibility_router
+    app.include_router(visibility_router(site, world.store))
     hub, store, rover = world.hub, world.store, world.rover
+    from .routes_sun import make_router as _sun_router
+    app.include_router(_sun_router(site, store))   # /sun/* (sun position, illumination)
+    from .routes_lake import router as _lake_router
+    from .routes_envelope import router as _eva_router
+    app.include_router(_lake_router)    # /lake/*
+    app.include_router(_eva_router)     # /eva/*
 
     # ---- errors ---------------------------------------------------------------------------------
     @app.exception_handler(AtlasError)
