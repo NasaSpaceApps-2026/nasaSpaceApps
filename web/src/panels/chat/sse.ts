@@ -73,8 +73,11 @@ export function toAgentEvent(m: SseMessage): import('./types').AgentEvent | null
   try {
     data = JSON.parse(m.data);
   } catch {
-    return null;
+    // Tolerate a bare (non-JSON) text payload.
+    return m.event === 'text' && m.data ? { event: 'text', data: { delta: m.data } } : null;
   }
+  // Tolerate a JSON string instead of {delta}.
+  if (m.event === 'text' && typeof data === 'string') return { event: 'text', data: { delta: data } };
   if (typeof data !== 'object' || data === null) return null;
   const d = data as Record<string, unknown>;
   switch (m.event) {

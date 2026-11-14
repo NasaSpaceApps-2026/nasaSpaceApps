@@ -62,8 +62,18 @@ describe('toAgentEvent', () => {
     });
   });
   it('returns null for malformed JSON or unknown events', () => {
-    expect(toAgentEvent({ event: 'text', data: 'nope' })).toBeNull();
+    expect(toAgentEvent({ event: 'done', data: 'nope' })).toBeNull();
     expect(toAgentEvent({ event: 'weird', data: '{}' })).toBeNull();
     expect(toAgentEvent({ event: 'text', data: '{}' })).toBeNull();
+  });
+});
+
+describe('toAgentEvent tolerance', () => {
+  it('accepts a bare string or JSON string as text data', async () => {
+    const { toAgentEvent } = await import('./sse');
+    expect(toAgentEvent({ event: 'text', data: 'hello world' })).toEqual({ event: 'text', data: { delta: 'hello world' } });
+    expect(toAgentEvent({ event: 'text', data: '"hi"' })).toEqual({ event: 'text', data: { delta: 'hi' } });
+    expect(toAgentEvent({ event: 'text', data: '{"delta":"x"}' })).toEqual({ event: 'text', data: { delta: 'x' } });
+    expect(toAgentEvent({ event: 'done', data: 'nope' })).toBeNull();
   });
 });
