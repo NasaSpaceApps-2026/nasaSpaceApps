@@ -20,7 +20,7 @@ BRIGHTEN = 1.3    # HiRISE ortho DN are dark (mean about 0.4); lift for display 
 ROLLOFF = 0.5     # soft highlight rolloff so bright outcrops do not clip to yellow-white
 
 
-def viking_chroma(raw: Path, lat0, lon0, size_m, n, R=3396190.0):
+def viking_chroma(raw: Path, lat0, lon0, size_m, n, R=3396190.0, ref_size_m=None):
     """Per-pixel tint multiplier (n x n x 3, about 1) over the site square, from the Viking mosaic."""
     meta = json.loads((raw / "viking_color.json").read_text())
     img = Image.open(raw / "viking_color.png").convert("RGB")
@@ -32,13 +32,24 @@ def viking_chroma(raw: Path, lat0, lon0, size_m, n, R=3396190.0):
     sy = meta["height"] / (meta["north"] - meta["south"])
     box = ((w - meta["west"]) * sx, (meta["north"] - n_) * sy, (e - meta["west"]) * sx, (meta["north"] - s_) * sy)
     # resize with a float source box: bicubic upsample of the ~25 px footprint to the site grid
-    up = np.asarray(img.resize((n, n), Image.BICUBIC, box=box), dtype=np.float32)
-    lum = up.mean(axis=2, keepdims=True) + 1e-3
-    chroma = up / lum                                   # unit-luminance colour ratios
+    def field(box_, n_):
+        up_ = np.asarray(img.resize((n_, n_), Image.BICUBIC, box=box_), dtype=np.float32)
+        return up_ / (up_.mean(axis=2, keepdims=True) + 1e-3)   # unit-luminance colour ratios
+    def box_for(sz):
+        dl, dt = math.degrees(sz / 2 / (R * math.cos(math.radians(lat0)))), math.degrees(sz / 2 / R)
+        return ((lon0 - dl - meta["west"]) * sx, (meta["north"] - lat0 - dt) * sy,
+                (lon0 + dl - meta["west"]) * sx, (meta["north"] - lat0 + dt) * sy)
+    chroma = field(box, n)
     # One scalar axis only: how red vs blue the Viking colour is, as a z-score over the site. Letting
     # R, G and B vary independently pushed the hue to yellow-green and magenta, which looks unnatural.
     red = chroma[..., 0] / np.maximum(chroma[..., 2], 1e-3)
-    z = np.clip((red - red.mean()) / (red.std() + 1e-6), -2.5, 2.5)
+    # z-score against a REFERENCE region (the larger context block) so the HiRISE site and the CTX context
+    # get identical colour treatment; with no reference it falls back to the requested region.
+    rr = red
+    if ref_size_m:
+        ref = field(box_for(ref_size_m), 256)
+        rr = ref[..., 0] / np.maximum(ref[..., 2], 1e-3)
+    z = np.clip((red - rr.mean()) / (rr.std() + 1e-6), -2.5, 2.5)
     return 1.0 + (VARIATION * z)[..., None] * AXIS
 
 
@@ -53,12 +64,12 @@ def colorize(gray: np.ndarray, chroma: np.ndarray) -> np.ndarray:
     return (np.clip(rgb, 0, 1) * 255).astype(np.uint8)
 
 
-def colorize_banded(gray: np.ndarray, raw: Path, lat0, lon0, size_m, coarse=1024, band=512) -> np.ndarray:
+def colorize_banded(gray: np.ndarray, raw: Path, lat0, lon0, size_m, coarse=1024, band=512, ref_size_m=None) -> np.ndarray:
     """Memory-safe colourise of the full-size grey ortho: returns (n, n, 3) uint8.
     The chroma field is computed once on a coarse grid and upsampled band by band."""
     n = gray.shape[0]
     f = n / coarse
-    ch = viking_chroma(raw, lat0, lon0, size_m, coarse)                 # (coarse, coarse, 3)
+    ch = viking_chroma(raw, lat0, lon0, size_m, coarse, ref_size_m=ref_size_m)  # (coarse, coarse, 3)
     planes = [Image.fromarray(np.ascontiguousarray(ch[..., k]), mode="F") for k in range(3)]
     out = np.empty((n, n, 3), dtype=np.uint8)
     for r0 in range(0, n, band):
@@ -69,11 +80,11 @@ def colorize_banded(gray: np.ndarray, raw: Path, lat0, lon0, size_m, coarse=1024
     return out
 
 
-def colorize_window(gray, raw, lat0, lon0, size_m, x0, y_top, res, coarse=1024, band=512) -> np.ndarray:
+def colorize_window(gray, raw, lat0, lon0, size_m, x0, y_top, res, coarse=1024, band=512, ref_size_m=None) -> np.ndarray:
     """Colourise a sub-window of the site (gray: rows x cols at `res` m/px, west edge x0, north edge y_top,
     both in site metres) using the SAME site-wide colour field as the base ortho, so tiles match."""
     rows, cols = gray.shape
-    ch = viking_chroma(raw, lat0, lon0, size_m, coarse)
+    ch = viking_chroma(raw, lat0, lon0, size_m, coarse, ref_size_m=ref_size_m)
     planes = [Image.fromarray(np.ascontiguousarray(ch[..., k]), mode="F") for k in range(3)]
     cell = size_m / coarse
     out = np.empty((rows, cols, 3), dtype=np.uint8)

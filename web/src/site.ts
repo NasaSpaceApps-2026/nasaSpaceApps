@@ -39,11 +39,17 @@ export class Site {
   private readonly dem: Uint16Array
   private readonly meta: DemMeta
   private readonly core?: { data: Uint16Array; meta: CoreMeta }
-  private constructor(manifest: Manifest, dem: Uint16Array, meta: DemMeta, core?: { data: Uint16Array; meta: CoreMeta }) {
+  readonly ctx?: { data: Uint16Array; meta: DemMeta; manifest: Manifest }
+  /** Extent of everything we draw ourselves (the CTX context block if present, else the HiRISE site), radians. */
+  readonly extent: { west: number; east: number; south: number; north: number }
+  readonly relief: { min: number; max: number }
+  private constructor(manifest: Manifest, dem: Uint16Array, meta: DemMeta, core?: { data: Uint16Array; meta: CoreMeta },
+    ctx?: { data: Uint16Array; meta: DemMeta; manifest: Manifest }) {
     this.manifest = manifest
     this.dem = dem
     this.meta = meta
     this.core = core
+    this.ctx = ctx
     const half = manifest.size_m / 2
     const dLon = half / (R * Math.cos(rad(manifest.lat0)))
     const dLat = half / R
@@ -51,6 +57,12 @@ export class Site {
     this.east = rad(manifest.lon0) + dLon
     this.south = rad(manifest.lat0) - dLat
     this.north = rad(manifest.lat0) + dLat
+    const big = ctx ? ctx.manifest.size_m / 2 : half
+    const eLon = big / (R * Math.cos(rad(manifest.lat0))), eLat = big / R
+    this.extent = { west: rad(manifest.lon0) - eLon, east: rad(manifest.lon0) + eLon, south: rad(manifest.lat0) - eLat, north: rad(manifest.lat0) + eLat }
+    const m = manifest as unknown as { elev_min: number; elev_max: number }
+    const cm = ctx?.manifest as unknown as { elev_min: number; elev_max: number } | undefined
+    this.relief = { min: Math.min(m.elev_min, cm?.elev_min ?? m.elev_min), max: Math.max(m.elev_max, cm?.elev_max ?? m.elev_max) }
   }
 
   static async load(): Promise<Site> {
@@ -63,11 +75,26 @@ export class Site {
       const r = await fetch('/web/dem1m_core.json')
       if (r.ok) core = { meta: await r.json(), data: new Uint16Array(await (await fetch('/web/dem1m_core.u16')).arrayBuffer()) }
     } catch { /* core is optional */ }
-    return new Site(manifest, new Uint16Array(buf), meta, core)
+    // Optional CTX context block around the HiRISE site
+    let ctx: { data: Uint16Array; meta: DemMeta; manifest: Manifest } | undefined
+    try {
+      const r = await fetch('/ctx/manifest.json')
+      if (r.ok) {
+        const cm: Manifest = await r.json()
+        const meta2: DemMeta = await (await fetch('/ctx/web/dem_ctx.json')).json()
+        ctx = { manifest: cm, meta: meta2, data: new Uint16Array(await (await fetch('/ctx/web/dem_ctx.u16')).arrayBuffer()) }
+      }
+    } catch { /* context is optional */ }
+    return new Site(manifest, new Uint16Array(buf), meta, core, ctx)
   }
 
   get rectangle(): Cesium.Rectangle {
     return new Cesium.Rectangle(this.west, this.south, this.east, this.north)
+  }
+
+  get ctxRectangle(): Cesium.Rectangle {
+    const e = this.extent
+    return new Cesium.Rectangle(e.west, e.south, e.east, e.north)
   }
 
   /** site metres -> lon/lat radians */
@@ -94,8 +121,14 @@ export class Site {
     const m = this.meta
     const half = this.manifest.size_m / 2
     const cf = (x + half) / m.res_m - 0.5, rf = (half - y) / m.res_m - 0.5
-    if (cf < 0 || rf < 0 || cf > m.width - 1 || rf > m.height - 1) return NaN
-    return bilinear(this.dem, m, cf, rf)
+    if (cf >= 0 && rf >= 0 && cf <= m.width - 1 && rf <= m.height - 1) return bilinear(this.dem, m, cf, rf)
+    // outside the HiRISE site: the coarser CTX context terrain, if loaded
+    const c2 = this.ctx
+    if (!c2) return NaN
+    const h2 = c2.manifest.size_m / 2
+    const cf2 = (x + h2) / c2.meta.res_m - 0.5, rf2 = (h2 - y) / c2.meta.res_m - 0.5
+    if (cf2 < 0 || rf2 < 0 || cf2 > c2.meta.width - 1 || rf2 > c2.meta.height - 1) return NaN
+    return bilinear(c2.data, c2.meta, cf2, rf2)
   }
 
   elevationAtXY(x: number, y: number): number {

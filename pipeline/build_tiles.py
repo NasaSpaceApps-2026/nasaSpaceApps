@@ -21,7 +21,7 @@ from rasterio.warp import Resampling, reproject
 
 sys.path.insert(0, str(Path(__file__).parent))
 from site_cfg import (CORE_LEVEL, CORE_N, CORE_SIZE, CORE_TX0, CORE_TY0, CORE_X0, CORE_Y1,  # noqa: E402
-                      CRS, LAT0, LON0, R, SIZE)
+                      CRS, CTX_SIZE, LAT0, LON0, R, SIZE)
 
 ROOT = Path(__file__).resolve().parent.parent
 RAW, OUT = ROOT / "data" / "raw", ROOT / "data" / "build"
@@ -127,7 +127,7 @@ def build_core(dem1, filled1):
     del dst, data
     if (RAW / "viking_color.png").exists():
         from colorize import colorize_window
-        rgb = colorize_window(gray, RAW, LAT0, LON0, SIZE, CORE_X0, CORE_Y1, res)
+        rgb = colorize_window(gray, RAW, LAT0, LON0, SIZE, CORE_X0, CORE_Y1, res, ref_size_m=CTX_SIZE)
     else:
         rgb = np.dstack([gray] * 3)
     cnt = 0
@@ -196,7 +196,7 @@ def main():
         del o
         if (RAW / "viking_color.png").exists():
             from colorize import colorize_banded
-            rgb = colorize_banded(o8, RAW, LAT0, LON0, SIZE)
+            rgb = colorize_banded(o8, RAW, LAT0, LON0, SIZE, ref_size_m=CTX_SIZE)
             image_tiles("ortho", np.dstack([rgb, np.full(o8.shape, 255, np.uint8)]))
             title = "HiRISE orthomosaic, colourised (false colour)"
             credit = ("NASA/JPL/UArizona/USGS. HiRISE is greyscale: colour from Viking MDIM 2.1 (NASA/JPL/USGS) "

@@ -40,16 +40,18 @@ const blank = (() => {
  * Imagery: composes Cesium geographic tiles from our site quadtree tiles (/tiles/{layer}/{z}/{x}/{y}.webp).
  * The site frame is equirectangular, so each Cesium tile maps to a plain rectangle in site metres.
  */
-export function siteImagery(site: Site, layerId: string, maxLevel: number, core?: CoreInfo): Cesium.ImageryProvider {
+export function siteImagery(site: Site, layerId: string, maxLevel: number, core?: CoreInfo,
+  opts: { prefix?: string; sizeM?: number; rect?: Cesium.Rectangle } = {}): Cesium.ImageryProvider {
+  const prefix = opts.prefix ?? '/tiles'
   const scheme = new Cesium.GeographicTilingScheme({ ellipsoid: SPHERE })
-  const size = site.manifest.size_m
+  const size = opts.sizeM ?? site.manifest.size_m
   const half = size / 2
   const cache = new Map<string, Promise<ImageBitmap | null>>()
   const getTile = (z: number, tx: number, ty: number) => {
     const key = `${z}/${tx}/${ty}`
     let p = cache.get(key)
     if (!p) {
-      p = fetch(`/tiles/${layerId}/${key}.webp`)
+      p = fetch(`${prefix}/${layerId}/${key}.webp`)
         .then((r) => (r.ok ? r.blob() : null))
         .then((b) => (b ? createImageBitmap(b) : null))
         .catch(() => null)
@@ -59,7 +61,7 @@ export function siteImagery(site: Site, layerId: string, maxLevel: number, core?
   }
 
   const provider = {
-    rectangle: site.rectangle,
+    rectangle: opts.rect ?? site.rectangle,
     tileWidth: TILE,
     tileHeight: TILE,
     minimumLevel: 0,

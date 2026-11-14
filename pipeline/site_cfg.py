@@ -17,3 +17,8 @@ CORE_TILE_M = SIZE / 2 ** CORE_LEVEL                      # 128 m
 CORE_X0 = -SIZE / 2 + CORE_TX0 * CORE_TILE_M              # west edge, site m
 CORE_Y1 = SIZE / 2 - CORE_TY0 * CORE_TILE_M               # north edge, site m
 CORE_SIZE = CORE_N * CORE_TILE_M                          # 2176 m
+
+# Context block: coarser NASA CTX data around the HiRISE site, so the surroundings are real NASA CTX
+# (20 m DTM, 5 m orthomosaic) and not Cesium's. Square, centred on the site, quadtree tiles like the site.
+CTX_SIZE = 28672.0   # metres; level 4 tiles are 1792 m (512 px -> 3.5 m/px, close to CTX's 5 m)
+CTX_MAX_LEVEL = 4

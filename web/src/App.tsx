@@ -67,12 +67,12 @@ export default function App() {
       // So draw the globe only inside the site rectangle, and cut the tileset out under it.
       // Tileset hole: the site rectangle shrunk by INSET metres, so the tileset and our terrain
       // overlap slightly at the seam instead of leaving a black gap where neither draws.
-      const INSET = 200
+      const INSET = s.ctx ? 800 : 200
       const ring = () => {
         const dLon = INSET / (R * Math.cos(Cesium.Math.toRadians(s.manifest.lat0))), dLat = INSET / R
         return Cesium.Cartesian3.fromRadiansArray(
-          [s.west + dLon, s.south + dLat, s.east - dLon, s.south + dLat,
-           s.east - dLon, s.north - dLat, s.west + dLon, s.north - dLat], SPHERE)
+          [s.extent.west + dLon, s.extent.south + dLat, s.extent.east - dLon, s.extent.south + dLat,
+           s.extent.east - dLon, s.extent.north - dLat, s.extent.west + dLon, s.extent.north - dLat], SPHERE)
       }
       // Globe clipping uses planes, not ClippingPolygon: polygon clipping removes whole globe tiles
       // and crashes Cesium's TerrainFillMesh (northIndicesWestToEast undefined) during flights.
@@ -82,9 +82,8 @@ export default function App() {
       // That trims up to ~(relief * tan(lat)) m inside the north/south edges, which the shrunken
       // tileset hole (INSET) covers.
       if (!new URLSearchParams(location.search).has('noglobeclip')) {
-        const m = s.manifest as unknown as { elev_min: number; elev_max: number }
-        const zS = (R + m.elev_max) * Math.sin(s.south), zN = (R + m.elev_min) * Math.sin(s.north)
-        const w = s.west, e = s.east
+        const zS = (R + s.relief.max) * Math.sin(s.extent.south), zN = (R + s.relief.min) * Math.sin(s.extent.north)
+        const w = s.extent.west, e = s.extent.east
         scene.globe.clippingPlanes = new Cesium.ClippingPlaneCollection({
           unionClippingRegions: true, // clip anything outside the rectangle
           planes: [
@@ -98,6 +97,13 @@ export default function App() {
       let tilesetRef: Cesium.Cesium3DTileset | undefined
 
       const next: Record<string, { on: boolean; layer: Cesium.ImageryLayer }> = {}
+      for (const L of s.ctx?.manifest.layers ?? []) {
+        // NASA CTX context imagery drawn first (below) so HiRISE draws over it inside the site
+        const layer = new Cesium.ImageryLayer(siteImagery(s, L.id, L.max_level, undefined,
+          { prefix: '/ctx/tiles', sizeM: s.ctx!.manifest.size_m, rect: s.ctxRectangle }))
+        v.imageryLayers.add(layer)
+        next['ctx_' + L.id] = { on: true, layer }
+      }
       for (const L of s.manifest.layers) {
         const layer = new Cesium.ImageryLayer(siteImagery(s, L.id, L.max_level, L.core))
         layer.show = L.kind === 'base'
@@ -214,6 +220,12 @@ export default function App() {
           <button key={h.id} className="hit" onClick={() => goTo(h)} title={h.source}>
             {h.name} <small>{h.kind === 'waypoint' ? 'rover waypoint → drive from here' : 'IAU/USGS name'}</small>
           </button>
+        ))}
+        {site?.ctx?.manifest.layers.map((L) => (
+          <label key={'ctx_' + L.id} title={L.credit}>
+            <input type="checkbox" checked={layers['ctx_' + L.id]?.on ?? false} onChange={() => toggle('ctx_' + L.id)} />
+            {L.title} <small>({L.mission} {L.instrument})</small>
+          </label>
         ))}
         {site?.manifest.layers.map((L) => (
           <label key={L.id} title={L.credit}>

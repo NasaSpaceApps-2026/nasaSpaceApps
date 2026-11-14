@@ -28,7 +28,7 @@ Note: ortho read at 1 m (25 cm source averaged 4x horizontally, every 4th row) v
 ## Perseverance traverse and waypoints (NASA/JPL, Mars 2020)
 - URLs: https://mars.nasa.gov/mmgis-maps/M20/Layers/json/M20_traverse.json and M20_waypoints.json (fetched 2026-11-14 with curl into data/raw/m20_*.json)
 - Official viewer: https://science.nasa.gov/mission/mars-2020-perseverance/location-map/ . The JSON paths are NASA's own map-layer files, not a documented download API, so cache a copy.
-- Used by pipeline/05_vectors.py. 353 waypoints (sols 13-1019) and 279 traverse segments fall in the site. DEM minus rover-reported elevation at 348 waypoints: mean 0.01 m, sd 0.09 m. This checks our frame and alignment but is NOT an independent vertical accuracy test (rover elevations are tied to this HiRISE DTM).
+- Used by pipeline/05_vectors.py. 353 waypoints (sols 13-1019) and 279 traverse segments fall in the site. Validation results live in docs/science-validation.md (regenerate with pipeline/09_validate.py). Elevation check is a frame/alignment check, NOT an independent accuracy test (rover elevations are tied to this HiRISE DTM).
 - Waypoint records also carry real Mastcam-Z/Navcam panorama links under mars.nasa.gov/mmgis-maps/M20/ ; those image URLs returned HTTP 403 to direct requests on 2026-11-14 and are not used.
 
 ## IAU/USGS place names (Gazetteer of Planetary Nomenclature)
@@ -40,3 +40,8 @@ Note: ortho read at 1 m (25 cm source averaged 4x horizontally, every 4th row) v
 
 ## Colour: what is real and what is assumed
 - Brightness and all fine detail: real HiRISE. Relative colour variation: Viking MDIM 2.1 (NASA/JPL/USGS), one redness axis. Overall hue: ASSUMED typical Mars tone (pipeline/colorize.py ANCHOR). A true-colour source was not found: the verified HiRISE colour product (PSP_004299_1985_COLOR, false colour) does not overlap the site, and the Navcam colour panoramas are not fetchable.
+
+## CTX context block (MRO CTX, NASA/JPL/MSSS/USGS)
+- DTM 20 m: https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/mars2020_trn/CTX/JEZ_ctx_B_soc_008_DTM_MOLAtopography_DeltaGeoid_20m_Eqc_latTs0_lon0.tif (9.7 MB)
+- Ortho 5 m (JPL Mars 2020 science mosaic): https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/mars2020_trn/CTX/ScienceInvestigationMaps_JPL/M20_JezeroCrater_CTXortho_mosaic_5m.tif (360 MB; read as a 10 m window)
+- Used by pipeline/10_context.py for a 28.7 km block centred on the site. Ortho brightness linearly matched to HiRISE; terrain/brightness comparison in docs/science-validation.md.
