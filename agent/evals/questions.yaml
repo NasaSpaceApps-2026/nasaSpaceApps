@@ -1,0 +1,167 @@
+# Agent eval cases. Run: .venv/bin/python -m agent.evals.run_evals   (needs ANTHROPIC_API_KEY)
+#                       .venv/bin/python -m agent.evals.run_evals --replay agent/replays   (no key)
+#
+# tool_path:
+#   required:  list of groups; each group is a tool name or a list of acceptable alternatives; every
+#              group must be called at least once.
+#   order:     groups that must first occur in this order (a subsequence of the call sequence).
+#   allowed:   optional whitelist (plus `always_allowed` below); any other tool call fails the case.
+#   forbidden: tools that must not be called.
+# checks:
+#   reply_contains_all: [group, ...]  each group (string or list of alternatives) must appear (case-insens.)
+#   reply_contains_any: [..]          at least one must appear
+#   reply_not_contains: [..]
+#   max_tool_calls: N
+#   numbers_grounded: true (default)  every measurement-like number in the reply must appear in a tool
+#                                     result of the same session (or in the prompt / app-state block)
+# A case whose required tools the MCP server does not (yet) offer is reported SKIP, not FAIL
+# (use --strict to make skips fail).
+
+always_allowed: [get_site_overview, list_layers, describe_layer, get_set, list_markers]
+
+cases:
+  # ---- the six demo prompts (docs/scope-c-d.md) ----
+  - id: demo_carbonates
+    source: scope-doc demo 1
+    prompt: "Where are the best places to find carbonates near base?"
+    tool_path:
+      required: [[find_sites, find_regions, find_locations], [set_view, fly_camera]]
+      order: [[find_sites, find_regions, find_locations], [set_view, fly_camera]]
+    checks:
+      reply_contains_all: [[CRISM, "orbital"]]
+      reply_not_contains: ["% chance", "probability", "likely contains"]
+
+  - id: demo_route_two_markers
+    source: scope-doc demo 2
+    prompt: "Plan a route between my two markers under 15°."
+    tool_path:
+      required: [list_markers, plan_route, assess_route]
+      order: [list_markers, plan_route, assess_route]
+    checks:
+      reply_contains_any: ["feasible", "margin", "slope", "distance"]
+
+  - id: demo_take_me_to_delta
+    source: scope-doc demo 3
+    prompt: "Take me to the delta front."
+    tool_path:
+      required: [search_pois, teleport_rover, fly_camera]
+      order: [search_pois, [teleport_rover, fly_camera]]
+    checks:
+      max_tool_calls: 8
+
+  - id: demo_marswalk
+    source: scope-doc demo 4
+    prompt: "Plan a 4-hour Marswalk to the two best science targets."
+    tool_path:
+      required: [plan_science_traverse, assess_route]
+      order: [plan_science_traverse, assess_route]
+    checks:
+      reply_contains_any: ["margin", "reserve", "feasible", "hour", "minutes"]
+
+  - id: demo_scout
+    source: scope-doc demo 5
+    prompt: "Scout that route; stop if unsafe and tell me why."
+    tool_path:
+      required: [fsd_enable, follow_route]
+      order: [fsd_enable, follow_route]
+    checks:
+      reply_contains_any: ["arrived", "blocked", "hazard", "stopped", "timeout", "replanned", "no route"]
+
+  - id: demo_sample_near_me
+    source: scope-doc demo 6
+    prompt: "What's worth sampling near me?"
+    tool_path:
+      required: [[search_pois, find_sites, find_locations, find_regions]]
+    checks:
+      reply_contains_any: ["rover", "from your position", "from the rover", "near"]
+
+  # ---- contracts/mcp-tools.md section 6 question set ----
+  - id: q01_terrain_at_landing_site
+    source: mcp-tools q1
+    prompt: "What is the terrain like at the Perseverance landing site?"
+    tool_path:
+      required: [describe_location]
+      allowed: [describe_location, sample_terrain]
+    checks:
+      reply_contains_any: ["HiRISE", "baseline", "slope"]
+
+  - id: q02_three_flat_spots_walk
+    source: mcp-tools q2
+    prompt: "Find 3 flat spots big enough for a 50 m pad within a 1 hour walk of the landing site."
+    tool_path:
+      required: [find_locations]
+      allowed: [find_locations, describe_location, nearest]
+    checks:
+      reply_contains_any: ["assumed", "cited", "walk", "approximate"]
+
+  - id: q03_good_landing_spots
+    source: mcp-tools q3
+    prompt: "Find good landing spots."
+    tool_path:
+      required: [find_locations]
+      allowed: [find_locations, describe_location, nearest]
+    checks:
+      reply_contains_any: ["pad", "not a landing ellipse", "footprint"]
+
+  - id: q04_zero_slope_pad
+    source: mcp-tools q4
+    prompt: "Find a pad with zero slope anywhere."
+    tool_path:
+      required: [find_locations]
+    checks:
+      reply_contains_any: ["no spot", "no location", "none", "nothing", "relax", "no place", "not find", "could not", "couldn't"]
+
+  - id: q05_crater_rim_walk
+    source: mcp-tools q5
+    prompt: "Is this crater rim safe to walk?"
+    tool_path:
+      required: [describe_location]
+    checks:
+      reply_contains_any: ["max", "maximum", "steepest"]
+
+  - id: q06_slope_layer_limits
+    source: mcp-tools q6
+    prompt: "What can the slope layer not tell me?"
+    tool_path:
+      required: [describe_layer]
+      allowed: [describe_layer, list_layers]
+      forbidden: [find_locations, find_regions]
+    checks:
+      max_tool_calls: 4
+      reply_contains_any: ["does not measure", "cannot", "can't", "below", "smaller than", "not measure"]
+
+  - id: q07_outside_hirise_coverage
+    source: mcp-tools q7
+    prompt: "Find spots outside the HiRISE coverage."
+    tool_path:
+      required: [[describe_layer, list_layers, find_locations, find_regions]]
+    checks:
+      reply_contains_any: ["coverage", "unknown", "no data", "cannot", "can't"]
+      reply_not_contains: ["is flat", "are flat", "safe to land"]
+
+  - id: q08_carbonate_reachable_and_pad
+    source: mcp-tools q8 (needs mineral data)
+    prompt: "Find carbonate outcrops reachable in 2 hours and the nearest landing pad to each."
+    tool_path:
+      required: [find_regions, find_locations, nearest]
+      order: [find_regions, find_locations, nearest]
+    checks:
+      reply_contains_any: ["weak_orbital", "strong_orbital", "orbital", "confirmed_in_situ", "tier"]
+      reply_not_contains: ["% chance", "probability"]
+
+  - id: q09_rover_confirmed_carbonate
+    source: mcp-tools q9 (needs mineral data)
+    prompt: "Where has carbonate been confirmed by the rover?"
+    tool_path:
+      required: [[find_regions, find_locations]]
+    checks:
+      reply_contains_any: ["confirmed_in_situ", "in situ", "in-situ", "sample site"]
+
+  - id: q10_olivine_delta_front
+    source: mcp-tools q10 (needs mineral data)
+    prompt: "Is there olivine at the delta front?"
+    tool_path:
+      required: [[describe_location, find_regions, find_locations, describe_layer, search_pois]]
+    checks:
+      reply_contains_any: ["orbital", "in situ", "in-situ", "tier", "no coverage", "cannot", "not available"]
+      reply_not_contains: ["% chance", "probability"]
