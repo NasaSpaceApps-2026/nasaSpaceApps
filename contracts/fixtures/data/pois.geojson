@@ -1,0 +1,239 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.403241,
+     18.453589
+    ]
+   },
+   "properties": {
+    "id": "base",
+    "name": "Fixture base",
+    "type": "base",
+    "x": -380,
+    "y": -380,
+    "z": -2403.86,
+    "lat": 18.453589,
+    "lon": 77.403241,
+    "mission": "fixture",
+    "source_url": "https://example.invalid/fixture",
+    "description": "Synthetic habitat site, SW corner.",
+    "science_value": 0.0,
+    "sol": null,
+    "image_urls": []
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.407332,
+     18.46388
+    ]
+   },
+   "properties": {
+    "id": "rim",
+    "name": "Fixture crater rim",
+    "type": "landmark",
+    "x": -150,
+    "y": 230,
+    "z": -2401.97,
+    "lat": 18.46388,
+    "lon": 77.407332,
+    "mission": "fixture",
+    "source_url": "https://example.invalid/fixture",
+    "description": "Crater rim lookout.",
+    "science_value": 0.3,
+    "sol": null,
+    "image_urls": []
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.407332,
+     18.461687
+    ]
+   },
+   "properties": {
+    "id": "floor",
+    "name": "Crater floor sample",
+    "type": "science_target",
+    "x": -150,
+    "y": 100,
+    "z": -2426.02,
+    "lat": 18.461687,
+    "lon": 77.407332,
+    "mission": "fixture",
+    "source_url": "https://example.invalid/fixture",
+    "description": "Fine-grained floor material.",
+    "science_value": 0.8,
+    "sol": null,
+    "image_urls": []
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.414624,
+     18.460675
+    ]
+   },
+   "properties": {
+    "id": "scarp_top",
+    "name": "Scarp upland",
+    "type": "science_target",
+    "x": 260,
+    "y": 40,
+    "z": -2370.15,
+    "lat": 18.460675,
+    "lon": 77.414624,
+    "mission": "fixture",
+    "source_url": "https://example.invalid/fixture",
+    "description": "Layered upland beyond the scarp.",
+    "science_value": 0.9,
+    "sol": null,
+    "image_urls": []
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.409644,
+     18.458988
+    ]
+   },
+   "properties": {
+    "id": "sample1",
+    "name": "Core sample site 1",
+    "type": "sample_site",
+    "x": -20,
+    "y": -60,
+    "z": -2399.9,
+    "lat": 18.458988,
+    "lon": 77.409644,
+    "mission": "fixture",
+    "source_url": "https://example.invalid/fixture",
+    "description": "Prior sample location.",
+    "science_value": 0.6,
+    "sol": 120,
+    "image_urls": []
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.413201,
+     18.460675
+    ]
+   },
+   "properties": {
+    "id": "scarp",
+    "name": "Steep scarp",
+    "type": "hazard",
+    "x": 180,
+    "y": 40,
+    "z": -2384.36,
+    "lat": 18.460675,
+    "lon": 77.413201,
+    "mission": "fixture",
+    "source_url": "https://example.invalid/fixture",
+    "description": "Up to about 35 degree slope; no-go for walking.",
+    "science_value": 0.0,
+    "sol": null,
+    "image_urls": []
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.404664,
+     18.454939
+    ]
+   },
+   "properties": {
+    "id": "wp1",
+    "name": "Waypoint sol 100",
+    "type": "rover_waypoint",
+    "x": -300,
+    "y": -300,
+    "z": -2403.12,
+    "lat": 18.454939,
+    "lon": 77.404664,
+    "mission": "fixture",
+    "source_url": "https://example.invalid/fixture",
+    "description": "Rover waypoint.",
+    "science_value": 0.1,
+    "sol": 100,
+    "image_urls": []
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.408221,
+     18.457469
+    ]
+   },
+   "properties": {
+    "id": "wp2",
+    "name": "Waypoint sol 110",
+    "type": "rover_waypoint",
+    "x": -100,
+    "y": -150,
+    "z": -2400.27,
+    "lat": 18.457469,
+    "lon": 77.408221,
+    "mission": "fixture",
+    "source_url": "https://example.invalid/fixture",
+    "description": "Rover waypoint.",
+    "science_value": 0.1,
+    "sol": 110,
+    "image_urls": []
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.409644,
+     18.458988
+    ]
+   },
+   "properties": {
+    "id": "wp3",
+    "name": "Waypoint sol 120",
+    "type": "rover_waypoint",
+    "x": -20,
+    "y": -60,
+    "z": -2399.9,
+    "lat": 18.458988,
+    "lon": 77.409644,
+    "mission": "fixture",
+    "source_url": "https://example.invalid/fixture",
+    "description": "Rover waypoint.",
+    "science_value": 0.1,
+    "sol": 120,
+    "image_urls": []
+   }
+  }
+ ]
+}

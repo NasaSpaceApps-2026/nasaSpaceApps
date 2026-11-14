@@ -1,0 +1,106 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      77.404664,
+      18.454939
+     ],
+     [
+      77.408221,
+      18.457469
+     ],
+     [
+      77.409644,
+      18.458988
+     ]
+    ]
+   },
+   "properties": {
+    "kind": "traverse"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.404664,
+     18.454939
+    ]
+   },
+   "properties": {
+    "id": "wp1",
+    "name": "Waypoint sol 100",
+    "type": "rover_waypoint",
+    "x": -300,
+    "y": -300,
+    "z": -2403.12,
+    "lat": 18.454939,
+    "lon": 77.404664,
+    "mission": "fixture",
+    "source_url": "https://example.invalid/fixture",
+    "description": "Rover waypoint.",
+    "science_value": 0.1,
+    "sol": 100,
+    "image_urls": []
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.408221,
+     18.457469
+    ]
+   },
+   "properties": {
+    "id": "wp2",
+    "name": "Waypoint sol 110",
+    "type": "rover_waypoint",
+    "x": -100,
+    "y": -150,
+    "z": -2400.27,
+    "lat": 18.457469,
+    "lon": 77.408221,
+    "mission": "fixture",
+    "source_url": "https://example.invalid/fixture",
+    "description": "Rover waypoint.",
+    "science_value": 0.1,
+    "sol": 110,
+    "image_urls": []
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.409644,
+     18.458988
+    ]
+   },
+   "properties": {
+    "id": "wp3",
+    "name": "Waypoint sol 120",
+    "type": "rover_waypoint",
+    "x": -20,
+    "y": -60,
+    "z": -2399.9,
+    "lat": 18.458988,
+    "lon": 77.409644,
+    "mission": "fixture",
+    "source_url": "https://example.invalid/fixture",
+    "description": "Rover waypoint.",
+    "science_value": 0.1,
+    "sol": 120,
+    "image_urls": []
+   }
+  }
+ ]
+}
