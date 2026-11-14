@@ -15,7 +15,9 @@ export interface LayerInfo {
   credit: string
   url: string
   legend?: [number | null, string][]
+  core?: CoreInfo // full-resolution block inside the site (level-6 tiles)
 }
+export interface CoreInfo { level: number; tx0: number; ty0: number; n: number; x0: number; y_top: number; size_m: number; res_m: number }
 export interface Manifest {
   site: string
   lat0: number
@@ -26,6 +28,7 @@ export interface Manifest {
   vectors: { pois: string; traverse: string }
 }
 interface DemMeta { width: number; height: number; res_m: number; base: number; step: number }
+interface CoreMeta extends DemMeta { x0: number; y_top: number }
 
 const rad = Cesium.Math.toRadians
 const deg = Cesium.Math.toDegrees
@@ -35,10 +38,12 @@ export class Site {
   readonly manifest: Manifest
   private readonly dem: Uint16Array
   private readonly meta: DemMeta
-  private constructor(manifest: Manifest, dem: Uint16Array, meta: DemMeta) {
+  private readonly core?: { data: Uint16Array; meta: CoreMeta }
+  private constructor(manifest: Manifest, dem: Uint16Array, meta: DemMeta, core?: { data: Uint16Array; meta: CoreMeta }) {
     this.manifest = manifest
     this.dem = dem
     this.meta = meta
+    this.core = core
     const half = manifest.size_m / 2
     const dLon = half / (R * Math.cos(rad(manifest.lat0)))
     const dLat = half / R
@@ -52,7 +57,13 @@ export class Site {
     const manifest: Manifest = await (await fetch('/manifest.json')).json()
     const meta: DemMeta = await (await fetch('/web/dem2m.json')).json()
     const buf = await (await fetch('/web/dem2m.u16')).arrayBuffer()
-    return new Site(manifest, new Uint16Array(buf), meta)
+    // Optional 1 m DEM for the full-resolution core block
+    let core: { data: Uint16Array; meta: CoreMeta } | undefined
+    try {
+      const r = await fetch('/web/dem1m_core.json')
+      if (r.ok) core = { meta: await r.json(), data: new Uint16Array(await (await fetch('/web/dem1m_core.u16')).arrayBuffer()) }
+    } catch { /* core is optional */ }
+    return new Site(manifest, new Uint16Array(buf), meta, core)
   }
 
   get rectangle(): Cesium.Rectangle {
@@ -71,23 +82,20 @@ export class Site {
     return [R * Math.cos(lat0) * (lon - rad(this.manifest.lon0)), R * (lat - lat0)]
   }
 
-  /** Elevation in metres at lon/lat radians (bilinear on the 2 m grid); NaN outside the site. */
+  /** Elevation in metres at lon/lat radians (bilinear; 1 m grid inside the core block, else 2 m); NaN outside. */
   elevation(lon: number, lat: number): number {
-    const { width, height, res_m, base, step } = this.meta
     const [x, y] = this.lonLatToXY(lon, lat)
+    const c = this.core
+    if (c) {
+      const m = c.meta
+      const cf = (x - m.x0) / m.res_m - 0.5, rf = (m.y_top - y) / m.res_m - 0.5
+      if (cf >= 0 && rf >= 0 && cf <= m.width - 1 && rf <= m.height - 1) return bilinear(c.data, m, cf, rf)
+    }
+    const m = this.meta
     const half = this.manifest.size_m / 2
-    // pixel centres: col = (x + half)/res - 0.5, row = (half - y)/res - 0.5
-    const cf = (x + half) / res_m - 0.5
-    const rf = (half - y) / res_m - 0.5
-    if (cf < 0 || rf < 0 || cf > width - 1 || rf > height - 1) return NaN
-    const c0 = Math.floor(cf), r0 = Math.floor(rf)
-    const c1 = Math.min(c0 + 1, width - 1), r1 = Math.min(r0 + 1, height - 1)
-    const fc = cf - c0, fr = rf - r0
-    const d = this.dem
-    const v00 = d[r0 * width + c0], v01 = d[r0 * width + c1]
-    const v10 = d[r1 * width + c0], v11 = d[r1 * width + c1]
-    const v = (v00 * (1 - fc) + v01 * fc) * (1 - fr) + (v10 * (1 - fc) + v11 * fc) * fr
-    return base + step * v
+    const cf = (x + half) / m.res_m - 0.5, rf = (half - y) / m.res_m - 0.5
+    if (cf < 0 || rf < 0 || cf > m.width - 1 || rf > m.height - 1) return NaN
+    return bilinear(this.dem, m, cf, rf)
   }
 
   elevationAtXY(x: number, y: number): number {
@@ -101,6 +109,14 @@ export class Site {
     const z = this.elevation(lon, lat)
     return Cesium.Cartesian3.fromRadians(lon, lat, (Number.isNaN(z) ? 0 : z) + aboveGround, SPHERE)
   }
+}
+
+function bilinear(d: Uint16Array, m: DemMeta, cf: number, rf: number): number {
+  const w = m.width, c0 = Math.floor(cf), r0 = Math.floor(rf)
+  const c1 = Math.min(c0 + 1, w - 1), r1 = Math.min(r0 + 1, m.height - 1)
+  const fc = cf - c0, fr = rf - r0
+  const v = (d[r0 * w + c0] * (1 - fc) + d[r0 * w + c1] * fc) * (1 - fr) + (d[r1 * w + c0] * (1 - fc) + d[r1 * w + c1] * fc) * fr
+  return m.base + m.step * v
 }
 
 export { deg, rad }

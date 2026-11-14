@@ -1,6 +1,6 @@
 // Custom Cesium providers that feed our site tiles/DEM into the engine.
 import * as Cesium from 'cesium'
-import type { Site } from './site'
+import type { CoreInfo, Site } from './site'
 import { R, SPHERE } from './site'
 
 const GRID = 65
@@ -40,7 +40,7 @@ const blank = (() => {
  * Imagery: composes Cesium geographic tiles from our site quadtree tiles (/tiles/{layer}/{z}/{x}/{y}.webp).
  * The site frame is equirectangular, so each Cesium tile maps to a plain rectangle in site metres.
  */
-export function siteImagery(site: Site, layerId: string, maxLevel: number): Cesium.ImageryProvider {
+export function siteImagery(site: Site, layerId: string, maxLevel: number, core?: CoreInfo): Cesium.ImageryProvider {
   const scheme = new Cesium.GeographicTilingScheme({ ellipsoid: SPHERE })
   const size = site.manifest.size_m
   const half = size / 2
@@ -79,27 +79,37 @@ export function siteImagery(site: Site, layerId: string, maxLevel: number): Cesi
       const wm = xb - xa // tile width in site metres
       if (xb < -half || xa > half || yn < -half || ys > half) return blank
       // our level l has 512 px per (size/2^l) m; need source px size <= target px size
-      const l = Math.max(0, Math.min(maxLevel, Math.ceil(Math.log2((size / 512) / (wm / TILE)))))
-      const ts = size / 2 ** l
-      const tx0 = Math.max(0, Math.floor((xa + half) / ts)), tx1 = Math.min(2 ** l - 1, Math.floor((xb + half) / ts))
-      const ty0 = Math.max(0, Math.floor((half - yn) / ts)), ty1 = Math.min(2 ** l - 1, Math.floor((half - ys) / ts))
+      const want = Math.max(0, Math.min(maxLevel, Math.ceil(Math.log2((size / 512) / (wm / TILE)))))
+      // Levels above the core's are only available inside the core block: draw the base level for full
+      // coverage first, then overlay the core tiles on top.
+      const baseLevel = core && want >= core.level ? core.level - 1 : want
+      const levels = core && want >= core.level ? [baseLevel, core.level] : [baseLevel]
       const canvas = document.createElement('canvas')
       canvas.width = canvas.height = TILE
       const ctx = canvas.getContext('2d')!
       ctx.imageSmoothingQuality = 'high'
       const jobs: Promise<void>[] = []
-      for (let ty = ty0; ty <= ty1; ty++) {
-        for (let tx = tx0; tx <= tx1; tx++) {
-          jobs.push(
-            getTile(l, tx, ty).then((img) => {
-              if (!img) return
-              const sx0 = -half + tx * ts, sy0 = half - ty * ts // source tile west/north edge (site m)
-              const dx = ((sx0 - xa) / wm) * TILE
-              const dy = ((yn - sy0) / (yn - ys)) * TILE
-              // +1 px overlap on the right/bottom hides sub-pixel gaps where source tiles meet
-              ctx.drawImage(img, dx, dy, (ts / wm) * TILE + 1, (ts / (yn - ys)) * TILE + 1)
-            }),
-          )
+      for (const l of levels) {
+        const ts = size / 2 ** l
+        let tx0 = Math.max(0, Math.floor((xa + half) / ts)), tx1 = Math.min(2 ** l - 1, Math.floor((xb + half) / ts))
+        let ty0 = Math.max(0, Math.floor((half - yn) / ts)), ty1 = Math.min(2 ** l - 1, Math.floor((half - ys) / ts))
+        if (core && l === core.level) {
+          tx0 = Math.max(tx0, core.tx0); tx1 = Math.min(tx1, core.tx0 + core.n - 1)
+          ty0 = Math.max(ty0, core.ty0); ty1 = Math.min(ty1, core.ty0 + core.n - 1)
+        }
+        for (let ty = ty0; ty <= ty1; ty++) {
+          for (let tx = tx0; tx <= tx1; tx++) {
+            jobs.push(
+              getTile(l, tx, ty).then((img) => {
+                if (!img) return
+                const sx0 = -half + tx * ts, sy0 = half - ty * ts // source tile west/north edge (site m)
+                const dx = ((sx0 - xa) / wm) * TILE
+                const dy = ((yn - sy0) / (yn - ys)) * TILE
+                // +1 px overlap on the right/bottom hides sub-pixel gaps where source tiles meet
+                ctx.drawImage(img, dx, dy, (ts / wm) * TILE + 1, (ts / (yn - ys)) * TILE + 1)
+              }),
+            )
+          }
         }
       }
       await Promise.all(jobs)

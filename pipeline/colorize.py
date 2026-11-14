@@ -67,3 +67,20 @@ def colorize_banded(gray: np.ndarray, raw: Path, lat0, lon0, size_m, coarse=1024
         up = np.stack([np.asarray(p.resize((n, r1 - r0), Image.BICUBIC, box=box), dtype=np.float32) for p in planes], axis=-1)
         out[r0:r1] = colorize(gray[r0:r1], up)
     return out
+
+
+def colorize_window(gray, raw, lat0, lon0, size_m, x0, y_top, res, coarse=1024, band=512) -> np.ndarray:
+    """Colourise a sub-window of the site (gray: rows x cols at `res` m/px, west edge x0, north edge y_top,
+    both in site metres) using the SAME site-wide colour field as the base ortho, so tiles match."""
+    rows, cols = gray.shape
+    ch = viking_chroma(raw, lat0, lon0, size_m, coarse)
+    planes = [Image.fromarray(np.ascontiguousarray(ch[..., k]), mode="F") for k in range(3)]
+    cell = size_m / coarse
+    out = np.empty((rows, cols, 3), dtype=np.uint8)
+    for r0 in range(0, rows, band):
+        r1 = min(rows, r0 + band)
+        box = ((x0 + size_m / 2) / cell, (size_m / 2 - (y_top - r0 * res)) / cell,
+               (x0 + cols * res + size_m / 2) / cell, (size_m / 2 - (y_top - r1 * res)) / cell)
+        up = np.stack([np.asarray(p.resize((cols, r1 - r0), Image.BICUBIC, box=box), dtype=np.float32) for p in planes], axis=-1)
+        out[r0:r1] = colorize(gray[r0:r1], up)
+    return out

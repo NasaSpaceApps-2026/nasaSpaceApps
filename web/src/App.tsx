@@ -4,11 +4,13 @@ import 'cesium/Build/Cesium/Widgets/widgets.css'
 import { R, Site, SPHERE, deg } from './site'
 import { siteImagery, siteTerrain } from './providers'
 import { CesiumRover } from './cesiumRover'
+import { PlacesLayer, type Place } from './places'
 import './App.css'
 
 const MARS_ION_ASSET = 3644333
 type Mode = 'orbit' | 'site' | 'ground' | 'rover'
 let roverCtl: CesiumRover | null = null // set once the viewer is up; used by fly()
+let placesCtl: PlacesLayer | null = null
 
 export default function App() {
   const box = useRef<HTMLDivElement>(null)
@@ -18,6 +20,9 @@ export default function App() {
   const [status, setStatus] = useState('loading site…')
   const [hud, setHud] = useState('')
   const [drive, setDrive] = useState('')
+  const [vec, setVec] = useState({ traverse: true, names: true })
+  const [query, setQuery] = useState('')
+  const [hits, setHits] = useState<Place[]>([])
 
   useEffect(() => {
     let dead = false
@@ -94,7 +99,7 @@ export default function App() {
 
       const next: Record<string, { on: boolean; layer: Cesium.ImageryLayer }> = {}
       for (const L of s.manifest.layers) {
-        const layer = new Cesium.ImageryLayer(siteImagery(s, L.id, L.max_level))
+        const layer = new Cesium.ImageryLayer(siteImagery(s, L.id, L.max_level, L.core))
         layer.show = L.kind === 'base'
         if (L.kind === 'overlay') layer.alpha = 0.8
         v.imageryLayers.add(layer)
@@ -147,6 +152,12 @@ export default function App() {
         setDrive(`rover ${p.status}${p.stop_reason ? ' (' + p.stop_reason + ')' : ''} · slope ${p.slope_deg.toFixed(1)}° · ` +
           `ahead ${p.ahead_slope_deg.toFixed(1)}° · ${p.display_speed_mps.toFixed(1)} m/s shown (${p.speed_mps.toFixed(2)} real) · x ${p.x.toFixed(0)} y ${p.y.toFixed(0)}`)
       }
+      // Real Perseverance traverse/waypoints and IAU names; start the rover at the first real waypoint.
+      placesCtl = new PlacesLayer(v, s)
+      placesCtl.load().then(() => {
+        const w = placesCtl!.first()
+        if (w && roverCtl) roverCtl.driver.teleport(w.x, w.y, w.heading ?? 0)
+      }).catch((e) => console.error('places', e))
       setSite(s)
       setViewer(v)
       fly(v, s, (new URLSearchParams(location.search).get('view') as Mode) || 'site', 0)
@@ -163,6 +174,28 @@ export default function App() {
     setLayers({ ...layers, [id]: { ...cur, on: !cur.on } })
   }
 
+  const toggleVec = (k: 'traverse' | 'names') => {
+    const on = !vec[k]
+    if (k === 'traverse') placesCtl?.setTraverse(on); else placesCtl?.setNames(on)
+    setVec({ ...vec, [k]: on })
+  }
+  const search = (q: string) => { setQuery(q); setHits(placesCtl ? placesCtl.search(q) : []) }
+  const goTo = (p: Place) => {
+    if (!viewer || !site) return
+    setHits([])
+    setQuery(p.name)
+    if (p.kind === 'waypoint') {
+      roverCtl?.driver.teleport(p.x, p.y, p.heading ?? 0)
+      fly(viewer, site, 'rover', 0)
+    } else {
+      roverCtl?.setChase(false)
+      viewer.camera.flyTo({
+        destination: Cesium.Cartesian3.fromDegrees(p.lon, p.lat, Math.max(15000, (p.diameterKm ?? 5) * 2500), SPHERE),
+        orientation: { heading: 0, pitch: Cesium.Math.toRadians(-90), roll: 0 }, duration: 2,
+      })
+    }
+  }
+
   return (
     <div className="app">
       <div ref={box} className="cesium" />
@@ -175,12 +208,27 @@ export default function App() {
             </button>
           ))}
         </div>
+        <input className="search" placeholder="Search: sol 120, Jezero, Belva…" value={query}
+          onChange={(e) => search(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && hits[0]) goTo(hits[0]) }} />
+        {hits.map((h) => (
+          <button key={h.id} className="hit" onClick={() => goTo(h)} title={h.source}>
+            {h.name} <small>{h.kind === 'waypoint' ? 'rover waypoint → drive from here' : 'IAU/USGS name'}</small>
+          </button>
+        ))}
         {site?.manifest.layers.map((L) => (
           <label key={L.id} title={L.credit}>
             <input type="checkbox" checked={layers[L.id]?.on ?? false} onChange={() => toggle(L.id)} />
             {L.title} <small>({L.mission} {L.instrument})</small>
           </label>
         ))}
+        <label title="NASA/JPL Mars 2020 location map (M20_traverse.json, M20_waypoints.json)">
+          <input type="checkbox" checked={vec.traverse} onChange={() => toggleVec('traverse')} />
+          Perseverance traverse + waypoints <small>(Mars 2020, NASA/JPL)</small>
+        </label>
+        <label title="USGS Gazetteer of Planetary Nomenclature (IAU-approved names)">
+          <input type="checkbox" checked={vec.names} onChange={() => toggleVec('names')} />
+          Place names <small>(IAU/USGS)</small>
+        </label>
         <small>Ground: drag = look · Orbit/site: drag = rotate, right-drag = tilt · wheel = zoom</small>
         <small>Rover: W/S drive, A/D turn (limits are assumed values)</small>
         <small>{drive}</small>
