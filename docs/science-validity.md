@@ -1,6 +1,6 @@
 # Ares Atlas: science validity summary
 
-*Living document. Last updated Nov 14, 2026 (branch `sameer/mcp`). Every number below comes from a
+*Living document. Last updated Nov 14, 2026, evening (branch `sameer/mcp`). Every number below comes from a
 script or test in this repo; the "Reproduce" column says which.*
 
 ## What we claim
@@ -42,7 +42,7 @@ official pipeline layers land.
 | 3 | Perseverance's first waypoint vs the published landing site | 6.5 m apart | `sitebuild/science.py` build log |
 | 4 | Searches return exactly what they define | Fast search agrees with a plain-loop reference on every cell tested; no returned spot has a failing cell in its footprint | `tests/oracle.py`, `tests/test_search.py` |
 | 5 | Walking time and distance | Dijkstra matches an independent reference implementation everywhere (rtol 1e-5); flat-ground time equals distance / speed within 1% | `tests/oracle_travel.py`, `tests/test_travel.py` |
-| 6 | Whole suite | 272 Python tests + 30 chat-panel tests pass | `.venv/bin/python -m pytest -q` |
+| 6 | Whole suite | 386 Python tests + 30 chat-panel tests pass | `.venv/bin/python -m pytest -q` |
 
 ### Validation against Perseverance's real drives
 
@@ -74,6 +74,18 @@ In a 2 km window around the landing site, the steepest slope is **11.7°** in th
 **0%** of that window over 15°; HiRISE shows 0.81%. Coarse terrain hides exactly the hazards an EVA
 planner needs to see. Reproduce: `sitebuild/compare_ctx_hirise.py`, recorded in
 `docs/compare_ctx_vs_hirise_stats.txt`.
+
+### Science tools beyond minerals
+
+Each tool is checked against a known answer, not just "it runs".
+
+| Capability | Example question | Method (source) | Validation |
+|---|---|---|---|
+| Sun and shadow | "When is this outcrop lit for imaging?" | Mars24 algorithm (Allison & McEwen 2000, NASA GISS) + terrain shadow casting | Reproduces the GISS worked example (Ls 277.18758°, equation of time −5.18774°) and Perseverance's landing local mean solar time of 15:53 (JPL) |
+| Line of sight | "Is base in radio line of sight from here?" | Radial sweep with Mars curvature (Franklin & Ray 1994) | Matches a brute-force per-cell reference; flat-ground horizon matches √(2Rh) (≈3.4 km at 1.7 m eye height) |
+| Landform layers | "North-facing slopes", "most exposed rock section" | Horn 1981, Zevenbergen & Thorne 1987, Weiss 2001, Riley et al. 1999, Evans 1972 | Exact values on analytic surfaces (planes, bowls, saddles, steps); the real delta-front scarps score highest for relief |
+| Ancient lake | "What was underwater at the delta-top level?" | Flood today's terrain to a published level | Levels only from opened sources (Mangold et al. 2024: −2410 m foresets; Villette et al. 2025, modelled). Depth at the landing site equals level minus elevation (159.8 m at −2410 m) |
+| EVA safety | "Where can I go and still get back with 20% reserve?" | Out-and-back walking time over the slope-limited terrain | On flat ground the envelope radius equals speed × usable time ÷ 2; route check finds the exact point of no return |
 
 ## How the answers stay honest
 
@@ -107,7 +119,13 @@ planner needs to see. Reproduce: `sitebuild/compare_ctx_hirise.py`, recorded in
 - The CRISM map's registration to our terrain is unmeasured (36 m pixels).
 - The live AI agent has not yet been scored end to end (no API key yet). Tool-choice quality so far
   comes from the blind review.
+- The lake tool floods today's topography, not the ancient lake floor, and the sources do not state
+  their elevation datum. The site is only 8 km across, so lake areas at high levels are lower bounds.
+- `outcrop_exposure` is our own heuristic; it cannot tell rock from sand and is inflated where the
+  terrain model is noisy.
+- Shadows ignore atmospheric scattering and terrain beyond the site edge.
 
 ## Change log
 
 - **Nov 14:** first version.
+- **Nov 14 (later):** added sun/shadow, line of sight, landform layers, ancient lake and EVA safety tools with their validation; suite at 386 tests.

@@ -47,6 +47,24 @@ Status key: **cited** (published NASA/peer value) · **derived** (computed from 
 | Consumables | (drive + stop time) / EVA limit, minus reserve | assumed | Time-based only; no O₂/power model yet |
 | Site search | Threshold layer → connected regions → score by value, area, slope | derived | Evidence (layer, instrument, values) returned with every site |
 
+## Query engine and science tools (Sameer: `atlas_core/`, `sitebuild/`, MCP)
+
+Narrative summary for judges: `docs/science-validity.md`. These rows cover the real Jezero site our
+MCP query engine uses (`data/build/site/jezero`, built by `sitebuild/`; interim science layers until
+Stream A's official ones land).
+
+| Item | Value | Status | Basis |
+|---|---|---|---|
+| Mineral evidence (query engine) | Ordinal tiers (rover-confirmed / strong orbital / weak orbital / not detected / no coverage), 7 minerals | cited | Parente et al. CRISM map of Jezero (Zenodo, CC BY 4.0), 36 m; black = no coverage. Not abundances: no source gives 0–1 abundance at this scale |
+| Rover-confirmed minerals | Olivine + carbonate at samples 4–7; olivine at 14–15 | cited | Farley et al. 2022 (Science); Williams et al. 2023 and Hurowitz et al. 2023. Positions derived from waypoints (10–50 m) |
+| Geologic units | USGS SIM 3464, shifted +25.8 m E / −98.1 m N to our terrain | cited (shift derived) | Shift measured against HiRISE hillshade; 16 tiles agree within 25 m |
+| Sun position | Mars24 algorithm | cited | Allison & McEwen 2000; NASA GISS algorithm page. Reproduces its Jan 6 2000 example (Ls 277.18758, EOT −5.18774) and Perseverance landing LMST 15:53 (JPL) |
+| Paleolake levels | −2410 m uppermost foresets; breach ca. −2400 m; others in `docs/lake-levels.md` | cited (abstracts) | Mangold et al. LPSC 2024; Villette et al. 2025 (modelled). Datum not stated in sources; floods today's topography |
+| Terrain layers | Aspect, curvature, TPI, TRI, local relief, exposure index | derived | Horn 1981; Zevenbergen & Thorne 1987; Weiss 2001; Riley et al. 1999; Evans 1972. `outcrop_exposure` is our heuristic and is inflated in the noisy-DTM zone |
+| Line of sight | Radial sweep with curvature correction | derived | Franklin & Ray 1994; R = 3,396,190 m; no refraction, Fresnel zone or antenna model |
+| EVA return time | 2 × one-way walking time | assumed | Isotropic placeholder speed curve; reserve 20 % from profile (assumed) |
+| DTM quality flags | Seams 7.4 %, noisy zones 8.2 % of site | derived | Our detectors (`sitebuild/seams.py`, `noise.py`); flags only, elevations never altered |
+
 ## Validation done
 
 | Check | Result | Where |
@@ -54,6 +72,10 @@ Status key: **cited** (published NASA/peer value) · **derived** (computed from 
 | Physics unit checks (flat, tilt, climb speed = P / (m g (sin θ + Crr cos θ)), slip at grip limit, brake hold vs slide, dip in/out, momentum stall) | 12 / 12 pass | `web/src/rover/sandbox/physics.check.ts` |
 | Height-tile decode vs source terrain | < 0.08 m error (1 m posts) | same |
 | Planner: no route crosses a no-go cell (50 random pairs); flat-terrain duration = distance / speed within 2 % | Pass | `api/tests/test_api.py` |
+| Query-engine slope map vs real Perseverance traverse (24.9 km, MMGIS) | Traverse spends 0.41 % of its length on > 15° vs 4.79 % of site (≈ 12× less), 0.10 % on > 20° vs 1.96 % (≈ 20× less). The "99.9 % safe/caution" headline alone is weak because 98 % of the site is safe | `devapi` `GET /validation`, real site |
+| CTX 20 m vs HiRISE 2 m slope, 2 km around landing site | Max 11.7° vs 33.4°; > 15°: 0 % vs 0.81 % | `docs/compare_ctx_vs_hirise_stats.txt` |
+| Query engine search / travel / visibility vs independent slow oracles | Agree (all cases tested) | `tests/oracle.py`, `tests/oracle_travel.py`, `tests/test_visibility.py` |
+| Site frame (query engine) vs `pipeline/site_cfg.py` | 0.3 mm max | `tests/test_site_build.py` |
 | Hazard map vs real Perseverance traverse | **Pending real data** (synthetic traverse: 100 % safe/caution) | `GET /validation` |
 | Planned vs driven leg length | **Pending real data** (synthetic: ratios 0.98–1.05) | `GET /validation` |
 
@@ -69,3 +91,4 @@ Status key: **cited** (published NASA/peer value) · **derived** (computed from 
 
 - 2026-11-14: Force-based rover physics replaces hard slope blocking; buggy profile from Apollo LRV specs.
 - 2026-11-14: Planner, site search, validation endpoint; slope limits as safety policy.
+- 2026-11-14: Query engine science rows (real CRISM tiers, rover-confirmed samples, Mars24 sun, paleolake levels, terrain layers, line of sight) and real-traverse validation added (Sameer).
