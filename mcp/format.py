@@ -39,11 +39,16 @@ def xy(x, y) -> str:
 def source_label(src) -> str:
     if src is None:
         return "user-supplied"
-    s = str(src)
-    if s.strip().lower() == "assumed":
-        return "assumed"
-    if s.strip().upper().startswith("TBD"):
+    s = str(src).strip()
+    low = s.lower()
+    if low.startswith("assumed"):
+        return s if low != "assumed" else "assumed"      # keep the reason, e.g. "assumed (pads ...)"
+    if low.startswith("tbd"):
         return "citation pending"
+    if low in ("user-specified", "user-supplied", "user"):
+        return "user-specified"
+    if low.startswith("default"):
+        return s                                         # a tool default, not a citation
     return f"cited: {s}"
 
 

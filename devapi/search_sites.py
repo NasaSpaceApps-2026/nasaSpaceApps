@@ -24,14 +24,23 @@ def _src(layer) -> dict:
             "citation": s.get("citation")}
 
 
+NON_SCIENCE_LAYERS = {"quality_flag"}
+
+
+def _science_layers(site: Site):
+    """Layers that describe the ground (minerals, geology), not data quality."""
+    return [l for l in site.layers.values()
+            if l.id not in NON_SCIENCE_LAYERS and l.meta.get("role") != "data_quality"]
+
+
 def search_targets(site: Site) -> list[dict]:
     names: dict[str, int] = {}
-    for l in site.layers.values():
+    for l in _science_layers(site):
         if l.kind == "categorical" and l.classes:
             for n in l.classes.values():
                 names[n] = names.get(n, 0) + 1
     out = []
-    for l in site.layers.values():
+    for l in _science_layers(site):
         if l.kind == "evidence":
             out.append({"target": l.id, "kind": "evidence", "layer": l.id, "class": None,
                         "title": l.meta.get("title", l.id), "description": l.meta.get("measures"),
@@ -56,6 +65,10 @@ def search_sites(site: Site, store, body: dict) -> dict:
     t = next((x for x in targets if x["target"] == want), None) or \
         next((x for x in targets if x["target"].lower() == want.lower()), None)
     if t is None:
+        if not targets:
+            raise AtlasError(f'No searchable science targets are loaded for this site, so "{want}" cannot be searched.',
+                             hint="This site has terrain layers only (no mineral or geology layers yet). "
+                                  "Say that the data cannot answer; terrain questions still work.")
         raise AtlasError(f'Unknown target "{want}".',
                          hint="Valid targets: " + ", ".join(x["target"] for x in targets) + ".")
     top_k = body.get("top_k", 5)
