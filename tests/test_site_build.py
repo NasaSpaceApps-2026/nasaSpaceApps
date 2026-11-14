@@ -33,7 +33,9 @@ def test_catalogue_complete(site):
             assert k in lay.meta, (lid, k)
         for k in ("mission", "instrument", "product", "citation", "url"):
             assert lay.meta["source"].get(k), (lid, k)
-    assert set(site.layers["quality_flag"].classes) == {0, 1, 2}
+    assert set(site.layers["quality_flag"].classes) == {0, 1, 2, 3}
+    assert site.layers["quality_flag"].classes[3] == "hirise_noisy"
+    assert "hirise_noisy" in site.layers["quality_flag"].meta["quality"]
 
 
 def test_profiles(site):
@@ -75,8 +77,11 @@ def test_slope_matches_manual_horn(site):
 def test_elevation_matches_source_bilinear(site):
     import rasterio
     from rasterio.windows import Window
-    wins = list((ROOT / "data/raw/hirise").glob("window_*.tif"))
-    assert wins, "cached HiRISE window missing"
+    import sys
+    sys.path.insert(0, str(ROOT / "pipeline"))
+    import site_cfg
+    wins = list((ROOT / "data/raw/hirise").glob(f"window_{site_cfg.LAT0}_{site_cfg.LON0}_*.tif"))
+    assert wins, "cached HiRISE window for site_cfg centre missing"
     p = {p["id"]: p for p in site.pois}["octavia_e_butler_landing"]
     R = site.radius_m
     sx, sy = R * math.radians(p["lon"]), R * math.radians(p["lat"])      # source CRS (eqc lat_ts=0)
@@ -91,3 +96,18 @@ def test_elevation_matches_source_bilinear(site):
     from atlas_core.terrain import bilinear
     z = bilinear(site.layers["elevation"].data, float(r), float(c))
     assert abs(z - v) < 1.0, (z, v)
+
+
+def test_site_frame_is_site_cfg(site):
+    import sys
+    sys.path.insert(0, str(ROOT / "pipeline"))
+    sys.path.insert(0, str(ROOT / "sitebuild"))
+    import site_cfg, site_frame
+    assert site.lat0 == site_cfg.LAT0 and site.lon0 == site_cfg.LON0
+    assert site.size_px * site.res_m == site_cfg.SIZE
+    assert site_frame.verify_frame(0.01) < 0.01          # < 1 cm vs independent frame definition
+    import rasterio
+    from rasterio.crs import CRS
+    with rasterio.open(SITE_DIR / "elevation.tif") as d:
+        assert d.crs == CRS.from_string(site_cfg.CRS)
+        assert d.bounds.left == -site_cfg.SIZE / 2 and d.bounds.top == site_cfg.SIZE / 2
