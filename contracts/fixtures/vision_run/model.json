@@ -1,0 +1,550 @@
+{
+  "ops": [
+    {
+      "op": "paint",
+      "x": 2.0,
+      "y": 1.0,
+      "radius_m": 1.0,
+      "rgb": [
+        40,
+        50,
+        70
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 3.0,
+      "y": 0.0,
+      "radius_m": 1.0,
+      "rgb": [
+        220,
+        180,
+        80
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 2.0,
+      "y": 2.0,
+      "radius_m": 1.0,
+      "rgb": [
+        40,
+        50,
+        70
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 3.0,
+      "y": 1.0,
+      "radius_m": 1.0,
+      "rgb": [
+        40,
+        50,
+        70
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 4.0,
+      "y": 0.0,
+      "radius_m": 1.0,
+      "rgb": [
+        40,
+        50,
+        70
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 3.0,
+      "y": 2.0,
+      "radius_m": 1.0,
+      "rgb": [
+        40,
+        50,
+        70
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 4.0,
+      "y": 1.0,
+      "radius_m": 1.0,
+      "rgb": [
+        220,
+        180,
+        80
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 2.0,
+      "y": 3.0,
+      "radius_m": 1.0,
+      "rgb": [
+        220,
+        180,
+        80
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 4.0,
+      "y": 2.0,
+      "radius_m": 1.0,
+      "rgb": [
+        220,
+        180,
+        80
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 3.0,
+      "y": 3.0,
+      "radius_m": 1.0,
+      "rgb": [
+        220,
+        180,
+        80
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 5.0,
+      "y": 1.0,
+      "radius_m": 1.0,
+      "rgb": [
+        220,
+        180,
+        80
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 4.0,
+      "y": 3.0,
+      "radius_m": 1.0,
+      "rgb": [
+        40,
+        50,
+        70
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 3.0,
+      "y": 4.0,
+      "radius_m": 1.0,
+      "rgb": [
+        220,
+        180,
+        80
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 4.0,
+      "y": 4.0,
+      "radius_m": 1.0,
+      "rgb": [
+        40,
+        50,
+        70
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 5.0,
+      "y": 2.0,
+      "radius_m": 1.0,
+      "rgb": [
+        220,
+        180,
+        80
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 6.0,
+      "y": 2.0,
+      "radius_m": 1.0,
+      "rgb": [
+        40,
+        50,
+        70
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 5.0,
+      "y": 4.0,
+      "radius_m": 1.0,
+      "rgb": [
+        40,
+        50,
+        70
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 7.0,
+      "y": 2.0,
+      "radius_m": 1.0,
+      "rgb": [
+        40,
+        50,
+        70
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 5.0,
+      "y": 0.0,
+      "radius_m": 1.0,
+      "rgb": [
+        40,
+        50,
+        70
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 6.0,
+      "y": 1.0,
+      "radius_m": 1.0,
+      "rgb": [
+        40,
+        50,
+        70
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 3.0,
+      "y": 6.0,
+      "radius_m": 1.0,
+      "rgb": [
+        40,
+        50,
+        70
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 8.0,
+      "y": 2.0,
+      "radius_m": 1.0,
+      "rgb": [
+        220,
+        180,
+        80
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 7.0,
+      "y": 1.0,
+      "radius_m": 1.0,
+      "rgb": [
+        40,
+        50,
+        70
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 6.0,
+      "y": 4.0,
+      "radius_m": 1.0,
+      "rgb": [
+        220,
+        180,
+        80
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 4.0,
+      "y": -1.0,
+      "radius_m": 1.0,
+      "rgb": [
+        40,
+        50,
+        70
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 2.0,
+      "y": 0.0,
+      "radius_m": 1.0,
+      "rgb": [
+        220,
+        180,
+        80
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 5.0,
+      "y": 3.0,
+      "radius_m": 1.0,
+      "rgb": [
+        40,
+        50,
+        70
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 2.0,
+      "y": 4.0,
+      "radius_m": 1.0,
+      "rgb": [
+        220,
+        180,
+        80
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 6.0,
+      "y": 3.0,
+      "radius_m": 1.0,
+      "rgb": [
+        220,
+        180,
+        80
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 1.0,
+      "y": 4.0,
+      "radius_m": 1.0,
+      "rgb": [
+        40,
+        50,
+        70
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 8.0,
+      "y": 4.0,
+      "radius_m": 1.0,
+      "rgb": [
+        40,
+        50,
+        70
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 1.0,
+      "y": 6.0,
+      "radius_m": 1.0,
+      "rgb": [
+        220,
+        180,
+        80
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 7.0,
+      "y": 4.0,
+      "radius_m": 1.0,
+      "rgb": [
+        220,
+        180,
+        80
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 9.0,
+      "y": 4.0,
+      "radius_m": 1.0,
+      "rgb": [
+        40,
+        50,
+        70
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 5.0,
+      "y": 6.0,
+      "radius_m": 1.0,
+      "rgb": [
+        220,
+        180,
+        80
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 2.0,
+      "y": 8.0,
+      "radius_m": 1.0,
+      "rgb": [
+        220,
+        180,
+        80
+      ],
+      "strength": 1.0,
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 1.0,
+      "y": 2.0,
+      "radius_m": 1.0,
+      "rgb": [
+        220,
+        180,
+        80
+      ],
+      "strength": 1.0,
+      "inferred": true
+    },
+    {
+      "op": "paint",
+      "x": 4.0,
+      "y": 5.0,
+      "radius_m": 1.0,
+      "rgb": [
+        220,
+        180,
+        80
+      ],
+      "strength": 1.0,
+      "inferred": true
+    },
+    {
+      "op": "paint",
+      "x": 6.0,
+      "y": 5.0,
+      "radius_m": 1.0,
+      "rgb": [
+        40,
+        50,
+        70
+      ],
+      "strength": 1.0,
+      "inferred": true
+    },
+    {
+      "op": "paint",
+      "x": 0.0,
+      "y": 4.0,
+      "radius_m": 1.0,
+      "rgb": [
+        40,
+        50,
+        70
+      ],
+      "strength": 1.0,
+      "inferred": true
+    },
+    {
+      "op": "paint",
+      "x": 3.0,
+      "y": -1.0,
+      "radius_m": 1.0,
+      "rgb": [
+        220,
+        180,
+        80
+      ],
+      "strength": 1.0,
+      "inferred": true
+    },
+    {
+      "op": "paint",
+      "x": 5.0,
+      "y": -1.0,
+      "radius_m": 1.0,
+      "rgb": [
+        40,
+        50,
+        70
+      ],
+      "strength": 1.0,
+      "inferred": true
+    }
+  ]
+}
