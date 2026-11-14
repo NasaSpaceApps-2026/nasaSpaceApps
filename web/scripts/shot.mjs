@@ -17,7 +17,7 @@ for (const v of views) {
   const ok = await page.waitForFunction(() => window.__ready === true, null, { timeout: 240000 }).then(() => true).catch(() => false)
   await page.waitForTimeout(1500)
   await page.screenshot({ path: `${process.env.SHOT_DIR ?? '.'}/${v}.png` })
-  console.log(v, ok ? 'READY' : 'TIMEOUT(not fully loaded)', ((Date.now() - t0) / 1000).toFixed(0) + 's')
+  const q=encodeURIComponent; console.log(v, ok ? 'READY' : 'TIMEOUT(not fully loaded)', ((Date.now() - t0) / 1000).toFixed(0) + 's')
 }
 console.log('page errors:', errs.length ? errs.slice(0, 5) : 'none')
 await b.close()

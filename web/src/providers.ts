@@ -96,7 +96,8 @@ export function siteImagery(site: Site, layerId: string, maxLevel: number): Cesi
               const sx0 = -half + tx * ts, sy0 = half - ty * ts // source tile west/north edge (site m)
               const dx = ((sx0 - xa) / wm) * TILE
               const dy = ((yn - sy0) / (yn - ys)) * TILE
-              ctx.drawImage(img, dx, dy, (ts / wm) * TILE, (ts / (yn - ys)) * TILE)
+              // +1 px overlap on the right/bottom hides sub-pixel gaps where source tiles meet
+              ctx.drawImage(img, dx, dy, (ts / wm) * TILE + 1, (ts / (yn - ys)) * TILE + 1)
             }),
           )
         }

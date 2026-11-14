@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as Cesium from 'cesium'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
-import { Site, SPHERE, deg } from './site'
+import { R, Site, SPHERE, deg } from './site'
 import { siteImagery, siteTerrain } from './providers'
 import './App.css'
 
@@ -43,21 +43,50 @@ export default function App() {
       const scene = v.scene
       scene.globe.baseColor = Cesium.Color.TRANSPARENT // outside the site the Mars tileset shows
       scene.globe.showGroundAtmosphere = false
+      // Sky: Cesium's atmosphere shader doesn't draw below the sphere surface (the Jezero floor is
+      // ~2.5 km under it), so tint the background directly: dusty tan at the ground, black in space.
       if (scene.skyAtmosphere) scene.skyAtmosphere.show = false
-      scene.backgroundColor = Cesium.Color.fromCssColorString('#05060a')
+      const sky = Cesium.Color.fromCssColorString('#a88866'), space = Cesium.Color.fromCssColorString('#05060a')
+      scene.preRender.addEventListener(() => {
+        const t = Cesium.Math.clamp((scene.camera.positionCartographic.height + 3000) / 120000, 0, 1)
+        Cesium.Color.lerp(sky, space, Math.sqrt(t), scene.backgroundColor)
+      })
       scene.fog.enabled = false
       scene.globe.depthTestAgainstTerrain = true
 
       // The site terrain provider is flat outside the site, and a transparent globe still writes
       // depth, which hid every part of the Mars tileset below that flat surface (the dark spots).
       // So draw the globe only inside the site rectangle, and cut the tileset out under it.
-      const ring = () =>
-        Cesium.Cartesian3.fromRadiansArray(
-          [s.west, s.south, s.east, s.south, s.east, s.north, s.west, s.north], SPHERE)
-      scene.globe.clippingPolygons = new Cesium.ClippingPolygonCollection({
-        polygons: [new Cesium.ClippingPolygon({ positions: ring() })],
-        inverse: true,
-      })
+      // Tileset hole: the site rectangle shrunk by INSET metres, so the tileset and our terrain
+      // overlap slightly at the seam instead of leaving a black gap where neither draws.
+      const INSET = 200
+      const ring = () => {
+        const dLon = INSET / (R * Math.cos(Cesium.Math.toRadians(s.manifest.lat0))), dLat = INSET / R
+        return Cesium.Cartesian3.fromRadiansArray(
+          [s.west + dLon, s.south + dLat, s.east - dLon, s.south + dLat,
+           s.east - dLon, s.north - dLat, s.west + dLon, s.north - dLat], SPHERE)
+      }
+      // Globe clipping uses planes, not ClippingPolygon: polygon clipping removes whole globe tiles
+      // and crashes Cesium's TerrainFillMesh (northIndicesWestToEast undefined) during flights.
+      // Meridian planes are exact. Latitude edges are constant-z planes chosen so the globe can
+      // never extend PAST the site (north uses the lowest terrain radius, south the highest):
+      // beyond the site the globe is flat and writes depth, hiding the Mars tileset (black strip).
+      // That trims up to ~(relief * tan(lat)) m inside the north/south edges, which the shrunken
+      // tileset hole (INSET) covers.
+      if (!new URLSearchParams(location.search).has('noglobeclip')) {
+        const m = s.manifest as unknown as { elev_min: number; elev_max: number }
+        const zS = (R + m.elev_max) * Math.sin(s.south), zN = (R + m.elev_min) * Math.sin(s.north)
+        const w = s.west, e = s.east
+        scene.globe.clippingPlanes = new Cesium.ClippingPlaneCollection({
+          unionClippingRegions: true, // clip anything outside the rectangle
+          planes: [
+            new Cesium.ClippingPlane(new Cesium.Cartesian3(-Math.sin(w), Math.cos(w), 0), 0),
+            new Cesium.ClippingPlane(new Cesium.Cartesian3(Math.sin(e), -Math.cos(e), 0), 0),
+            new Cesium.ClippingPlane(new Cesium.Cartesian3(0, 0, 1), -zS),
+            new Cesium.ClippingPlane(new Cesium.Cartesian3(0, 0, -1), zN),
+          ],
+        })
+      }
       let tilesetRef: Cesium.Cesium3DTileset | undefined
 
       const next: Record<string, { on: boolean; layer: Cesium.ImageryLayer }> = {}
@@ -89,6 +118,10 @@ export default function App() {
         const c = v!.camera.positionCartographic
         const [x, y] = s.lonLatToXY(c.longitude, c.latitude)
         setHud(`x ${x.toFixed(0)} m  y ${y.toFixed(0)} m  alt ${c.height.toFixed(0)} m`)
+      })
+      scene.renderError.addEventListener((_sc: unknown, err: unknown) => {
+        ;(window as unknown as { __renderError?: string }).__renderError = String(err)
+        console.error('cesium renderError', err)
       })
       // Deterministic "fully streamed" signal for screenshot checks (tab title + window flag).
       let stable = 0
@@ -143,7 +176,13 @@ export default function App() {
 
 function fly(v: Cesium.Viewer, s: Site, mode: Mode, duration: number) {
   const lat0 = s.manifest.lat0, lon0 = s.manifest.lon0
-  if (mode === 'orbit') {
+  if (String(mode).startsWith('alt:')) {
+    // test hook: straight-down view from a given altitude in metres, e.g. ?view=alt:40000
+    v.camera.setView({
+      destination: Cesium.Cartesian3.fromDegrees(lon0, lat0, Number(String(mode).slice(4)), SPHERE),
+      orientation: { heading: 0, pitch: Cesium.Math.toRadians(-90), roll: 0 },
+    })
+  } else if (mode === 'orbit') {
     v.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(lon0, lat0, 4_000_000, SPHERE),
       orientation: { heading: 0, pitch: Cesium.Math.toRadians(-90), roll: 0 },
