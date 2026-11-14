@@ -513,6 +513,22 @@ EOF
 )"
 ```
 
+## Fit with the Cesium viewer and the rover
+
+Checked against `origin/main` after the merge.
+
+- Cesium (`web/src/site.ts`) and the API (`api/ares_api/terrain.py` `to_cell`) use the same pixel-center grid. `west = -size_m/2`, `north = size_m/2`, column 0 at `x = west + 0.5 * res_m`. `dem2m.u16` is `base + 0.01 * value`. The API rover's `z`, pitch, and roll come from `Terrain.elevation` and `tilt()`.
+- The browser rover (`web/src/rover/physics.ts`) does not read `dem2m.u16`. It calls `HeightSampler.sampleHeight(x, y)`. The sandbox implementation reads RGB height tiles (`elev_m = -10000 + 0.01 * (R*65536+G*256+B)`), which are shared-edge posts, not pixel centers. Wheelbase is 2.7 m, track 2.3 m.
+- The API refuses a drive using the precomputed `slope` raster, not the live height gradient. A bump that only changes elevation will lift the body and change pitch, and will not by itself trip `blocked_slope`.
+- Site frame matches everywhere that matters: x east, y north, origin at the region centre. three.js and our glTF are both `(x, z, -y)`.
+
+Rules for this compiler:
+
+- An imported Cesium grid is stored so its first sample is `x0 = -size_m/2 + res_m/2`, `y0 = size_m/2 - res_m/2`. `sample_vertex` and `sample_pixel_center` then return the same height. Do not invent a second offset.
+- `contracts/drive/sampleHeight.ts` exports `sampleHeight(x, y)` with the `HeightSampler` shape. Inside the bubble it reads the edited grid. The caller passes the tile sampler for everywhere else.
+- Also export `slopeDeg(x, y)` from a 2 m finite difference of `sample_drive`. The API's no-go check has to use that inside the bubble, because `slope.tif` does not contain the edits.
+- Do not modify `web/src/rover/physics.ts` or `api/ares_api/rover.py`. They already take a height function. The compiler only has to feed that function.
+
 ## Direction
 
 1. Read his `dem2m.u16` and `dem2m.json`.
