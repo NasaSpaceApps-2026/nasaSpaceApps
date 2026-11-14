@@ -1,0 +1,108 @@
+# Caden's stream — local surface realism / refine loop
+
+Teammates: please don't conflict with this workstream.
+Caden owns the local photoreal bubble + vision refine loop only.
+Globe / site DEM tiles / rover model / MCP+FSD are yours — assume they merge later.
+
+The block below is the prompt used to drive Caden's Cursor agent.
+
+---
+
+You are my coding agent on the NASA Space Apps 2026 project Ares Atlas
+(repo: nasaSpaceApps). Challenge: Interplanetary Survival Guide — Martian Map.
+
+## Your job (my stream only)
+
+I own the **local surface realism / refine loop**: make specific regions of the
+Mars terrain look more realistic when viewed at rover scale, using NASA
+satellite + rover imagery.
+
+Read `PRD.md` first (especially Contract 6, Stream A bubble/refine tasks, scope
+MVP vs stretch, and the hybrid honesty framing). Treat the PRD as the product
+spec; challenge it where the refine-loop idea is weak.
+
+## Out of scope (teammates, parallel)
+
+Do NOT build or redesign:
+- the global Cesium-style Mars globe
+- the Jezero site DEM/tile pipeline (except what your bubble refine needs)
+- the rover model / physics / driving UX
+- the MCP server / Claude FSD tools / chat agent
+
+Assume those land later as a Cesium-like Mars render + Gazebo-like rover.
+We will merge after. For planning, assume:
+- a Mars 3D scene with lat/lon/height sampling
+- a rover with pose (x,y,z,heading) and a camera
+- MCP can move the rover / set view (not your problem to implement)
+
+## Prior art to study (required)
+
+Before proposing anything, inspect the Gazebo visual iteration loop in my other
+repo and understand its core function:
+
+Path: `/home/caden-saltzberg/projects/afc/sim/`
+
+Key files:
+- `LOOP.md` — protocol
+- `scripts/render_model.sh` — deterministic re-render harness
+- `renders/LOOP_STATE.md` — tick log
+- `references/` — ground-truth photos
+- `renders/*_{side,top}_preview.png` — judged outputs
+- `models/` — edited assets
+
+Core pattern to extract (not copy blindly):
+1. Fixed reference images
+2. Deterministic render harness → PNGs from known viewpoints
+3. Vision-first judge (look at PNGs vs refs; don’t argue from file intent)
+4. One small edit per tick
+5. Re-render + compare; revert if worse
+6. Tick log with gaps / edit / result / next
+7. Hard isolation: don’t touch unrelated systems
+8. Clear stop conditions (“good enough”, max ticks)
+
+That project had clean studio side/top refs of a vehicle. Mars is harder:
+rover/sat images are multi-pose, multi-lighting, incomplete coverage, imperfect
+geolocation. Say explicitly what transfers and what breaks.
+
+## Problem we actually want solved
+
+Hybrid stack (already in PRD):
+- Global/site: existing NASA-backed 3D (Cesium/Trek/HiRISE DTM) — do not rebuild
+- Local bubble (≤ ~1 km): improve terrain/texture realism for rover-eye views
+- Optional later: gap-fill inferred textures where no geo-tagged images exist
+  (OUT OF SCOPE for v1 — mention only as Phase 2)
+
+V1 goal: a process that improves surface/terrain/texture in a localized bubble
+using available imagery + known (or approximate) capture pose, so a simulated
+rover camera looks less like a draped low-res ortho.
+
+## Process requirements
+
+1. **Brainstorm first. Do not implement. Do not write an implementation plan yet.**
+2. Be skeptical and pessimistic. Challenge the afc-style render loop for Mars:
+   - Is render→compare→edit the wrong abstraction for terrain?
+   - When does it hallucinate detail / break metric accuracy vs HiRISE DTM?
+   - Is classical drape / photoclinometry / 3DGS / mesh texturing / rover
+     billboards better for a 48h hackathon?
+3. Propose 2–3 approaches with tradeoffs. Recommend one for the weekend.
+4. Define a minimal loop contract analogous to afc:
+   - inputs (images, poses, baseline mesh/DEM)
+   - render viewpoints
+   - scoring (human vision and/or SSIM/LPIPS)
+   - allowed edit operators (one small change per tick)
+   - state file format
+   - stop / soft-fail criteria (PRD: ship baseline if refine doesn’t beat threshold)
+5. Call out merge risks with teammates’ Cesium/rover/MCP work (interfaces only).
+6. After I approve the approach, THEN write a detailed implementation plan.
+   Until I say so: no code, no scaffolding, no dependency installs.
+
+## Deliverable for this session
+
+A short design brainstorm:
+- What the afc loop really is (5–10 bullets)
+- Why Mars breaks it / how to adapt it
+- 2–3 approaches + recommendation
+- Explicit non-goals
+- Open questions for me (one at a time if needed)
+
+Start by reading `PRD.md` and `/home/caden-saltzberg/projects/afc/sim/LOOP.md`.
