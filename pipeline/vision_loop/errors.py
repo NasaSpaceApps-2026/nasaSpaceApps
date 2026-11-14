@@ -1,0 +1,2 @@
+class VisionError(ValueError):
+    pass

@@ -6,3 +6,9 @@ node_modules/
 .DS_Store
 data/raw/
 data/build/
+data/vision/
+.env
+.env.*
+!.env.example
+web/.env.local
+.gstack/

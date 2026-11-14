@@ -1,0 +1,12 @@
+{
+ "request": {
+  "method": "GET",
+  "path": "/bubble/status",
+  "body": null
+ },
+ "status": 200,
+ "response": {
+  "available": false,
+  "message": "No photoreal bubble in this data build yet (Stream A)."
+ }
+}
