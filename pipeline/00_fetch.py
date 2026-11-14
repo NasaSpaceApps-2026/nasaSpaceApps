@@ -35,6 +35,43 @@ ROOT = Path(__file__).resolve().parent.parent
 RAW = ROOT / "data" / "raw"
 
 
+def read_rows_by_range(src, url, win, f, m, mx):
+    """GDAL's /vsicurl/ read of this uncompressed BigTIFF fails at row ~39367 (cache issue,
+    file layout is fine). Fetch each needed row's byte span ourselves, in parallel.
+    Strips are one row each and contiguous: offset(y) = off0 + y * rowbytes."""
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+    import requests
+
+    off0 = int(src.get_tag_item("BLOCK_OFFSET_0_0", "TIFF", 1))
+    rowbytes = int(src.get_tag_item("BLOCK_SIZE_0_0", "TIFF", 1))
+    for y in (int(win.row_off), int(win.row_off) + win.height - 1):  # confirm linear layout
+        assert int(src.get_tag_item(f"BLOCK_OFFSET_0_{y}", "TIFF", 1)) == off0 + y * rowbytes
+    c0, nx = int(win.col_off), mx * f
+    sess = requests.Session()
+    out = np.zeros((m, mx), dtype=np.uint8)
+
+    def one(k):
+        start = off0 + (int(win.row_off) + k * f) * rowbytes + c0
+        for attempt in range(6):
+            try:
+                r = sess.get(url, headers={"Range": f"bytes={start}-{start + nx - 1}"}, timeout=60)
+                if r.status_code == 206 and len(r.content) == nx:
+                    row = np.frombuffer(r.content, dtype=np.uint8).reshape(mx, f)
+                    out[k] = row.mean(axis=1).astype(np.uint8)  # average f columns
+                    return
+            except requests.RequestException:
+                pass
+            time.sleep(1 + attempt)
+        raise RuntimeError(f"row {k} failed after retries")
+
+    with ThreadPoolExecutor(12) as ex:
+        for i, _ in enumerate(ex.map(one, range(m))):
+            if i % 1000 == 0:
+                print("ortho rows", i, "/", m, flush=True)
+    return out
+
+
 def fetch(key):
     title, fname = PRODUCTS[key]
     url = BASE + fname
@@ -55,7 +92,10 @@ def fetch(key):
         # Ortho is 25 cm; read it decimated to 1 m (every 4th row) to keep the transfer ~300 MB.
         f = int(round(1.0 / res)) if key == "ortho" else 1
         m, mx = n // f, nx // f
-        data = src.read(1, window=win, out_shape=(m, mx))
+        if key == "ortho":
+            data = read_rows_by_range(src, url, win, f, m, mx)
+        else:
+            data = src.read(1, window=win, out_shape=(m, mx))
         tr = src.window_transform(win) * rasterio.Affine.scale(nx / mx, n / m)
         profile = src.profile.copy()
         profile.update(width=mx, height=m, transform=tr,
