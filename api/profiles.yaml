@@ -1,0 +1,45 @@
+# Traveller profiles. Shown in the app as assumptions; replace each value with a
+# cited one when found and set its source. Both the API rover sim and the
+# browser rover read these through GET /site so manual and auto driving match.
+speed_curve:
+  # speed = flat_speed * exp(-k * |tan(slope)|). Earth hiking-function shape;
+  # placeholder, not measured on Mars.
+  k: 3.5
+  source: "assumed (Tobler-style hiking function, Earth-derived)"
+
+cost_weights:
+  rough: 0.5      # extra cost per metre of 5x5 elevation std dev
+  unknown: 4.0    # extra cost on interpolated (filled) DEM cells
+  nogo_buffer_m: 4  # cells within this distance of a no-go cell are also no-go
+
+stop_minutes: 15   # time spent at each science stop
+
+profiles:
+  astronaut_walk:
+    title: Astronaut on foot
+    flat_speed_mps: 0.9
+    caution_slope_deg: 15
+    nogo_slope_deg: 25
+    eva_limit_min: 480
+    reserve_frac: 0.2
+    source: "assumed"
+  rover_scout:
+    title: Scout rover (Perseverance-like)
+    flat_speed_mps: 0.04
+    display_speed_factor: 200   # sim runs this many times faster than real
+    caution_slope_deg: 15
+    nogo_slope_deg: 20
+    eva_limit_min: 1440
+    reserve_frac: 0.1
+    source: "flat speed close to Perseverance top speed (~4.2 cm/s); slopes assumed"
+  crew_rover:
+    title: Pressurised crew rover (concept)
+    flat_speed_mps: 2.5
+    caution_slope_deg: 10
+    nogo_slope_deg: 15
+    eva_limit_min: 480
+    reserve_frac: 0.2
+    source: "assumed"
+
+default_profile: astronaut_walk
+rover_profile: rover_scout

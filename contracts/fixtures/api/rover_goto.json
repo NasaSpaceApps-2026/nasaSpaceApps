@@ -1,0 +1,42 @@
+{
+ "request": {
+  "method": "POST",
+  "path": "/rover/command",
+  "body": {
+   "cmd": "goto",
+   "target": "poi:sample1",
+   "speed_factor": 3000
+  }
+ },
+ "status": 200,
+ "response": {
+  "ok": true,
+  "cmd": "goto",
+  "stop_reason": "arrived",
+  "message": "Arrived at Core sample site 1.",
+  "distance_m": 489.9,
+  "replans": 0,
+  "events": [],
+  "route_id": "r4",
+  "state": {
+   "x": -20.2,
+   "y": -60.1,
+   "z": -2399.9,
+   "heading_deg": 70.6466184212462,
+   "pitch_deg": -1.9,
+   "roll_deg": -0.2,
+   "speed_mps": 0.0,
+   "mode": "idle",
+   "odometer_m": 490.1,
+   "route_id": "r4",
+   "status": "arrived",
+   "last_event": "Arrived at Core sample site 1.",
+   "fsd_armed": false,
+   "lat": 18.458986,
+   "lon": 77.409641,
+   "slope_deg": 1.9,
+   "mission_time_min": 227.7
+  },
+  "fsd": null
+ }
+}

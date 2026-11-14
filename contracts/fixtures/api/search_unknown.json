@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "POST",
+  "path": "/search/sites",
+  "body": {
+   "target": "gold"
+  }
+ },
+ "status": 422,
+ "response": {
+  "error": "Unknown target 'gold'. Available targets: carbonate, olivine, clay, delta, crater_floor."
+ }
+}

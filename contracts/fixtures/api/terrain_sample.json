@@ -1,0 +1,29 @@
+{
+ "request": {
+  "method": "GET",
+  "path": "/terrain/sample?at=poi:floor",
+  "body": null
+ },
+ "status": 200,
+ "response": {
+  "x": -150,
+  "y": 100,
+  "lat": 18.461687,
+  "lon": 77.407332,
+  "elevation_m": -2426.02,
+  "slope_deg": 2.1,
+  "roughness_m": 0.11,
+  "hazard": "safe",
+  "filled": false,
+  "layers": {
+   "geology": 2.0,
+   "min_carbonate": 0.949,
+   "min_clay": 0.698,
+   "min_olivine": 0.089
+  },
+  "sources": {
+   "elevation": "synthetic fixture",
+   "slope": "synthetic fixture"
+  }
+ }
+}
