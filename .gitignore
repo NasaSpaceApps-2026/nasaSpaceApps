@@ -8,3 +8,4 @@ data/build/
 .env.*
 !.env.example
 web/.env.local
+.gstack/

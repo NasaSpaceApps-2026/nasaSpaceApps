@@ -48,6 +48,18 @@ export default function App() {
       scene.fog.enabled = false
       scene.globe.depthTestAgainstTerrain = true
 
+      // The site terrain provider is flat outside the site, and a transparent globe still writes
+      // depth, which hid every part of the Mars tileset below that flat surface (the dark spots).
+      // So draw the globe only inside the site rectangle, and cut the tileset out under it.
+      const ring = () =>
+        Cesium.Cartesian3.fromRadiansArray(
+          [s.west, s.south, s.east, s.south, s.east, s.north, s.west, s.north], SPHERE)
+      scene.globe.clippingPolygons = new Cesium.ClippingPolygonCollection({
+        polygons: [new Cesium.ClippingPolygon({ positions: ring() })],
+        inverse: true,
+      })
+      let tilesetRef: Cesium.Cesium3DTileset | undefined
+
       const next: Record<string, { on: boolean; layer: Cesium.ImageryLayer }> = {}
       for (const L of s.manifest.layers) {
         const layer = new Cesium.ImageryLayer(siteImagery(s, L.id, L.max_level))
@@ -61,7 +73,12 @@ export default function App() {
       if (token) {
         try {
           const ts = await Cesium.Cesium3DTileset.fromIonAssetId(MARS_ION_ASSET)
+          ts.maximumScreenSpaceError = 8
+          ts.clippingPolygons = new Cesium.ClippingPolygonCollection({
+            polygons: [new Cesium.ClippingPolygon({ positions: ring() })],
+          })
           v.scene.primitives.add(ts)
+          tilesetRef = ts
           setStatus('site + Cesium Mars globe')
         } catch (e) {
           setStatus('site only (Mars globe failed: ' + (e as Error).message + ')')
@@ -72,6 +89,16 @@ export default function App() {
         const c = v!.camera.positionCartographic
         const [x, y] = s.lonLatToXY(c.longitude, c.latitude)
         setHud(`x ${x.toFixed(0)} m  y ${y.toFixed(0)} m  alt ${c.height.toFixed(0)} m`)
+      })
+      // Deterministic "fully streamed" signal for screenshot checks (tab title + window flag).
+      let stable = 0
+      scene.postRender.addEventListener(() => {
+        const done = scene.globe.tilesLoaded && (!tilesetRef || tilesetRef.tilesLoaded)
+        stable = done ? stable + 1 : 0
+        if (stable === 45 && !(window as unknown as { __ready?: boolean }).__ready) {
+          ;(window as unknown as { __ready?: boolean }).__ready = true
+          document.title = 'READY'
+        }
       })
       setSite(s)
       setViewer(v)
