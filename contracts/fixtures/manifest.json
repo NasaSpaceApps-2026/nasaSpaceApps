@@ -1,0 +1,82 @@
+{
+  "site": "fixture",
+  "fixture": true,
+  "lat0": 18.46,
+  "lon0": 77.41,
+  "radius_m": 3396190,
+  "size_m": 1024,
+  "elev_min": -2427,
+  "elev_max": -2359,
+  "height": {
+    "max_level": 2,
+    "tile_px": 257
+  },
+  "layers": [
+    {
+      "id": "ortho",
+      "title": "Synthetic hillshade",
+      "mission": "fixture",
+      "instrument": "synthetic",
+      "max_level": 2,
+      "kind": "base",
+      "credit": "Synthetic test data, not Mars",
+      "url": "https://example.invalid/fixture"
+    },
+    {
+      "id": "slope",
+      "title": "Slope",
+      "mission": "fixture",
+      "instrument": "synthetic DTM",
+      "max_level": 2,
+      "kind": "overlay",
+      "credit": "Synthetic test data, not Mars",
+      "url": "https://example.invalid/fixture",
+      "legend": [
+        [
+          0,
+          "flat"
+        ],
+        [
+          15,
+          "steep"
+        ],
+        [
+          30,
+          "very steep"
+        ]
+      ]
+    },
+    {
+      "id": "hazard",
+      "title": "Slope hazard",
+      "mission": "fixture",
+      "instrument": "synthetic DTM",
+      "max_level": 2,
+      "kind": "overlay",
+      "credit": "Synthetic test data, not Mars",
+      "url": "https://example.invalid/fixture",
+      "legend": [
+        [
+          0,
+          "safe"
+        ],
+        [
+          15,
+          "caution"
+        ],
+        [
+          25,
+          "no-go"
+        ],
+        [
+          null,
+          "unknown"
+        ]
+      ]
+    }
+  ],
+  "vectors": {
+    "pois": "/data/pois.geojson",
+    "traverse": "/data/traverse.geojson"
+  }
+}
