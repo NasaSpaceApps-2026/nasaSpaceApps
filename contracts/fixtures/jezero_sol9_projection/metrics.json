@@ -1,0 +1,51 @@
+{
+  "threshold_ssim": 0.75,
+  "ssim": 0.6756936043937067,
+  "lpips": null,
+  "pass": false,
+  "numeric_pass": true,
+  "active_recommendation": "baseline",
+  "geometry_delta_m_max": 0.0,
+  "registration_rms_m": null,
+  "holdout_ssim": 0.5304324858135044,
+  "fit_ssim": 0.6756936043937067,
+  "baseline_fit_ssim": 0.06434229981243027,
+  "baseline_holdout_ssim": 0.09953952001089827,
+  "human_verdict": "pending",
+  "awaiting_human": true,
+  "outside_unchanged": true,
+  "iterations": [
+    {
+      "tick": 1,
+      "operator": "set_opacity",
+      "value": "1",
+      "fit_ssim": 0.06434229981243027,
+      "holdout_ssim": 0.09953952001089827,
+      "result": "same",
+      "reverted": false
+    },
+    {
+      "tick": 2,
+      "operator": "enable_frame",
+      "value": "fit_0",
+      "fit_ssim": 0.6654261993119146,
+      "holdout_ssim": 0.52204195501327,
+      "result": "better",
+      "reverted": false
+    },
+    {
+      "tick": 3,
+      "operator": "set_fade_end_m",
+      "value": "20",
+      "fit_ssim": 0.6756936043937067,
+      "holdout_ssim": 0.5304324858135044,
+      "result": "better",
+      "reverted": false
+    }
+  ],
+  "bubble_id": "jezero_sol9_landing",
+  "requires_human": true,
+  "size_m": 80.0,
+  "center_x": 1849.0763871785864,
+  "center_y": -437.0234536348851
+}
