@@ -144,10 +144,20 @@ def main():
         o, _ = warp(ortho_src, 1.0, Resampling.lanczos)
         o = np.nan_to_num(o, nan=0.0)
         o8 = np.clip(o, 0, 255).astype(np.uint8)
-        image_tiles("ortho", np.dstack([o8, o8, o8, np.full_like(o8, 255)]))
-        layers.append({"id": "ortho", "title": "HiRISE orthomosaic (greyscale, 1 m here)", "mission": "MRO",
-                       "instrument": "HiRISE", "max_level": MAX_LEVEL, "kind": "base",
-                       "credit": "NASA/JPL/UArizona/USGS", "url": "https://doi.org/10.5066/P9QJDP48"})
+        del o
+        if (RAW / "viking_color.png").exists():
+            from colorize import colorize_banded
+            rgb = colorize_banded(o8, RAW, LAT0, LON0, SIZE)
+            image_tiles("ortho", np.dstack([rgb, np.full(o8.shape, 255, np.uint8)]))
+            title = "HiRISE orthomosaic, colourised (false colour)"
+            credit = ("NASA/JPL/UArizona/USGS. HiRISE is greyscale: colour from Viking MDIM 2.1 (NASA/JPL/USGS) "
+                      "relative variation, hue anchored to an assumed Mars surface tone. Not true colour.")
+        else:
+            image_tiles("ortho", np.dstack([o8, o8, o8, np.full_like(o8, 255)]))
+            title, credit = "HiRISE orthomosaic (greyscale, 1 m here)", "NASA/JPL/UArizona/USGS"
+        layers.append({"id": "ortho", "title": title, "mission": "MRO", "instrument": "HiRISE",
+                       "max_level": MAX_LEVEL, "kind": "base", "credit": credit,
+                       "url": "https://doi.org/10.5066/P9QJDP48"})
     else:  # fall back to a hillshade so the viewer has a base layer
         h = (hillshade(dem1, 1.0) * 255).astype(np.uint8)
         image_tiles("ortho", np.dstack([h, h, h, np.full_like(h, 255)]))
