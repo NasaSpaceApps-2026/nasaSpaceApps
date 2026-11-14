@@ -26,6 +26,10 @@ export interface DriverPose extends SitePose {
   mode: DriveMode;
   status: RoverStatus | string;
   stop_reason: string | null;
+  steer: number;
+  boost_active: boolean;
+  boost_charge: number;
+  time_scale: number;
 }
 
 export interface RoverDriverOptions {
@@ -78,7 +82,13 @@ export class RoverDriver {
     this.graceMs = o.takeoverGraceMs ?? 1000;
     this.connectHoldMs = o.connectHoldMs ?? 1000;
     this.pose = this.fromPhysics();
-    if (this.controls) this.unsub.push(this.controls.onTakeover(() => this.takeover()));
+    if (this.controls) {
+      this.unsub.push(this.controls.onTakeover(() => this.takeover()));
+      this.unsub.push(this.controls.onTimeScale((dir) => {
+        const k = this.physics.state.time_scale;
+        this.physics.setTimeScale(dir > 0 ? k * 2 : k / 2);
+      }));
+    }
     if (this.link) {
       this.unsub.push(this.link.onState((s) => this.onRemoteState(s)));
       this.unsub.push(this.link.onStatus((s: LinkStatus) => {
@@ -175,6 +185,7 @@ export class RoverDriver {
       x: s.x, y: s.y, z: s.z, heading_deg: s.heading_deg, pitch_deg: s.pitch_deg, roll_deg: s.roll_deg,
       speed_mps: s.speed_mps, display_speed_mps: s.display_speed_mps, slope_deg: s.slope_deg,
       ahead_slope_deg: s.ahead_slope_deg, mode: 'manual', status: s.status, stop_reason: s.stop_reason,
+      steer: s.steer, boost_active: s.boost_active, boost_charge: s.boost_charge, time_scale: s.time_scale,
     };
   }
 
@@ -186,6 +197,8 @@ export class RoverDriver {
       speed_mps: speed, display_speed_mps: speed * this.physics.profile.display_speed_factor,
       slope_deg: f.slope_deg, ahead_slope_deg: NaN, mode: this.mode, status: s.status ?? s.mode,
       stop_reason: (s.last_event as string | null | undefined) ?? null,
+      steer: 0, boost_active: false, boost_charge: this.physics.state.boost_charge,
+      time_scale: this.physics.state.time_scale,
     };
   }
 }

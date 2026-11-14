@@ -32,6 +32,18 @@ profiles:
     eva_limit_min: 1440
     reserve_frac: 0.1
     source: "flat speed close to Perseverance top speed (~4.2 cm/s); slopes assumed"
+  crew_buggy:
+    title: Crewed buggy (Apollo LRV-derived, unpressurised)
+    flat_speed_mps: 3.6          # LRV ~13 km/h nominal top speed
+    boost_speed_mps: 5.0         # LRV record ~18 km/h (Apollo 17)
+    speed_curve_k: 2.0           # more torque than the scout: loses less speed on slopes (assumed)
+    display_speed_factor: 1      # real time; the viewer can time-lapse
+    min_turn_radius_m: 3.1       # LRV ~3 m turning radius (4-wheel steering)
+    caution_slope_deg: 15
+    nogo_slope_deg: 25           # LRV rated for 25 deg slopes
+    eva_limit_min: 480
+    reserve_frac: 0.2
+    source: "Apollo LRV specs (NASA): 13 km/h top, 18 km/h record, 25 deg slope rating, ~3 m turn radius; use on Mars assumed"
   crew_rover:
     title: Pressurised crew rover (concept)
     flat_speed_mps: 2.5

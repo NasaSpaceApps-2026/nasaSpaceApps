@@ -11,7 +11,11 @@ const FORWARD = new Set(['KeyW', 'ArrowUp']);
 const BACK = new Set(['KeyS', 'ArrowDown']);
 const LEFT = new Set(['KeyA', 'ArrowLeft']);
 const RIGHT = new Set(['KeyD', 'ArrowRight']);
+const BOOST = new Set(['ShiftLeft', 'ShiftRight', 'Space']);
 const DRIVE_KEYS = new Set([...FORWARD, ...BACK, ...LEFT, ...RIGHT]);
+/** Time-lapse: ] faster, [ slower. */
+const TIME_UP = 'BracketRight';
+const TIME_DOWN = 'BracketLeft';
 
 type Listener = () => void;
 
@@ -32,6 +36,7 @@ export class KeyboardControls {
   enabled = true;
   private down = new Set<string>();
   private listeners = new Set<Listener>();
+  private timeFns = new Set<(dir: 1 | -1) => void>();
   private target: Window | HTMLElement;
   private prevent: boolean;
 
@@ -49,13 +54,20 @@ export class KeyboardControls {
     return () => this.listeners.delete(fn);
   }
 
+  /** Subscribe to time-lapse key presses ([ = -1, ] = +1). */
+  onTimeScale(fn: (dir: 1 | -1) => void): () => void {
+    this.timeFns.add(fn);
+    return () => this.timeFns.delete(fn);
+  }
+
   /** Current input from held keys. */
   getInput(): DriveInput {
-    if (!this.enabled) return { throttle: 0, steer: 0 };
+    if (!this.enabled) return { throttle: 0, steer: 0, boost: false };
     const any = (set: Set<string>) => [...set].some((k) => this.down.has(k));
     return {
       throttle: (any(FORWARD) ? 1 : 0) - (any(BACK) ? 1 : 0),
       steer: (any(RIGHT) ? 1 : 0) - (any(LEFT) ? 1 : 0),
+      boost: any(BOOST),
     };
   }
 
@@ -73,7 +85,17 @@ export class KeyboardControls {
   }
 
   private onDown = (e: KeyboardEvent): void => {
-    if (!this.enabled || !DRIVE_KEYS.has(e.code) || isTyping(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (!this.enabled || isTyping(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+    if ((e.code === TIME_UP || e.code === TIME_DOWN) && !e.repeat) {
+      for (const fn of this.timeFns) fn(e.code === TIME_UP ? 1 : -1);
+      return;
+    }
+    if (BOOST.has(e.code)) {
+      if (this.prevent) e.preventDefault();
+      this.down.add(e.code); // boost alone is not a takeover
+      return;
+    }
+    if (!DRIVE_KEYS.has(e.code)) return;
     if (this.prevent) e.preventDefault();
     const fresh = !this.down.has(e.code) && !e.repeat;
     this.down.add(e.code);

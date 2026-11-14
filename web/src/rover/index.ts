@@ -3,6 +3,7 @@ export * from './heightTiles';
 export * from './physics';
 export * from './controls';
 export * from './roverModel';
+export * from './buggyModel';
 export * from './link';
 export * from './chaseCamera';
 export * from './driver';

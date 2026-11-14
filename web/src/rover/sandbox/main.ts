@@ -10,12 +10,15 @@
 import * as THREE from 'three';
 import {
   ChaseCamera,
-  DEFAULT_ROVER_PROFILE,
+  BUGGY_PARAMS,
+  DEFAULT_BUGGY_PROFILE,
   KeyboardControls,
   RoverDriver,
   RoverLink,
+  BUGGY_DIMENSIONS,
   applyPose,
-  createRoverModel,
+  createBuggyModel,
+  headingToDir,
   loadHeightTiles,
   profileFromSite,
   tileBounds,
@@ -38,9 +41,9 @@ async function fetchProfile(): Promise<RoverProfile> {
   try {
     const r = await fetch(`${API}/site`, { signal: ctl.signal });
     if (!r.ok) throw new Error(String(r.status));
-    return profileFromSite(await r.json()) ?? { ...DEFAULT_ROVER_PROFILE, source: 'assumed (built-in defaults; /site had no rover profile)' };
+    return profileFromSite(await r.json(), 'crew_buggy') ?? { ...DEFAULT_BUGGY_PROFILE, source: `${DEFAULT_BUGGY_PROFILE.source}; /site had no crew_buggy profile` };
   } catch {
-    return DEFAULT_ROVER_PROFILE;
+    return DEFAULT_BUGGY_PROFILE;
   } finally {
     clearTimeout(t);
   }
@@ -100,7 +103,8 @@ function buildTerrain(manifest: Manifest, sampler: TileHeightSampler, level: num
         tex.anisotropy = 4;
         tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
         // Imagery already carries shading; draw it unlit so we do not shade it twice.
-        mat = new THREE.MeshBasicMaterial({ map: tex });
+        // toneMapped: false keeps the imagery's own colours under ACES tone mapping.
+        mat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
       } else {
         mat = new THREE.MeshLambertMaterial({ color: 0x9b8a78 });
       }
@@ -119,16 +123,25 @@ async function main() {
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
   $('view').appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x2a2522);
   const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.3, 6000);
-  scene.add(new THREE.HemisphereLight(0xe8e2d8, 0x3a2c22, 1.2));
-  const sun = new THREE.DirectionalLight(0xffffff, 2.0);
+  // Lights: butterscotch sky / rust ground fill + a low warm sun with soft shadows.
+  scene.add(new THREE.HemisphereLight(0xf3dcc2, 0x5a3424, 1.1));
+  scene.add(new THREE.AmbientLight(0xffffff, 0.12));
+  const sun = new THREE.DirectionalLight(0xfff2e0, 3.2);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
-  Object.assign(sun.shadow.camera, { left: -8, right: 8, top: 8, bottom: -8, near: 1, far: 80 });
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.02;
+  sun.shadow.radius = 3;
+  Object.assign(sun.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6, near: 1, far: 90 });
   scene.add(sun, sun.target);
 
   let loaded;
@@ -151,10 +164,28 @@ async function main() {
   const profile = await fetchProfile();
   const controls = new KeyboardControls();
   const link = new RoverLink({ url: WS });
-  const driver = new RoverDriver({ sampler, profile, controls, link, start: START });
+  const driver = new RoverDriver({ sampler, profile, params: BUGGY_PARAMS, controls, link, start: START });
 
-  const rover = createRoverModel();
+  const buggy = createBuggyModel({ castShadow: true });
+  const rover = buggy.group;
   scene.add(rover);
+  const wheelOffsets = (p: { x: number; y: number; z: number; heading_deg: number; pitch_deg: number; roll_deg: number }): [number, number, number, number] => {
+    // Terrain height under each wheel minus the body plane, so the suspension follows bumps.
+    const [fx, fy] = headingToDir(p.heading_deg);
+    const rx = fy;
+    const ry = -fx;
+    const a = BUGGY_DIMENSIONS.wheelbase_m / 2;
+    const b = BUGGY_DIMENSIONS.track_m / 2;
+    const tp = Math.tan((p.pitch_deg * Math.PI) / 180);
+    const tr = Math.tan((p.roll_deg * Math.PI) / 180);
+    const out: [number, number, number, number] = [0, 0, 0, 0];
+    [[a, -b], [a, b], [-a, -b], [-a, b]].forEach(([fa, rb], i) => {
+      const h = sampler.sampleHeight(p.x + fx * fa + rx * rb, p.y + fy * fa + ry * rb);
+      const plane = p.z + fa * tp - rb * tr;
+      out[i] = Number.isFinite(h) ? Math.max(-0.12, Math.min(0.12, h - plane)) : 0;
+    });
+    return out;
+  };
   const chase = new ChaseCamera(camera, { sampler });
 
   addEventListener('resize', () => {
@@ -186,6 +217,7 @@ async function main() {
     last = t;
     const p = driver.step(dt);
     applyPose(rover, p);
+    buggy.update({ speedMps: p.display_speed_mps, steerDeg: p.steer * 25, boost: p.boost_active, dt, wheelGroundOffsets: wheelOffsets(p) });
     chase.update(dt, p);
     sun.position.set(rover.position.x + 20, rover.position.y + 35, rover.position.z + 10);
     sun.target.position.copy(rover.position);
@@ -206,7 +238,8 @@ async function main() {
         <tr><td>pitch / roll</td><td>${f(p.pitch_deg)}&deg; / ${f(p.roll_deg)}&deg;</td></tr>
         <tr><td>slope under</td><td class="${slopeCls}">${f(p.slope_deg)}&deg;</td></tr>
         <tr><td>slope ahead</td><td class="${aheadCls}">${f(p.ahead_slope_deg)}&deg;</td></tr>
-        <tr><td>speed</td><td>${f(Math.abs(p.speed_mps) * 100, 1)} cm/s mission (${f(Math.abs(p.display_speed_mps), 1)} m/s on screen, x${prof.display_speed_factor})</td></tr>
+        <tr><td>speed</td><td>${f(Math.abs(p.speed_mps) * 3.6, 1)} km/h mission (${f(Math.abs(p.display_speed_mps), 1)} m/s on screen, time x${f(prof.display_speed_factor * p.time_scale, 2)})</td></tr>
+        <tr><td>boost</td><td class="${p.boost_active ? 'warn' : ''}"><span class="meter"><span style="width:${Math.round(p.boost_charge * 100)}%"></span></span> ${p.boost_active ? 'BOOST' : prof.boost_speed_mps ? `${f(prof.boost_speed_mps * 3.6, 0)} km/h max` : 'n/a'}</td></tr>
         <tr><td>mode</td><td>${p.mode}</td></tr>
         <tr><td>status</td><td class="${statusCls}">${p.status}</td></tr>
         <tr><td>stop reason</td><td>${p.stop_reason ?? '-'}</td></tr>
@@ -214,7 +247,8 @@ async function main() {
         <tr><td>API link</td><td>${driver.linkStatus} (${WS})</td></tr>
         <tr class="sep"><td>caution slope</td><td>${prof.caution_slope_deg}&deg;</td></tr>
         <tr><td>no-go slope</td><td>${prof.nogo_slope_deg}&deg;</td></tr>
-        <tr><td>flat speed</td><td>${prof.flat_speed_mps} m/s, curve k ${prof.speed_curve_k}</td></tr>
+        <tr><td>flat speed</td><td>${prof.flat_speed_mps} m/s, curve k ${prof.speed_curve_k}${prof.min_turn_radius_m ? `, turn radius ${prof.min_turn_radius_m} m` : ''}</td></tr>
+        <tr><td colspan="2" class="src">W/S drive &middot; A/D steer &middot; Shift/Space boost &middot; [ ] time-lapse &middot; R reset &middot; wheel zoom</td></tr>
         <tr><td colspan="2" class="src">Limits source: ${prof.source}. Speed curve speed = flat &middot; exp(-k&middot;|tan slope|) is an Earth hiking-function shape (placeholder).</td></tr>
       </table>`;
     }

@@ -49,7 +49,8 @@ class Terrain:
                 if arr.shape != self.shape:
                     continue
                 self.layers[lid] = arr
-                self.layer_source[lid] = src
+                # Anything in a fixture site is synthetic, wherever the file sits.
+                self.layer_source[lid] = "synthetic" if self.manifest.get("fixture") else src
 
     def _read(self, path: Path) -> np.ndarray:
         with rasterio.open(path) as d:

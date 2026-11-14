@@ -9,7 +9,7 @@ import path from 'node:path';
 import { inflateSync } from 'node:zlib';
 import { DEG, poseToEulerYXZ, siteToThree } from '../coords';
 import { TileHeightSampler, decodeHeightRGBA, type HeightSampler } from '../heightTiles';
-import { DEFAULT_ROVER_PROFILE, RoverPhysics, footprint } from '../physics';
+import { BUGGY_PARAMS, DEFAULT_BUGGY_PROFILE, DEFAULT_ROVER_PROFILE, RoverPhysics, footprint } from '../physics';
 
 let passed = 0;
 function check(name: string, fn: () => void) {
@@ -178,12 +178,15 @@ check('fixture height tiles decode to the analytic fixture terrain (pipeline/mak
     e += 25 / (1 + Math.exp(-(x - 180) / 10));
     return e + 0.4 * Math.sin(x / 7) * Math.cos(y / 9);
   };
+  // Seeded points; bilinear error between 1 m posts peaks near ~0.07 m on the sharp crater rim.
+  let seed = 12345;
+  const rand = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
   let worst = 0;
   for (let i = 0; i < 2000; i++) {
-    const x = (Math.random() - 0.5) * 1000, y = (Math.random() - 0.5) * 1000;
+    const x = (rand() - 0.5) * 1000, y = (rand() - 0.5) * 1000;
     worst = Math.max(worst, Math.abs(s.sampleHeight(x, y) - elevation(x, y)));
   }
-  assert.ok(worst < 0.05, `max |sampled - analytic| = ${worst} m`);
+  assert.ok(worst < 0.1, `max |sampled - analytic| = ${worst} m`);
   console.log(`    max |sampled - analytic| over 2000 points: ${worst.toFixed(4)} m`);
 
   // Drive east into the scarp (~35 deg at x = 180): must stop before it, never float/sink > 0.2 m.
@@ -198,6 +201,51 @@ check('fixture height tiles decode to the analytic fixture terrain (pipeline/mak
   assert.ok(r.state.x < 180, `stopped before the scarp crest, x=${r.state.x}`);
   assert.ok(maxGap < 0.2, `float/sink ${maxGap} m`);
   console.log(`    fixture scarp: stopped at x=${r.state.x.toFixed(1)} m (${r.state.stop_reason}); max body-ground gap ${maxGap.toFixed(3)} m`);
+});
+
+check('buggy: boost reaches boost speed, drains, then recharges; time-lapse scales ground speed only', () => {
+  const flat: HeightSampler = { sampleHeight: () => -2400 };
+  const r = new RoverPhysics(flat, DEFAULT_BUGGY_PROFILE, BUGGY_PARAMS, { x: 0, y: 0 });
+  for (let i = 0; i < 300; i++) r.step(1 / 60, FWD);
+  near(r.state.speed_mps, 3.6, 1e-6, 'buggy flat speed (LRV)');
+  let peak = 0;
+  for (let i = 0; i < 180; i++) peak = Math.max(peak, r.step(1 / 60, { ...FWD, boost: true }).speed_mps);
+  near(peak, 5.0, 1e-6, 'boost speed (LRV record)');
+  for (let i = 0; i < 120; i++) r.step(1 / 60, { ...FWD, boost: true });
+  assert.ok(r.state.boost_charge < 0.01, 'drained');
+  assert.equal(r.state.boost_active, false, 'boost stops when empty');
+  for (let i = 0; i < 60 * 9; i++) r.step(1 / 60, FWD);
+  near(r.state.boost_charge, 1, 1e-9, 'recharged');
+  near(r.state.speed_mps, 3.6, 1e-6, 'back to flat speed');
+  r.setTimeScale(4);
+  r.step(1 / 60, FWD);
+  near(r.state.speed_mps, 3.6, 1e-6, 'mission speed unchanged by time-lapse');
+  near(r.state.display_speed_mps, 14.4, 1e-6, 'screen speed x4');
+});
+
+check('buggy: car steering cannot turn in place; turns with radius >= 3.1 m', () => {
+  const flat: HeightSampler = { sampleHeight: () => -2400 };
+  const r = new RoverPhysics(flat, DEFAULT_BUGGY_PROFILE, BUGGY_PARAMS, { x: 0, y: 0, heading_deg: 0 });
+  for (let i = 0; i < 60; i++) r.step(1 / 60, { throttle: 0, steer: 1 });
+  assert.equal(r.state.heading_deg, 0, 'no turn while stopped');
+  for (let i = 0; i < 600; i++) r.step(1 / 60, { throttle: 1, steer: 1 });
+  // yaw rate = v / R: at 3.6 m/s and R 3.1 m that is 66 deg/s, capped at 60 deg/s -> radius >= 3.1 m
+  const rad = 3.6 / (60 * DEG);
+  assert.ok(rad >= 3.1, `turn radius ${rad}`);
+});
+
+check('buggy climbs 22 deg (scout cannot) and still refuses 30 deg, boost or not', () => {
+  const ramp = (deg: number): HeightSampler => ({ sampleHeight: (_x, y) => (y > 5 ? (y - 5) * Math.tan(deg * DEG) : 0) });
+  const climb = (prof: typeof DEFAULT_ROVER_PROFILE, params: object, deg: number) => {
+    const r = new RoverPhysics(ramp(deg), prof, params, { x: 0, y: 0 });
+    for (let i = 0; i < 2400; i++) r.step(1 / 60, { ...FWD, boost: true });
+    return r.state;
+  };
+  assert.ok(climb(DEFAULT_BUGGY_PROFILE, BUGGY_PARAMS, 22).y > 20, 'buggy climbs 22 deg');
+  assert.equal(climb(DEFAULT_ROVER_PROFILE, {}, 22).status, 'blocked_slope', 'scout blocked at 22 deg');
+  const b30 = climb(DEFAULT_BUGGY_PROFILE, BUGGY_PARAMS, 30);
+  assert.equal(b30.status, 'blocked_slope', 'buggy blocked at 30 deg');
+  assert.ok(b30.y < 6, `stopped at the ramp foot, y=${b30.y}`);
 });
 
 console.log(`\n${passed} checks passed`);

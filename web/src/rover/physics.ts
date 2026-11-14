@@ -30,7 +30,23 @@ export interface RoverProfile {
   speed_curve_k: number;
   /** Where the numbers come from; shown in the HUD. */
   source: string;
+  /** Boosted flat speed, m/s; absent = no boost. */
+  boost_speed_mps?: number;
+  /** Car-like steering with this minimum turn radius, m; absent = turns in place (skid steer). */
+  min_turn_radius_m?: number;
 }
+
+/** Built-in fallback, matching api/profiles.yaml crew_buggy as of Nov 14 2026. */
+export const DEFAULT_BUGGY_PROFILE: RoverProfile = {
+  flat_speed_mps: 3.6,
+  boost_speed_mps: 5.0,
+  display_speed_factor: 1,
+  caution_slope_deg: 15,
+  nogo_slope_deg: 25,
+  speed_curve_k: 2.0,
+  min_turn_radius_m: 3.1,
+  source: 'Apollo LRV specs (built-in defaults; API /site not reachable)',
+};
 
 /** Built-in fallback, matching api/profiles.yaml rover_scout as of Nov 14 2026. */
 export const DEFAULT_ROVER_PROFILE: RoverProfile = {
@@ -53,7 +69,7 @@ export function profileFromSite(site: unknown, name?: string): RoverProfile | nu
   const key = name ?? s.rover_profile ?? 'rover_scout';
   const p = s.profiles[key];
   if (!p || typeof p.flat_speed_mps !== 'number') return null;
-  const k = s.speed_curve?.k;
+  const k = typeof p.speed_curve_k === 'number' ? p.speed_curve_k : s.speed_curve?.k;
   return {
     flat_speed_mps: p.flat_speed_mps,
     display_speed_factor: p.display_speed_factor ?? DEFAULT_ROVER_PROFILE.display_speed_factor,
@@ -61,6 +77,8 @@ export function profileFromSite(site: unknown, name?: string): RoverProfile | nu
     nogo_slope_deg: p.nogo_slope_deg ?? DEFAULT_ROVER_PROFILE.nogo_slope_deg,
     speed_curve_k: typeof k === 'number' ? k : DEFAULT_ROVER_PROFILE.speed_curve_k,
     source: `API /site profiles.${key}: ${p.source ?? 'assumed'}`,
+    boost_speed_mps: p.boost_speed_mps,
+    min_turn_radius_m: p.min_turn_radius_m,
   };
 }
 
@@ -81,6 +99,10 @@ export interface RoverParams {
   slope_probe_m: number;
   /** Largest wall-clock dt accepted per step, s (longer frames are clamped). */
   max_dt_s: number;
+  /** Wall-clock seconds of boost from a full charge. */
+  boost_duration_s: number;
+  /** Wall-clock seconds to recharge boost from empty (only while not boosting). */
+  boost_recharge_s: number;
 }
 
 export const DEFAULT_ROVER_PARAMS: RoverParams = {
@@ -92,6 +114,16 @@ export const DEFAULT_ROVER_PARAMS: RoverParams = {
   lookahead_m: 0.5,
   slope_probe_m: 1.0,
   max_dt_s: 0.1,
+  boost_duration_s: 4,
+  boost_recharge_s: 8,
+};
+
+/** Buggy geometry and handling (LRV-like: 2.3 m wheelbase, 1.8 m track). */
+export const BUGGY_PARAMS: Partial<RoverParams> = {
+  wheelbase_m: 2.3,
+  track_m: 1.8,
+  accel_time_s: 2.5,
+  turn_rate_deg_s: 60,
 };
 
 export interface DriveInput {
@@ -99,6 +131,8 @@ export interface DriveInput {
   throttle: number;
   /** -1 (turn left) .. 1 (turn right). */
   steer: number;
+  /** Hold for boost (profiles with boost_speed_mps only). */
+  boost?: boolean;
 }
 
 export type RoverStatus = 'idle' | 'driving' | 'caution' | 'blocked_slope' | 'blocked_edge';
@@ -118,6 +152,13 @@ export interface RoverState extends SitePose {
   /** Mission (simulated) elapsed seconds while driving. */
   mission_time_s: number;
   odometer_m: number;
+  /** Current steering input, -1..1 (for wheel animation). */
+  steer: number;
+  boost_active: boolean;
+  /** Boost charge, 0..1. */
+  boost_charge: number;
+  /** Viewer time-lapse multiplier on top of display_speed_factor. */
+  time_scale: number;
 }
 
 export interface Footprint {
@@ -183,6 +224,7 @@ export class RoverPhysics {
       x: start.x, y: start.y, z: 0, heading_deg: normalizeHeading(start.heading_deg ?? 0), pitch_deg: 0, roll_deg: 0,
       speed_mps: 0, display_speed_mps: 0, slope_deg: 0, ahead_slope_deg: 0,
       status: 'idle', stop_reason: null, mission_time_s: 0, odometer_m: 0,
+      steer: 0, boost_active: false, boost_charge: 1, time_scale: 1,
     };
     this.settle();
   }
@@ -201,6 +243,11 @@ export class RoverPhysics {
     this.s.stop_reason = null;
     this.s.status = 'idle';
     this.settle();
+  }
+
+  /** Time-lapse multiplier (1 = profile rate). Clamped to 0.25..16. */
+  setTimeScale(k: number): void {
+    this.s.time_scale = Math.max(0.25, Math.min(16, k));
   }
 
   setSampler(s: HeightSampler): void {
@@ -239,22 +286,38 @@ export class RoverPhysics {
     const throttle = Math.max(-1, Math.min(1, input.throttle || 0));
     const steer = Math.max(-1, Math.min(1, input.steer || 0));
 
-    // Turning (in place or while driving).
+    const rate = prof.display_speed_factor * s.time_scale; // mission seconds per wall second
+    s.steer = steer;
+
+    // Turning: skid steer turns in place; car-like steering needs motion (yaw = v / R).
     if (steer !== 0) {
-      s.heading_deg = normalizeHeading(s.heading_deg + steer * p.turn_rate_deg_s * dt);
+      if (prof.min_turn_radius_m) {
+        const yawDeg = (s.speed_mps * rate / prof.min_turn_radius_m) / DEG * steer * dt;
+        const capped = Math.sign(yawDeg) * Math.min(Math.abs(yawDeg), p.turn_rate_deg_s * dt * Math.max(1, s.time_scale));
+        s.heading_deg = normalizeHeading(s.heading_deg + capped);
+      } else {
+        s.heading_deg = normalizeHeading(s.heading_deg + steer * p.turn_rate_deg_s * dt);
+      }
     }
+
+    // Boost: drains while held with throttle forward, recharges otherwise.
+    const canBoost = !!prof.boost_speed_mps && !!input.boost && throttle > 0 && s.boost_charge > 0;
+    s.boost_active = canBoost;
+    if (canBoost) s.boost_charge = Math.max(0, s.boost_charge - dt / p.boost_duration_s);
+    else s.boost_charge = Math.min(1, s.boost_charge + dt / p.boost_recharge_s);
+    const flatBoost = canBoost ? prof.boost_speed_mps! / prof.flat_speed_mps : 1;
 
     // Target speed from slope under and ahead of the rover.
     const dirSign = throttle !== 0 ? Math.sign(throttle) : s.speed_mps !== 0 ? Math.sign(s.speed_mps) : 1;
     const ahead = this.aheadSlope(dirSign);
     const governing = Math.max(s.slope_deg, ahead);
-    let target = Math.abs(throttle) * speedForSlope(prof, governing);
+    let target = Math.abs(throttle) * speedForSlope(prof, governing) * flatBoost;
     const caution = governing > prof.caution_slope_deg;
     if (caution) target *= p.caution_speed_factor;
     target *= Math.sign(throttle);
 
     // Acceleration limit (braking twice as fast).
-    const accel = (prof.flat_speed_mps / p.accel_time_s) * dt;
+    const accel = (prof.flat_speed_mps * flatBoost / p.accel_time_s) * dt;
     const braking = Math.abs(target) < Math.abs(s.speed_mps) || Math.sign(target) !== Math.sign(s.speed_mps);
     const maxDv = braking ? 2 * accel : accel;
     s.speed_mps += Math.max(-maxDv, Math.min(maxDv, target - s.speed_mps));
@@ -281,7 +344,7 @@ export class RoverPhysics {
       s.status = blocked;
     } else {
       // Advance in mission time, sub-stepping so each move is <= 0.5 m.
-      const dtMission = dt * prof.display_speed_factor;
+      const dtMission = dt * rate;
       const dist = s.speed_mps * dtMission;
       if (dist !== 0) {
         const n = Math.max(1, Math.ceil(Math.abs(dist) / 0.5));
@@ -313,7 +376,7 @@ export class RoverPhysics {
       }
     }
 
-    s.display_speed_mps = s.speed_mps * prof.display_speed_factor;
+    s.display_speed_mps = s.speed_mps * rate;
     const f = footprint(this.sampler, s.x, s.y, s.heading_deg, p);
     s.z = f.z;
     s.pitch_deg = f.pitch_deg;

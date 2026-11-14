@@ -18,7 +18,9 @@ Scope tasks from `docs/scope-c-d.md`:
 | 8 | Browser rover driving (`web/src/rover/`) | Done as a standalone module + sandbox (`cd web/src/rover/sandbox && npm install && npm run dev`, port 5174; `npm run check` → 7 physics checks). Waiting on Rithvik's `web/` app to plug in (see `web/src/rover/README.md`) |
 | 9 | Science traverse + validation | Done |
 | 10 | Hardening | Partly: readable 422 errors, input validation |
-| 11 | More realistic physics | Not started |
+| 11 | More realistic physics | Started: crewed buggy (`crew_buggy` profile, Apollo LRV specs) with boost, car-like steering (3.1 m radius), time-lapse `[`/`]`, per-profile speed curve. Scout rover limits unchanged |
+| — | Detailed buggy + astronaut model (`web/src/rover/buggyModel.ts`, `buggy/`) | Done: ~120k tris, ~130 draw calls; wired into sandbox with boost dust + suspension |
+| — | Playground test site (`api/fixtures/playground/`, 2 km, delta with gap, breached crater, dunes) | In progress (agent) |
 
 Tests: `api/.venv/bin/python -m pytest api -q` → 17 passed.
 

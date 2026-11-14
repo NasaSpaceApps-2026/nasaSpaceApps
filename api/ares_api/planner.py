@@ -46,7 +46,7 @@ class Planner:
         return {"name": name, **self.cfg["profiles"][name]}
 
     def speed(self, slope_deg, prof: dict):
-        k = self.cfg["speed_curve"]["k"]
+        k = prof.get("speed_curve_k", self.cfg["speed_curve"]["k"])
         return prof["flat_speed_mps"] * np.exp(-k * np.abs(np.tan(np.radians(slope_deg))))
 
     def nogo_limit(self, prof: dict, max_slope: float = None) -> float:
