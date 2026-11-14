@@ -4,3 +4,7 @@ node_modules/
 .DS_Store
 data/raw/
 data/build/
+.env
+.env.*
+!.env.example
+web/.env.local
