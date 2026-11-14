@@ -1,0 +1,11 @@
+{
+  "opacity": 1.0,
+  "fade_start_m": 4.0,
+  "fade_end_m": 20.0,
+  "angle_power": 0.0,
+  "luminance_gain": 1.0,
+  "luminance_bias": 0.0,
+  "enabled_frames": [
+    "fit_0"
+  ]
+}

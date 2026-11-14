@@ -1,0 +1,2 @@
+class BubbleError(ValueError):
+    pass

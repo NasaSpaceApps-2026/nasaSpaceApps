@@ -1,0 +1,60 @@
+{
+  "id": "fixture_mound",
+  "size_m": 32.0,
+  "center_x": 0.0,
+  "center_y": 0.0,
+  "baseline_mesh": "/bubble/baseline/mesh.glb",
+  "refined_mesh": "/bubble/refined/mesh.glb",
+  "active": "refined",
+  "metrics": {
+    "threshold_ssim": 0.75,
+    "ssim": 0.8775041836962925,
+    "lpips": null,
+    "pass": true,
+    "numeric_pass": true,
+    "active_recommendation": "refined",
+    "geometry_delta_m_max": 0.0,
+    "registration_rms_m": 0.0,
+    "holdout_ssim": 0.72025718363314,
+    "fit_ssim": 0.8775041836962925,
+    "baseline_fit_ssim": 0.03011401588599081,
+    "baseline_holdout_ssim": 0.025878496205923144,
+    "human_verdict": "auto_gate",
+    "awaiting_human": false,
+    "outside_unchanged": true,
+    "iterations": [
+      {
+        "tick": 1,
+        "operator": "set_opacity",
+        "value": "1",
+        "fit_ssim": 0.03011401588599081,
+        "holdout_ssim": 0.025878496205923144,
+        "result": "same",
+        "reverted": false
+      },
+      {
+        "tick": 2,
+        "operator": "enable_frame",
+        "value": "fit_0",
+        "fit_ssim": 0.8707046147504683,
+        "holdout_ssim": 0.7153063136679089,
+        "result": "better",
+        "reverted": false
+      },
+      {
+        "tick": 3,
+        "operator": "set_fade_end_m",
+        "value": "20",
+        "fit_ssim": 0.8775041836962925,
+        "holdout_ssim": 0.72025718363314,
+        "result": "same",
+        "reverted": false
+      }
+    ],
+    "bubble_id": "fixture_mound",
+    "requires_human": false,
+    "size_m": 32.0,
+    "center_x": 0.0,
+    "center_y": 0.0
+  }
+}
