@@ -1,7 +1,9 @@
 # Ares Atlas: science validity summary
 
-*Living document. Last updated Nov 14, 2026, evening (branch `sameer/mcp`). Every number below comes from a
+*Judge-facing summary. Last updated Nov 15, 2026 (branch `sameer/mcp`). Every number below comes from a
 script or test in this repo; the "Reproduce" column says which.*
+
+*Three science documents, read in this order: this summary, then [SCIENCE_VALIDITY.md](../SCIENCE_VALIDITY.md) (detailed log: every physics and science constant with its status and basis, change log), then [science-validation.md](science-validation.md) (auto-generated checks from `pipeline/09_validate.py`, with the assumptions register).*
 
 ## What we claim
 
@@ -42,7 +44,7 @@ official pipeline layers land.
 | 3 | Perseverance's first waypoint vs the published landing site | 6.5 m apart | `sitebuild/science.py` build log |
 | 4 | Searches return exactly what they define | Fast search agrees with a plain-loop reference on every cell tested; no returned spot has a failing cell in its footprint | `tests/oracle.py`, `tests/test_search.py` |
 | 5 | Walking time and distance | Dijkstra matches an independent reference implementation everywhere (rtol 1e-5); flat-ground time equals distance / speed within 1% | `tests/oracle_travel.py`, `tests/test_travel.py` |
-| 6 | Whole suite | 478 Python tests + 30 chat-panel tests pass | `.venv/bin/python -m pytest -q` |
+| 6 | Whole suite | 511 Python tests (run Nov 15) + 44 chat-panel tests pass | `.venv/bin/python -m pytest -q`; `cd chat-dev && npx vitest run` |
 
 ### Validation against Perseverance's real drives
 
@@ -72,9 +74,10 @@ clipping at the site edge; both show the same pattern.
 - Rover drivers avoid ground for reasons besides slope (rocks, sand, science priorities), so this
   supports our slope map without proving it.
 - **Route realism** (planned route vs the path actually driven, 3 waypoint pairs near the landing
-  site): planned lengths 110 m, 110 m, 150 m against driven 319 m, 131 m, 148 m. The first pair
+  site, `GET /validation` on `devapi`, re-run Nov 15): planned lengths 110.4 m, 110.2 m, 149.5 m against driven 318.7 m, 131.1 m, 148.1 m. The first pair
   differs because the real drive wandered between waypoints. All three pairs are close to
-  the landing site, so this check is still thin.
+  the landing site, so this check is thin. A wider check on Yousef's API (8 waypoint pairs spread over sols 129-1001, planned/driven median 1.00)
+  is in [SCIENCE_VALIDITY.md](../SCIENCE_VALIDITY.md).
 
 ### Why high-resolution data matters (finding)
 
@@ -112,20 +115,23 @@ Each tool is checked against a known answer, not just "it runs".
   −98.1 m north; tiles agree within 25 m) and corrected it. Results near a unit or mineral boundary
   carry a caveat.
 - **Every threshold is labelled.** Each limit is shown as cited or assumed, and every number the
-  agent gives must appear in a tool result. The eval scorer checks this automatically; it will run
-  on live answers once we have an API key.
-- **Blind review.** A reviewer saw only what the AI sees and ran 21 realistic questions live. The
-  results went from 6 pass / 6 hesitate / 4 fail to 17 pass / 4 hesitate / 0 fail, mostly through
-  honesty fixes (`docs/tool-review.md`).
+  agent gives must appear in a tool result. The eval scorer checks this automatically and has been run on live
+  DeepSeek answers (see Known limitations and `docs/eval-run-deepseek.md`).
+- **Blind review.** A reviewer saw only what the AI sees (tool descriptions and system prompt) and ran realistic questions through the MCP server.
+  On the earlier terrain-only site: 6 pass / 6 hesitate / 4 fail of 16 cases. After the science layers and honesty fixes: 17 pass / 4 hesitate / 0 fail of
+  21 cases. The case sets differ, so this is not a like-for-like trend (`docs/tool-review.md`).
 
 ## Known limitations
 
 - Landing, walking and rover thresholds are **assumed** pending citations. The walking-speed curve
-  is an Earth hiking function used as a placeholder.
+  is an Earth hiking function used as a placeholder. Candidate citations found on Nov 14 (for example 0.56 m/s planning pace and a 20 degree
+  lunar-suit slope requirement) are collected in `docs/threshold-sources.md` and are **not applied** to the profiles.
 - Walking times use a 4 m grid and treat uphill and downhill equally, so they are approximate.
 - Sample-site positions are derived from rover waypoints (10–50 m uncertainty). Named regions such
   as Séítah and the delta front are points, not mapped areas.
 - The CRISM map's registration to our terrain is unmeasured (36 m pixels).
+- The browser vehicle physics and the buggy concept (grip, power, suspension) are models with assumed parameters; they are logged in `SCIENCE_VALIDITY.md` and are not part of the copilot's science claims.
+- Yousef's API, when started on its own defaults, loads synthetic mineral layers (`api/scripts/make_dev_layers.py`, labelled "not Mars data"). In the `stack/up.sh` setup it is fed an export of our site instead, where its `layer_min_*` rasters are real CRISM tiers divided by 4 (a test mapping: tier indices, not abundances; `devapi/export_ares_dir.py`), so its `find_sites` scores are tier indices. The copilot's mineral answers come from the query engine's evidence tiers.
 - Live agent (DeepSeek, real Jezero site): 19 of 24 cases passed in full runs with both
   `deepseek-chat` and `deepseek-v4-pro`. After we made tools state every number users ask for
   (round-trip times, distances), a rerun of the failing cases passed 6 of 7 on each model with **zero**
@@ -143,3 +149,4 @@ Each tool is checked against a known answer, not just "it runs".
 - **Nov 14 (later):** added sun/shadow, line of sight, landform layers, ancient lake and EVA safety tools with their validation; suite at 386 tests.
 - **Nov 14 (evening):** cited the team pipeline's independent rover-tilt check (r = 0.84) and noted the small traverse-statistics difference.
 - **Nov 14 (night):** first live agent scores (DeepSeek 19/24); suite at 473 tests.
+- **Nov 15:** cross-linked the three science documents; suite at 511 Python + 44 chat-panel tests; route-realism numbers re-run; stale scorer and blind-review statements corrected.

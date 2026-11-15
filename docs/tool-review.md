@@ -1,5 +1,7 @@
 # MCP tool description review (simulated copilot, no API key)
 
+*Dated working log (Nov 14). The first section describes the earlier 28-tool, terrain-only state; later sections re-run the cases after science layers and honesty fixes (final: 17 pass, 4 hesitate, 0 fail of 21). The MCP server now lists 39 tools. Summary for judges: [science-validity.md](science-validity.md).*
+
 Method: acted as a model that only sees the 28 tool descriptions/schemas plus `agent/system_prompt.md`. Planned each eval prompt from that alone, executed the plan through the MCP stdio client against devapi (site `jezero`), then compared with `agent/evals/questions.yaml`. Server source was not read to answer.
 
 Data caveat that drives many failures: the live `jezero` site is **terrain-only** (layers: elevation, rough_5x5, slope_2m, quality_flag; POIs: `base` and `octavia_e_butler_landing`, same coordinates; no evidence/geologic layers, no delta POI, no search targets, no ground truth). Cases that need minerals cannot pass on this site regardless of wording; the table separates "data" from "description" causes.

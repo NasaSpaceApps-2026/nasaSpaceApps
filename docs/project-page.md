@@ -1,63 +1,78 @@
-# Ares Atlas: project page (draft submission text)
+# Ares Atlas: project page (submission text)
 
 Challenge: Interplanetary Survival Guide: Martian Map (NASA Space Apps 2026).
-Team: `TODO: team name and members`. Demo video: `TODO: public link`. Repository: `TODO: public URL`.
+Team: `TEAM TO FILL: team name and members`. Demo video: `TEAM TO FILL: public link`. Repository: https://github.com/NasaSpaceApps-2026/nasaSpaceApps (confirm it is public before submitting).
 
-Status of this draft: written against what exists in the repo on 2026-11-14. Items marked `TODO` are not done yet. Nothing here is a measured result unless a source file is named.
+Last checked against the repo on 2026-11-15. Every number below names the file it comes from. Items marked `TEAM TO FILL` or `TEAM TO CONFIRM` cannot be verified from the repo.
 
 ## One-sentence summary
 
-Ares Atlas lets an explorer ask Claude spatial questions about Jezero crater ("where can a lander touch down within a 30 minute walk of base?") and have Claude answer from exhaustive searches of NASA terrain data and operate a rover over that terrain, through an open MCP server.
+Ares Atlas is a mission-planning prototype that lets an explorer ask an AI copilot spatial questions about Jezero crater ("where can a lander touch down within a 30 minute walk of base?", "where has olivine been detected, and how sure are we?"), answered from computed searches of real NASA data through an open MCP server, with a rover and crew buggy to drive over the terrain.
 
 ## The challenge
 
-The Martian Map challenge asks for a layered, integrated view of a location or route on Mars that helps a human explorer plan and carry out a Marswalk while doing new science. Planning needs answers to compound questions: flat enough, rough enough, close enough on foot, and, later, near the right minerals. Today that means a person stitching together rasters by hand.
+The Martian Map challenge asks for a layered, integrated view of a location or route on Mars that helps a human explorer plan and carry out a Marswalk while doing new science. Planning needs compound answers: flat enough, close enough on foot, near the right minerals, safe to return from. Today that means a person stitching rasters together by hand.
 
 ## Our solution
 
-- **A terrain query engine.** From the HiRISE and CTX digital terrain models we build a 2 m analysis grid (elevation, slope, roughness, data-quality flag). Tools such as `find_locations` and `find_regions` take a small condition language (layer thresholds, evidence tiers, `any_of`, a walking-time limit from base, an objective such as flattest or best evidence) and search exhaustively for footprint-sized spots or connected areas.
-- **Claude operates it over MCP.** An MCP server exposes about 27 tools: site and layer description, search, routes, rover driving, markers, viewer control. An agent backend runs Claude's tool-calling loop and streams text and tool calls to a chat panel. Any MCP client (Claude Desktop, Claude Code) can use the same server.
-- **Honest answers.** Every result carries the thresholds used, where each came from (assumed or cited), the data source, and quality warnings. Empty results come with diagnostics showing which condition removed the candidates.
-- **A rover to act on the answers.** Claude can place markers, plan and assess routes, teleport or drive the rover, and fly the viewer camera. `TODO: confirm which of these are shown live with the team's viewer.`
+- **A terrain and science query engine.** From the USGS HiRISE DTM (CTX fill) we build a 2 m analysis grid of an 8 km square at Jezero: elevation, slope, roughness, data-quality flags, terrain-shape layers, seven CRISM mineral layers, geologic units and the Perseverance traverse. Tools take a small condition language (layer thresholds, evidence tiers, a walking-time limit from base, an objective) and search exhaustively.
+- **An AI copilot over MCP.** The MCP server exposes 39 tools (verified by listing the running server on Nov 15): site and layer description, search, routes, EVA return-time envelope, line of sight, sun and shadow, paleolake flooding, rover driving, markers and viewer control. The agent backend runs the LLM's tool loop and streams text and every tool call to the chat panel. Any MCP client (Claude Desktop, Claude Code) can use the same server.
+- **Honest answers.** Results carry thresholds with their source (cited or assumed), the dataset and how sure it is, and quality warnings. Mineral evidence is an ordinal tier, never a percentage. Empty results come with diagnostics showing which condition removed the candidates.
+- **A viewer and rover to act on the answers.** A Cesium whole-planet globe with street view; browser rigid-body vehicle physics for a crew buggy concept; an API rover simulator with a slope-stop policy. The copilot can teleport or drive the rover, plan and assess routes, place markers and fly the camera. See "Limitations" for which frames line up.
 
 ## Significance
 
-An astronaut or mission planner can ask in plain language and get a reproducible, sourced answer, instead of a one-off map. Because the tools are an open MCP server, the same terrain intelligence can be used by any AI client, and new layers (minerals, geologic units) plug in through the same catalogue schema without changing a tool.
+An astronaut or mission planner can ask in plain language and get a reproducible, sourced answer instead of a one-off map, and can see exactly which tools produced it. Because the tools are an open MCP server, the same terrain intelligence can be used by any AI client, and new layers plug in through the same catalogue schema without changing a tool.
 
 ## NASA data used
 
-Only datasets used by the current build (see `data/SOURCES.md`, accessed 2026-11-14; all from USGS Astrogeology, Mars 2020 Terrain Relative Navigation products, Fergason et al. 2020):
+Full list with URLs, sizes, citations and access dates: `data/SOURCES.md` and `data/build/site/jezero/SOURCES_site.md` (generated by `sitebuild`, not in git).
 
-| Data | Role |
-|---|---|
-| Mars 2020 TRN HiRISE DTM mosaic, 1 m (`JEZ_hirise_soc_006`, MOLA-referenced), doi:10.5066/P9REJ9JN | Main terrain: elevation, slope (2 m, Horn method), 5x5 roughness, quality flag. Averaged to a 2 m grid. |
-| Mars 2020 TRN CTX DTM mosaic, 20 m (`JEZ_ctx_B_soc_008`) | Fills cells with no HiRISE data, always flagged `ctx_fill`. Also used in the CTX-vs-HiRISE comparison. |
+| Data | Mission / instrument | Role |
+|---|---|---|
+| Mars 2020 TRN HiRISE DTM mosaic, 1 m (Fergason et al. 2020, USGS, doi:10.5066/P9REJ9JN) | MRO / HiRISE | Main terrain: elevation, slope, roughness; averaged to a 2 m grid |
+| Mars 2020 TRN CTX DTM mosaic, 20 m (USGS) | MRO / CTX | Gap fill (flagged `ctx_fill`) and the CTX-vs-HiRISE comparison; CTX orthomosaic used for comparison only |
+| HiRISE orthomosaic, 25 cm (USGS, doi:10.5066/P9QJDP48) | MRO / HiRISE | Viewer imagery (tile pipeline); false colour where colourised, see `data/SOURCES.md` |
+| CRISM mineral map of Jezero (Parente et al., Zenodo, doi:10.5281/zenodo.5575824, CC BY 4.0), 36 m | MRO / CRISM | Seven mineral evidence layers, as ordinal tiers |
+| Geologic map of Jezero, USGS SIM 3464 | Mapped from MRO data | Geologic units (shifted +25.8 m east, -98.1 m north to our terrain) |
+| Perseverance traverse, waypoints and rock-sample list (NASA/JPL-Caltech MMGIS and NASA pages) | Mars 2020 | Validation, rover-confirmed sample positions (derived, 10-50 m) |
+| Farley et al. 2022; Williams et al. 2023; Hurowitz et al. 2023 | Mars 2020 results | Which minerals the rover confirmed at which samples |
+| Mangold et al. 2024 (LPSC); Villette et al. 2025 | Published paleolake levels | Levels for the flood tool (-2410 m uppermost foresets), see `docs/lake-levels.md` |
+| Viking MDIM 2.1 colour mosaic via NASA Mars Trek; IAU/USGS gazetteer | Viking; nomenclature | False-colour hue for imagery; place names |
 
-`data/SOURCES.md` additionally lists a CTX orthomosaic (comparison only) and a HiRISE orthomosaic (fetched by the tile pipeline, not used by the query engine). The landing site position (18.4447 N, 77.4508 E) is a published coordinate supplied to us, not extracted from imagery. No mineral or geologic-unit layers are used yet.
+The landing site position (18.4447 N, 77.4508 E) is a published coordinate supplied to us, not extracted from imagery. The mission base is placed at the landing site by assumption.
 
 ## Validation and accuracy approach
 
-- **Exhaustive search, checked against an oracle.** Search results come from full-grid masks and distance transforms, not sampling. The test suite (`tests/`) compares the fast tools to slow, simple, independent reference implementations (`tests/oracle.py`, `tests/oracle_travel.py`) on fixture terrain and real-data windows, and checks properties: no returned spot has a failing cell inside its footprint, unknown cells never pass, spots respect spacing.
-- **Evidence tiers.** Detected quantities (minerals, geology) are an ordinal tier from `confirmed_in_situ` down to `not_detected` and `no_coverage`, never a probability. `no_coverage` is not treated as "none". (Defined in `contracts/mcp-tools.md`; no evidence layer is loaded yet.)
-- **Provenance labels.** Every profile threshold is marked `assumed` or cited, and results state which. All current thresholds in `profiles.yaml` are `assumed`.
-- **Quality flags.** The HiRISE mosaic has suspected seam rows and noisy DTM patches. We detect them (`sitebuild/seams.py`, `sitebuild/noise.py`; figures `docs/seam_check.png`, `docs/noise_check.png`), keep the values unaltered, and flag the cells. The landing pad profile requires cells to be clean HiRISE data. CTX-filled cells are flagged because they are artificially smooth.
-- **Grounding checks on the agent.** `agent/evals/questions.yaml` defines eval cases that check the tool path and that numbers in a reply appear in a tool result. `TODO: report eval pass rate from a live run.`
-- **CTX vs HiRISE finding.** Using `sitebuild/compare_ctx_hirise.py`, in a 2 km window around the landing site the maximum slope is 11.7 degrees from the 20 m CTX DTM and 33.4 degrees from the 2 m HiRISE DTM (figure: `docs/compare_ctx_vs_hirise_2000m.png`; numbers: `docs/compare_ctx_vs_hirise_stats.txt`). Coarse data hides steep slopes, which is why we use HiRISE for hazard questions and flag CTX fill.
+Detail: `docs/science-validity.md` (summary), `SCIENCE_VALIDITY.md` (log), `docs/science-validation.md` (auto-generated checks).
+
+- **Rover tilt vs our slope (independent).** Perseverance's inclinometer at 347 drive stops against slope from our HiRISE terrain: r = 0.84, RMSE 2.27 deg, bias +0.02 deg (`pipeline/09_validate.py`).
+- **Hazard map vs the real traverse.** Of 24.9 km Perseverance drove inside the site, 0.41% is on ground our map marks steeper than 15 deg (site-wide 4.79%) and 0.10% steeper than 20 deg (site-wide 1.96%): about 12 and 20 times less (`GET /validation` on `devapi`, re-run Nov 15). Rover drivers avoid ground for other reasons too, so this supports the map without proving it.
+- **Exhaustive search checked against an oracle.** The test suite compares the fast tools to slow independent reference implementations (`tests/oracle.py`, `tests/oracle_travel.py`). 511 Python tests passed on Nov 15; the chat panel has 44 more.
+- **Known-answer checks for the science tools.** The sun algorithm reproduces the published Mars24 worked example and Perseverance's landing local time of 15:53; line of sight matches a brute-force reference and the sqrt(2Rh) horizon; terrain layers are exact on analytic surfaces.
+- **Honest evidence.** Tiers (rover-confirmed > strong orbital > weak orbital > not detected) plus a separate "no coverage"; 36% of the site has no CRISM coverage and tools say "cannot answer" there. Rover-confirmed evidence names the sample and paper.
+- **Data-quality flags.** HiRISE seams (7.4% of the site) and noisy zones (8.2%) are flagged, never smoothed; CTX-filled cells are flagged as artificially smooth.
+- **Agent grounding evals.** `agent/evals/questions.yaml` defines eval cases (27 in the file on Nov 15; the live runs below used the 24 that existed then) that check the tool path and that every measurement-like number in a reply appears in a tool result. Live runs with DeepSeek (`docs/eval-run-deepseek.md`): full runs scored 19 of 24 with both `deepseek-chat` and `deepseek-v4-pro`; a rerun of the 7 cases that had failed passed 6 of 7 on each model, with no ungrounded numbers in those 14 sessions. Caveats: part of the gain over the first run (15 of 24) came from correcting the scorer and eval set, each rerun is a single sample so some failures are flaky, and the failures differ between models. The evals have not yet been scored with a Claude model.
+- **CTX vs HiRISE finding.** In a 2 km window around the landing site the steepest slope is 11.7 deg in 20 m CTX terrain and 33.4 deg in 2 m HiRISE terrain (`docs/compare_ctx_vs_hirise_stats.txt`, figure `docs/compare_ctx_vs_hirise_2000m.png`). Coarse data hides the hazards an EVA planner needs, which is why we use HiRISE for hazard questions.
 
 ## AI use disclosure
 
-- Claude (Anthropic) was used as a coding assistant to write much of the code in this repository. `TODO: team to confirm scope and any other tools used.`
-- Claude also runs inside the product: the agent backend calls the Claude API with the MCP tools, and the chat panel shows its answers and every tool call. Claude's answers are meant to come from tool results; the system prompt and evals enforce this, but a language model can still err.
+- AI coding assistants (Claude Code, Cursor) were used to write much of the code. `TEAM TO CONFIRM: scope, and any other AI tools used (for example for text or images).`
+- The in-app copilot uses an LLM (DeepSeek via API in the current build; Claude-compatible) through our MCP server. The provider is chosen by `ATLAS_PROVIDER` or by which API key is present (`agent/README.md`). Its answers are meant to come from tool results; the system prompt and evals enforce this, but a language model can still err.
 
 ## Limitations
 
-- Walking speed uses a placeholder Earth-derived hiking function (Tobler-style), not Mars or suit data. Rover speed is also an assumption.
-- All profile thresholds (slope, roughness, footprint, EVA limit, reserve margin) are team assumptions pending cited values.
-- No mineral or geologic-unit layers yet, so carbonate and olivine questions cannot be answered from data today.
-- Coverage is one site (Jezero window, 4096 x 4096 cells at 2 m, about 8 km square). Slope has a 2 m baseline and cannot see rocks smaller than a few metres.
-- The mission base is placed at the landing site by assumption.
-- The 3D viewer, photoreal refine loop and ground view belong to teammates. `TODO: describe their status.`
+- Walking speed uses a placeholder Earth hiking function, and slope, roughness, footprint, EVA-limit and reserve thresholds are team assumptions (labelled `assumed`). Candidate citations are in `docs/threshold-sources.md` and are not applied.
+- One site: an 8 km square at Jezero, 2 m grid. Slope has a 2 m baseline and cannot see rocks smaller than a few metres. Sample-site positions are derived from waypoints (10-50 m); named regions such as Seitah are points, not mapped areas.
+- Mineral layers are CRISM detections at 36 m, not abundances; 36% of the site has no CRISM coverage. The lake tool floods today's topography, not the ancient lake floor.
+- The planet viewer and sandbox worlds serve different (partly synthetic) site frames from the copilot's real 8 km site; they agree only in the `--frame crater` setup (`docs/frames.md`). `TEAM TO CONFIRM: what the final demo shows live in the viewer.`
+- Vehicle physics and the buggy concept use assumed grip, power and suspension values; there is no thermal, power or life-support model.
+- Verified on the developer machine only; not tested from a clean clone. First-time data build needs network.
+
+## Team
+
+`TEAM TO FILL: names, roles and contact.` Working split (from `CLAUDE.md`): data pipeline (Caden), viewer (Rithvik), rover API and browser driving (Yousef), MCP server, agent, chat panel, docs (Sameer).
 
 ## Credits and references
 
-USGS Astrogeology Science Center and NASA MRO HiRISE and CTX teams for the data. Libraries: `TODO: list from pyproject and package.json`. No NASA logos are used.
+USGS Astrogeology Science Center and the NASA MRO HiRISE, CTX and CRISM teams; NASA/JPL-Caltech Mars 2020; Parente et al. (CRISM map, CC BY 4.0). Libraries: Python (numpy, scipy, scikit-image, rasterio, FastAPI, the MCP SDK), TypeScript (React, three.js, CesiumJS); the full lists are in `pyproject.toml`, `api/requirements.txt`, and each `package.json`. No NASA logos are used. Code licence: MIT (`LICENSE`).

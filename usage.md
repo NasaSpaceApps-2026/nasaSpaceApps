@@ -1,5 +1,7 @@
 # Usage
 
+This page is the viewer-only path: planet view, street view and the rover sandbox, no backend and no AI keys needed. For the full copilot (chat, MCP, agent, APIs) use `stack/up.sh` (see the root `README.md` and `stack/README.md`). The planet viewer and sandbox worlds use different site frames from the copilot's real 8 km site (`docs/frames.md`).
+
 One-line commands from the repo root. Install once: `npm install` in `web/` and `web/src/rover/sandbox`; for the API, `source activatevenv311` then `pip install -r api/requirements.txt` (`python3.11` on PATH).
 
 Optional Cesium ion token for the higher-resolution Mars tileset: put `VITE_CESIUM_ION_TOKEN=…` in a repo-root `.env.local` (gitignored). Without it the globe is the NASA/USGS Viking color mosaic from Mars Trek. The Jezero and Olympus patches are sharper than that mosaic.

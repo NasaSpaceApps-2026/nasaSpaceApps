@@ -1,5 +1,7 @@
 # Science validity log
 
+*This is the detailed log. Judges: read the summary [docs/science-validity.md](docs/science-validity.md) first. The auto-generated checks (rover tilt vs DEM, CTX vs HiRISE, assumptions register) are in [docs/science-validation.md](docs/science-validation.md). Last reviewed Nov 15, 2026.*
+
 What the simulation claims, what each claim rests on, and how sure we are. Feeds the
 submission's Validity section. Add an entry whenever a number or model changes.
 
@@ -16,7 +18,8 @@ Status key: **cited** (published NASA/peer value) · **derived** (computed from 
 | Terrain elevation | HiRISE DTM, 1 m posts (CTX 20 m fallback) | cited | USGS Mars 2020 TRN products (Stream A) |
 | Imagery | HiRISE ortho, 25 cm, greyscale | cited | USGS; colour shown only as labelled false colour |
 | Slope, roughness | Derived from the DTM (gradient; 5×5 std dev) | derived | Standard DEM analysis |
-| Mineral layers | CRISM-derived abundance, 0–1 | **synthetic** for now | Placeholder rasters labelled "not Mars data" until Stream A ships CRISM products |
+| Mineral layers (query engine, used by the copilot) | Ordinal evidence tiers, 7 minerals; not abundances | cited | Real CRISM map (Parente et al.), see "Query engine and science tools" below |
+| Mineral layers (Yousef's API dev layers) | `layer_min_*` 0–1 | **synthetic** by default | `api/scripts/make_dev_layers.py` rasters labelled "not Mars data" (`api/fixtures/analysis`). Under `stack/up.sh` the API instead loads an export of our site, where `layer_min_*` = real CRISM tier / 4 (test mapping, tier indices not abundances; `devapi/export_ares_dir.py`) |
 | Test sites (fixture, playground) | Analytic / seeded-noise terrain | **synthetic** | Used only for development; manifest says so |
 
 ## Vehicles
@@ -94,7 +97,7 @@ Stream A's official ones land).
 
 ## Known gaps
 
-- Mineral layers and test terrains are synthetic; real CRISM and HiRISE data replace them via Stream A.
+- Test terrains (fixture, playground) are synthetic, and so are Yousef's API dev mineral layers when it runs on its defaults. The copilot's data (query engine) is real HiRISE and CRISM; the official pipeline layers (Stream A) have not replaced our interim copies.
 - Grip, rolling resistance and buggy power are assumptions; worth one literature check each.
 - API auto-drive uses the steady-state version of the browser force model (power/grip balance on the signed
   grade, `api/ares_api/vehicle.py`), not the full rigid-body/suspension dynamics; the route planner still
@@ -109,6 +112,8 @@ Stream A's official ones land).
   at 15+ m/s the post-to-post slope kinks make the wheels chatter.
 
 ## Change log
+
+- 2026-11-15: Cross-linked the three science documents; corrected the mineral-layer rows (query engine uses real CRISM tiers; the API's dev layers are synthetic only on its defaults).
 
 - 2026-11-14: First run on the real Jezero build (Caden's pipeline: HiRISE DTM 2 m grid, Mars 2020 traverse). `/validation` now uses every traverse drive (not just the first), length-weighted, with a site-wide baseline, and re-plans 8 odometry-measured waypoint pairs; results in the table above.
 
