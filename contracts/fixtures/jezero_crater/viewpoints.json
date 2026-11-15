@@ -1,0 +1,48 @@
+{
+  "frame": "site_enu",
+  "poses_trusted": true,
+  "requires_human": true,
+  "registration_rms_m": null,
+  "bubble_id": "jezero_fan_front",
+  "pose_note": "Overhead camera over the colourised HiRISE crop. The reference is that same mesh from overhead, so edits have to keep the satellite picture. Brightness and dirt pattern are HiRISE. Orange is the anchored Mars dust tone plus Viking redness variation.",
+  "center_lat": 18.4818,
+  "center_lon": 77.4358,
+  "cameras": [
+    {
+      "name": "overhead",
+      "role": "nadir",
+      "xyz": [
+        1000.84655868176,
+        1766.3859861944097,
+        -1127.3930131258528
+      ],
+      "heading_deg": 0.0,
+      "pitch_deg": -90.0,
+      "fov_deg": 50.0,
+      "width": 192,
+      "height": 192,
+      "image": null
+    },
+    {
+      "name": "satellite",
+      "role": "fit",
+      "xyz": [
+        1000.84655868176,
+        1766.3859861944097,
+        -1127.3930131258528
+      ],
+      "heading_deg": 0.0,
+      "pitch_deg": -90.0,
+      "fov_deg": 50.0,
+      "width": 192,
+      "height": 192,
+      "image": "refs/nadir.png"
+    }
+  ],
+  "credits": [
+    {
+      "name": "nadir",
+      "source": "HiRISE ortho JEZ_hirise_soc_006, colourised with Viking MDIM 2.1 and the Mars dust anchor"
+    }
+  ]
+}

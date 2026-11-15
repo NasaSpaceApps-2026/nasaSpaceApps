@@ -36,11 +36,13 @@ const WORLD_BASE: Record<string, string> = {
   image: '/worlds/projection',
   vision: '/worlds/vision',
   llm: '/worlds/vision',
+  crater: '/worlds/crater',
 };
 const rawWorld = (q.get('world') ?? '').trim().toLowerCase();
 const worldBase = rawWorld ? WORLD_BASE[rawWorld] : undefined;
-const worldName: 'projection' | 'vision' | null = worldBase === '/worlds/vision' ? 'vision' : worldBase === '/worlds/projection' ? 'projection' : null;
-const worldError = rawWorld && !worldBase ? `Unknown world "${q.get('world')}". Use projection or vision.` : '';
+const worldName: 'projection' | 'vision' | 'crater' | null =
+  worldBase === '/worlds/vision' ? 'vision' : worldBase === '/worlds/projection' ? 'projection' : worldBase === '/worlds/crater' ? 'crater' : null;
+const worldError = rawWorld && !worldBase ? `Unknown world "${q.get('world')}". Use projection, vision, or crater.` : '';
 const BASE = worldBase ?? q.get('base') ?? '';
 const API = (q.get('api') ?? 'http://localhost:8000').replace(/\/$/, '');
 const WS = API.replace(/^http/, 'ws') + '/ws';
@@ -50,7 +52,7 @@ const START = {
   heading_deg: Number(q.get('heading') ?? (worldName ? 0 : 90)),
 };
 
-function worldHref(name: 'projection' | 'vision' | null): string {
+function worldHref(name: 'projection' | 'vision' | 'crater' | null): string {
   const next = new URLSearchParams(location.search);
   next.delete('base');
   next.delete('x');
@@ -63,10 +65,11 @@ function worldHref(name: 'projection' | 'vision' | null): string {
 }
 
 function renderWorldSwitch() {
-  const items: Array<['default' | 'photo projection' | 'vision loop', 'projection' | 'vision' | null]> = [
+  const items: Array<['default' | 'photo projection' | 'vision loop' | 'crater', 'projection' | 'vision' | 'crater' | null]> = [
     ['default', null],
     ['photo projection', 'projection'],
     ['vision loop', 'vision'],
+    ['crater', 'crater'],
   ];
   $('worlds').innerHTML = items.map(([label, name]) => {
     const on = name === worldName;

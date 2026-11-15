@@ -30,10 +30,11 @@ function roverWorlds(): Plugin {
   const roots: Record<string, string> = {
     projection: path.join(repo, 'contracts/fixtures/rover_worlds/projection'),
     vision: path.join(repo, 'contracts/fixtures/rover_worlds/vision'),
+    crater: path.join(repo, 'contracts/fixtures/rover_worlds/crater'),
   };
   const serve: Connect.NextHandleFunction = (req, res, next) => {
     const raw = decodeURIComponent((req.url ?? '').split('?')[0]);
-    const match = raw.match(/^\/worlds\/(projection|vision)(\/.*)?$/);
+    const match = raw.match(/^\/worlds\/(projection|vision|crater)(\/.*)?$/);
     if (!match) return next();
     const root = roots[match[1]];
     const rel = match[2] && match[2] !== '/' ? match[2] : '';

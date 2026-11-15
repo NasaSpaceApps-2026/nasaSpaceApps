@@ -50,11 +50,11 @@ def _bilinear(values: np.ndarray, cf: np.ndarray, rf: np.ndarray) -> np.ndarray:
     return (v00 * (1 - fc) + v01 * fc) * (1 - fr) + (v10 * (1 - fc) + v11 * fc) * fr
 
 
-def resample_heights(values: np.ndarray, x0: float, y0: float, res_m: float, center_x: float, center_y: float) -> np.ndarray:
+def resample_heights(values: np.ndarray, x0: float, y0: float, res_m: float, center_x: float, center_y: float, size_m: float = SIZE_M) -> np.ndarray:
     """Sample a north-up vertex grid onto the sandbox's level-0 posts."""
-    step = SIZE_M / (HEIGHT_PX - 1)
-    xs = -SIZE_M / 2 + np.arange(HEIGHT_PX) * step
-    ys = SIZE_M / 2 - np.arange(HEIGHT_PX) * step
+    step = size_m / (HEIGHT_PX - 1)
+    xs = -size_m / 2 + np.arange(HEIGHT_PX) * step
+    ys = size_m / 2 - np.arange(HEIGHT_PX) * step
     xx, yy = np.meshgrid(xs, ys)
     cf = ((xx + center_x) - x0) / res_m
     rf = (y0 - (yy + center_y)) / res_m
@@ -105,8 +105,11 @@ def vision_source(repo: Path) -> tuple[np.ndarray, Image.Image, dict]:
     return elev, texture, grid
 
 
-def write_site(out: Path, site: str, title: str, credit: str, elev: np.ndarray, texture: Image.Image, grid: dict) -> None:
-    posts = resample_heights(elev, float(grid["x0"]), float(grid["y0"]), float(grid["res_m"]), float(grid["center_x"]), float(grid["center_y"]))
+def write_site(out: Path, site: str, title: str, credit: str, elev: np.ndarray, texture: Image.Image, grid: dict, size_m: float = SIZE_M) -> None:
+    posts = resample_heights(
+        elev, float(grid["x0"]), float(grid["y0"]), float(grid["res_m"]),
+        float(grid["center_x"]), float(grid["center_y"]), size_m,
+    )
     height_path = out / "tiles" / "height" / "0" / "0" / "0.png"
     ortho_path = out / "tiles" / "ortho" / "0" / "0" / "0.webp"
     height_path.parent.mkdir(parents=True, exist_ok=True)
@@ -119,7 +122,7 @@ def write_site(out: Path, site: str, title: str, credit: str, elev: np.ndarray, 
         "lat0": 18.44462715,
         "lon0": 77.45088572,
         "radius_m": 3396190,
-        "size_m": SIZE_M,
+        "size_m": size_m,
         "elev_min": float(np.min(posts)),
         "elev_max": float(np.max(posts)),
         "center_x": float(grid["center_x"]),
@@ -150,10 +153,33 @@ def export_worlds(repo: Path, out_root: Path) -> None:
         write_site(out_root / name, site, title, credit, elev, texture, grid)
 
 
+def export_crater(repo: Path, out_root: Path) -> None:
+    """The larger colourised HiRISE patch, when that bundle has been built."""
+    bundle = repo / "contracts" / "fixtures" / "jezero_crater"
+    dem_path = bundle / "dem.npy"
+    if not dem_path.exists():
+        return
+    dem = np.load(dem_path)
+    texture = Image.open(bundle / "ortho.png").convert("RGB")
+    grid = json.loads((bundle / "grid.json").read_text())
+    size_m = (dem.shape[1] - 1) * float(grid["res_m"])
+    write_site(
+        out_root / "crater",
+        "jezero_crater",
+        "Jezero fan front",
+        "HiRISE brightness and dirt pattern, Mars orange from the anchored Viking tint",
+        dem,
+        texture,
+        grid,
+        size_m,
+    )
+
+
 def main() -> None:
     repo = Path(__file__).resolve().parents[1]
     out = repo / "contracts" / "fixtures" / "rover_worlds"
     export_worlds(repo, out)
+    export_crater(repo, out)
     print(out)
 
 

@@ -1,0 +1,27 @@
+{
+  "site": "jezero_crater",
+  "fixture": true,
+  "lat0": 18.44462715,
+  "lon0": 77.45088572,
+  "radius_m": 3396190,
+  "size_m": 1200.0,
+  "elev_min": -2554.5043029785156,
+  "elev_max": -2468.355796813965,
+  "center_x": 1000.84655868176,
+  "center_y": 1766.3859861944097,
+  "height": {
+    "max_level": 0,
+    "tile_px": 257
+  },
+  "layers": [
+    {
+      "id": "ortho",
+      "title": "Jezero fan front",
+      "mission": "Mars 2020",
+      "instrument": "Navcam",
+      "max_level": 0,
+      "kind": "base",
+      "credit": "HiRISE brightness and dirt pattern, Mars orange from the anchored Viking tint"
+    }
+  ]
+}

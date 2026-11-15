@@ -104,6 +104,17 @@ PYTHONPATH=pipeline python3 -m vision_loop render --work data/vision/fixture_mou
 
 Stop after the gap pass, or after 6 inferred ops. Write a final `LOOP_STATE.md` section that says the bubble is ready to compare with the projection loop.
 
+## Satellite colour
+
+Some bundles start from a colourised HiRISE picture. The brightness and the dirt pattern are that satellite image. The orange is Mars dust: HiRISE is greyscale, and the hue is the anchored Mars tone in `pipeline/colorize.py`, with only the broad redder-or-darker variation taken from Viking.
+
+On those bundles:
+
+- Do not paint the gray of a rover camera over the ground.
+- Paint only to nudge a rock or streak toward a dirt colour already in the baseline texture: tan, rust, brown, dark sand.
+- Keep paint strength at or below 0.45, and keep the disk on the rock or streak. A broad flat paint wipes the satellite speckles.
+- Bumps follow ridges, scarps, and bright rocks visible in the satellite reference. The large shape is already the HiRISE elevation model. Do not try to rebuild it with bumps.
+
 ## Hard rules
 
 - Edit `model.json` only. Do not edit `pipeline/bubble`, the baseline files, or the reference photos.
