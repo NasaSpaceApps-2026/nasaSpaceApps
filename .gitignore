@@ -15,3 +15,4 @@ web/.env.local
 
 # Regenerate with: api/.venv/bin/python api/scripts/make_playground.py
 api/fixtures/playground/
+api/.state/

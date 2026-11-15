@@ -72,8 +72,11 @@ def apply_ops(dem: np.ndarray, texture: np.ndarray, grid, ops: list[dict]):
     x, y = grid_xy(grid, rows, cols)
     for op in ops:
         _check_op(op)
-        weight = _falloff(x, y, float(op["x"]), float(op["y"]), float(op["radius_m"]))
         kind = op["op"]
+        if kind == "paint" and color.shape[:2] != height.shape:
+            weight = _paint_weight(grid, height.shape, color.shape, float(op["x"]), float(op["y"]), float(op["radius_m"]))
+        else:
+            weight = _falloff(x, y, float(op["x"]), float(op["y"]), float(op["radius_m"]))
         if kind == "bump":
             height = height + float(op["height_m"]) * weight
         elif kind == "paint":
@@ -85,6 +88,18 @@ def apply_ops(dem: np.ndarray, texture: np.ndarray, grid, ops: list[dict]):
             strength = float(op["strength"]) * weight
             height = height * (1.0 - strength) + blurred * strength
     return height.astype(np.float32), np.clip(np.rint(color), 0, 255).astype(np.uint8)
+
+
+def _paint_weight(grid, dem_shape, texture_shape, cx: float, cy: float, radius: float):
+    """Paint on a texture that is a finer sampling of the same ground as the height grid."""
+    dem_rows, dem_cols = dem_shape
+    tex_rows, tex_cols = texture_shape[:2]
+    res = float(grid.res_m) * (dem_cols - 1) / (tex_cols - 1)
+    from bubble.geom import Grid
+
+    fine = Grid(grid.x0, grid.y0, res, grid.center_x, grid.center_y)
+    xs, ys = grid_xy(fine, tex_rows, tex_cols)
+    return _falloff(xs, ys, cx, cy, radius)
 
 
 def _box_mean(height: np.ndarray) -> np.ndarray:

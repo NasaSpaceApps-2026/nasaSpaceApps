@@ -14,15 +14,15 @@
   "cmd": "goto",
   "stop_reason": "arrived",
   "message": "Arrived at Core sample site 1.",
-  "distance_m": 489.9,
+  "distance_m": 490.1,
   "replans": 0,
   "events": [],
   "route_id": "r4",
   "state": {
-   "x": -20.2,
-   "y": -60.1,
+   "x": -20.0,
+   "y": -60.0,
    "z": -2399.9,
-   "heading_deg": 70.6466184212462,
+   "heading_deg": 71.2,
    "pitch_deg": -1.9,
    "roll_deg": -0.2,
    "speed_mps": 0.0,
@@ -32,10 +32,11 @@
    "status": "arrived",
    "last_event": "Arrived at Core sample site 1.",
    "fsd_armed": false,
-   "lat": 18.458986,
-   "lon": 77.409641,
+   "lat": 18.458988,
+   "lon": 77.409644,
    "slope_deg": 1.9,
-   "mission_time_min": 227.7
+   "vehicle": "rover_scout",
+   "mission_time_min": 204.23
   },
   "fsd": null
  }

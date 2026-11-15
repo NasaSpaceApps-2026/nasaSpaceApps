@@ -1,0 +1,43 @@
+{
+  "max_images": 4,
+  "max_position_m": 40.0,
+  "max_direction_deg": 35.0,
+  "sets": [
+    {
+      "id": "set_01",
+      "cameras": [
+        "01_whoops"
+      ],
+      "focus_order": [
+        "01_whoops"
+      ]
+    },
+    {
+      "id": "set_02",
+      "cameras": [
+        "02_scarp"
+      ],
+      "focus_order": [
+        "02_scarp"
+      ]
+    },
+    {
+      "id": "set_03",
+      "cameras": [
+        "03_crater"
+      ],
+      "focus_order": [
+        "03_crater"
+      ]
+    },
+    {
+      "id": "set_04",
+      "cameras": [
+        "04_overview"
+      ],
+      "focus_order": [
+        "04_overview"
+      ]
+    }
+  ]
+}

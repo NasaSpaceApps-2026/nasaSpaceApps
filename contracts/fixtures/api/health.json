@@ -8,6 +8,10 @@
  "response": {
   "ok": true,
   "site": "fixture",
-  "fixture": true
+  "fixture": true,
+  "vehicle": "crew_buggy",
+  "viewers": 0,
+  "markers": 0,
+  "routes": 0
  }
 }

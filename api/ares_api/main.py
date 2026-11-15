@@ -7,6 +7,7 @@ import contextlib
 import itertools
 import json
 import math
+import os
 from pathlib import Path
 from typing import Any, Literal
 
@@ -15,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 from . import config
 from .hub import Hub
@@ -31,19 +33,53 @@ Position = Any  # {x, y} | [x, y] | "x,y" | "poi:<id>" | "marker:<id>" | "rover"
 class World:
     """Everything the API serves, built once per app."""
 
-    def __init__(self, data_dir: Path = None, extra_layer_dir: Path = None):
+    def __init__(self, data_dir: Path = None, extra_layer_dir: Path = None, state_file: Path | None = None):
         self.cfg = config.load_yaml(config.PROFILES_PATH)
+        self.state_file = state_file
         self.terrain = Terrain(data_dir, extra_layer_dir)
         self.places = Places(self.terrain)
         self.planner = Planner(self.terrain, self.cfg)
         self.search = SiteSearch(self.terrain, self.planner, config.load_yaml(config.TARGETS_PATH))
         self.validation = Validation(self.terrain, self.planner)
         self.hub = Hub()
-        base = self.places.pois.get("base")
+        # Start at the base POI, else the earliest rover waypoint (the landing site on real data), else the centre.
+        base = self.places.pois.get("base") or min(
+            (p for p in self.places.pois.values() if p.get("type") == "rover_waypoint" and self.terrain.in_bounds(p["x"], p["y"])),
+            key=lambda p: p.get("sol") if p.get("sol") is not None else 1e9, default=None)
         self.rover = RoverSim(self.terrain, self.planner, self.hub, (base["x"], base["y"]) if base else (0.0, 0.0))
         self.view = {"mode": "orbit", "camera": None, "layers": {}, "highlights": []}
         self.snapshots: dict[str, asyncio.Future] = {}
         self._snap_ids = itertools.count(1)
+        self.load_state()
+
+    # --- persistence: markers and routes survive restarts (per data site) ------------------------
+    def load_state(self):
+        if not self.state_file or not self.state_file.exists():
+            return
+        try:
+            st = json.loads(self.state_file.read_text())
+        except (OSError, json.JSONDecodeError):
+            return
+        if st.get("site") != self.terrain.manifest.get("site"):
+            return  # saved for a different site
+        self.places.markers.update({m["id"]: m for m in st.get("markers", [])})
+        self.planner.routes.update(st.get("routes", {}))
+        num = lambda ids, p: max([int(i[len(p):]) for i in ids if i[len(p):].isdigit()] or [0])
+        self.places._ids = itertools.count(num(self.places.markers, "m") + 1)
+        self.planner._ids = itertools.count(num(self.planner.routes, "r") + 1)
+
+    def save_state(self):
+        if not self.state_file:
+            return
+        try:
+            self.state_file.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.state_file.with_suffix(".tmp")
+            tmp.write_text(json.dumps({"site": self.terrain.manifest.get("site"),
+                                       "markers": list(self.places.markers.values()),
+                                       "routes": dict(list(self.planner.routes.items())[-200:])}))
+            tmp.replace(self.state_file)
+        except OSError:
+            pass
 
     def resolve(self, pos) -> tuple[float, float, str]:
         return self.places.resolve(pos, self.rover.xy())
@@ -123,6 +159,10 @@ class SiteSearchReq(BaseModel):
     profile: str | None = None
 
 
+class VehicleReq(BaseModel):
+    profile: str
+
+
 class AgentEvent(BaseModel):
     tool: str
     args_summary: str = ""
@@ -131,8 +171,12 @@ class AgentEvent(BaseModel):
 
 
 # --- app -------------------------------------------------------------------------------------------
-def create_app(data_dir: Path = None, extra_layer_dir: Path = None) -> FastAPI:
-    world = World(data_dir, extra_layer_dir)
+DEFAULT_STATE = os.environ.get("ARES_STATE_FILE", str(config.API_DIR / ".state" / "state.json"))
+
+
+def create_app(data_dir: Path = None, extra_layer_dir: Path = None, state_file: Path | str | None = DEFAULT_STATE) -> FastAPI:
+    """state_file: where markers/routes persist (None or "" disables; tests pass None)."""
+    world = World(data_dir, extra_layer_dir, Path(state_file) if state_file else None)
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -158,14 +202,17 @@ def create_app(data_dir: Path = None, extra_layer_dir: Path = None) -> FastAPI:
 
     @app.get("/health")
     def health():
-        return {"ok": True, "site": t.manifest.get("site"), "fixture": bool(t.manifest.get("fixture"))}
+        return {"ok": True, "site": t.manifest.get("site"), "fixture": bool(t.manifest.get("fixture")),
+                "vehicle": world.rover.prof["name"], "viewers": len(world.hub.clients),
+                "markers": len(places.markers), "routes": len(pl.routes)}
 
     @app.get("/site")
     def site():
         return {"manifest": t.manifest,
                 "bounds": {"half_size_m": t.half, "res_m": t.res, "planning_res_m": pl.res},
                 "profiles": world.cfg["profiles"], "default_profile": world.cfg["default_profile"],
-                "rover_profile": world.cfg["rover_profile"], "speed_curve": world.cfg["speed_curve"],
+                "rover_profile": world.cfg["rover_profile"], "vehicle_profile": world.rover.prof["name"],
+                "speed_curve": world.cfg["speed_curve"],
                 "stop_minutes": world.cfg["stop_minutes"],
                 "layers_loaded": {lid: t.layer_source[lid] for lid in t.layers},
                 "search_targets": [s["target"] for s in world.search.available() if s["available"]],
@@ -185,7 +232,10 @@ def create_app(data_dir: Path = None, extra_layer_dir: Path = None) -> FastAPI:
         return t.sample(x, y, pl.profile(profile))
 
     @app.post("/terrain/profile")
-    def terrain_profile(req: ProfileReq):
+    async def terrain_profile(req: ProfileReq):
+        return await run_in_threadpool(_terrain_profile, req)
+
+    def _terrain_profile(req: ProfileReq):
         pts = [world.resolve(p)[:2] for p in req.points]
         xs, ys, dist = [], [], []
         total = 0.0
@@ -218,12 +268,14 @@ def create_app(data_dir: Path = None, extra_layer_dir: Path = None) -> FastAPI:
 
     # --- routes -------------------------------------------------------------------------------------
     @app.post("/route")
-    def route(req: RouteReq):
+    async def route(req: RouteReq):
         pts = [world.resolve(p) for p in [req.start, *req.via, req.goal]]
-        r = pl.plan(pts[0][:2], pts[-1][:2], via=[p[:2] for p in pts[1:-1]], labels=[p[2] for p in pts],
-                    profile=req.profile, max_slope_deg=req.max_slope_deg,
-                    time_budget_min=req.time_budget_min, stops=len(req.via))
+        r = await run_in_threadpool(pl.plan, pts[0][:2], pts[-1][:2], via=[p[:2] for p in pts[1:-1]],
+                                    labels=[p[2] for p in pts], profile=req.profile,
+                                    max_slope_deg=req.max_slope_deg, time_budget_min=req.time_budget_min,
+                                    stops=len(req.via))
         world.hub.emit("route.set", r)
+        world.save_state()
         return r
 
     @app.get("/route/{route_id}")
@@ -235,12 +287,13 @@ def create_app(data_dir: Path = None, extra_layer_dir: Path = None) -> FastAPI:
         return pl.assess(route_id)
 
     @app.post("/route/science")
-    def route_science(req: ScienceReq):
+    async def route_science(req: ScienceReq):
         sx, sy, label = world.resolve(req.start)
-        r = plan_science_traverse(pl, places, world.search, (sx, sy), label, req.time_budget_min,
-                                  req.interests, req.profile, req.max_stops)
+        r = await run_in_threadpool(plan_science_traverse, pl, places, world.search, (sx, sy), label,
+                                    req.time_budget_min, req.interests, req.profile, req.max_stops)
         if r.get("route_id"):
             world.hub.emit("route.set", r)
+            world.save_state()
         return r
 
     # --- search + markers -----------------------------------------------------------------------------
@@ -249,12 +302,13 @@ def create_app(data_dir: Path = None, extra_layer_dir: Path = None) -> FastAPI:
         return {"targets": world.search.available()}
 
     @app.post("/search/sites")
-    def search_sites(req: SiteSearchReq):
+    async def search_sites(req: SiteSearchReq):
         near, label = (None, None)
         if req.near is not None:
             nx, ny, label = world.resolve(req.near)
             near = (nx, ny)
-        res = world.search.find(req.target, near, label, req.radius_m, req.max_slope_deg, req.top_k, req.profile)
+        res = await run_in_threadpool(world.search.find, req.target, near, label, req.radius_m,
+                                      req.max_slope_deg, req.top_k, req.profile)
         world.hub.emit("search.results", res)
         return res
 
@@ -272,12 +326,14 @@ def create_app(data_dir: Path = None, extra_layer_dir: Path = None) -> FastAPI:
             raise PlaceError("Give x and y, or at='poi:<id>' / 'rover'.")
         m = places.add_marker(x, y, req.label, req.created_by)
         world.hub.emit("marker.add", m)
+        world.save_state()
         return m
 
     @app.delete("/markers/{marker_id}")
     def delete_marker(marker_id: str):
         m = places.remove_marker(marker_id)
         world.hub.emit("marker.remove", {"id": m["id"]})
+        world.save_state()
         return {"removed": m["id"]}
 
     # --- rover ----------------------------------------------------------------------------------------
@@ -288,6 +344,19 @@ def create_app(data_dir: Path = None, extra_layer_dir: Path = None) -> FastAPI:
     @app.get("/fsd/status")
     def fsd_status():
         return world.rover.fsd_status()
+
+    @app.get("/rover/vehicles")
+    def rover_vehicles():
+        return {"current": world.rover.prof["name"],
+                "vehicles": {k: {"title": v.get("title", k), "flat_speed_mps": v["flat_speed_mps"],
+                                 "nogo_slope_deg": v["nogo_slope_deg"], "source": v.get("source", "assumed")}
+                             for k, v in world.cfg["profiles"].items()}}
+
+    @app.post("/rover/vehicle")
+    def rover_vehicle(req: VehicleReq):
+        prof = world.rover.set_vehicle(req.profile)
+        world.hub.emit("rover.state", world.rover.state())
+        return {"ok": True, "vehicle": prof["name"], "title": prof.get("title"), "state": world.rover.state()}
 
     @app.post("/rover/command")
     async def rover_command(req: CommandReq):
@@ -332,8 +401,9 @@ def create_app(data_dir: Path = None, extra_layer_dir: Path = None) -> FastAPI:
             cmd = rv.start("drive", path, f"{req.distance_m:.0f} m at {math.degrees(h) % 360:.0f} deg", req.speed_factor)
         elif c == "goto":
             x, y, label = world.resolve(req.target)
-            r = pl.plan(rv.xy(), (x, y), labels=["rover", label], profile=rv.prof["name"],
-                        max_slope_deg=rv.policy["max_slope_deg"] if rv.fsd_armed else None)
+            r = await run_in_threadpool(pl.plan, rv.xy(), (x, y), labels=["rover", label], profile=rv.prof["name"],
+                                        max_slope_deg=rv.policy["max_slope_deg"] if rv.fsd_armed else None)
+            world.save_state()
             world.hub.emit("route.set", r)
             cmd = rv.start("goto", [(p["x"], p["y"]) for p in r["points"][1:]], label, req.speed_factor, r["route_id"])
         elif c == "follow_route":
@@ -343,7 +413,8 @@ def create_app(data_dir: Path = None, extra_layer_dir: Path = None) -> FastAPI:
             path = [(p["x"], p["y"]) for p in r["points"]]
             x0, y0 = rv.xy()
             if math.hypot(path[0][0] - x0, path[0][1] - y0) > 10:
-                approach = pl.plan((x0, y0), path[0], labels=["rover", r["start"]], profile=rv.prof["name"])
+                approach = await run_in_threadpool(pl.plan, (x0, y0), path[0], labels=["rover", r["start"]],
+                                                   profile=rv.prof["name"])
                 path = [(p["x"], p["y"]) for p in approach["points"][1:]] + path[1:]
             cmd = rv.start("follow_route", path, r["goal"], req.speed_factor, req.route_id)
         else:
@@ -416,8 +487,8 @@ def create_app(data_dir: Path = None, extra_layer_dir: Path = None) -> FastAPI:
         return {"available": True, "bubble": b, "metrics": metrics}
 
     @app.get("/validation")
-    def validation():
-        return world.validation.run()
+    async def validation():
+        return await run_in_threadpool(world.validation.run)
 
     @app.post("/agent/event")
     def agent_event(ev: AgentEvent):

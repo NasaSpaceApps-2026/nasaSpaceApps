@@ -27,6 +27,7 @@
   "last_event": "Stopped before 21 deg slope at (165, -60); limit is 20 deg.",
   "status": "teleported",
   "profile": "rover_scout",
+  "vehicle": "Scout rover (Perseverance-like)",
   "limits_source": "flat speed close to Perseverance top speed (~4.2 cm/s); slopes assumed"
  }
 }

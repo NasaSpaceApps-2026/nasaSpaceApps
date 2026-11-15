@@ -8,18 +8,22 @@
       html, body { margin: 0; height: 100%; background: #1b1a19; color: #e6e3de; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; overflow: hidden; }
       #view { position: fixed; inset: 0; }
       .panel { position: fixed; background: rgba(20, 20, 20, 0.82); border: 1px solid #3c3a37; border-radius: 4px; padding: 8px 10px; }
-      #hud { top: 10px; left: 10px; min-width: 300px; }
+      #hud { top: 10px; left: 10px; font-size: 11px; padding: 6px 8px; max-width: 420px; }
       #hud table { border-collapse: collapse; }
       #hud td { padding: 1px 8px 1px 0; vertical-align: top; }
       #hud td:first-child { color: #9b978f; }
       #hud .sep td { border-top: 1px solid #3c3a37; padding-top: 4px; }
       #hud .warn { color: #e0b050; }
       #hud .bad { color: #e07060; }
-      #hud .src { color: #8a867f; font-size: 11px; max-width: 300px; }
+      #hud .src { color: #8a867f; font-size: 10px; max-width: 260px; }
       #hud .meter { display: inline-block; width: 70px; height: 7px; background: #333; vertical-align: middle; }
       #hud .meter span { display: block; height: 100%; background: #e0b050; }
       #data { bottom: 10px; left: 10px; max-width: 520px; color: #b9b5ad; }
       #help { bottom: 10px; right: 10px; color: #b9b5ad; }
+      #worlds { top: 10px; right: 10px; }
+      #worlds a { color: #b9b5ad; margin-right: 12px; text-decoration: none; }
+      #worlds a:last-child { margin-right: 0; }
+      #worlds a.on { color: #f3dcc2; }
       #msg { top: 50%; left: 50%; transform: translate(-50%, -50%); }
     </style>
   </head>
@@ -27,6 +31,7 @@
     <div id="view"></div>
     <div id="hud" class="panel"></div>
     <div id="data" class="panel"></div>
+    <div id="worlds" class="panel"></div>
     <div id="help" class="panel">W/S or Up/Down: drive &middot; A/D or Left/Right: turn &middot; wheel: zoom &middot; R: reset</div>
     <div id="msg" class="panel">Loading terrain&hellip;</div>
     <script type="module" src="./main.ts"></script>

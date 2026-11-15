@@ -34,11 +34,15 @@ def init_workspace(bundle_dir: Path, work: Path) -> dict:
     baseline = work / "baseline"
     baseline.mkdir(parents=True)
     np.save(baseline / "dem.npy", bundle.dem)
-    Image.fromarray(bundle.ortho, mode="RGB").save(baseline / "texture.png")
-    (work / "refs").mkdir()
-    for cam in bundle.cameras:
-        if cam.image:
-            shutil.copy(bundle.root / cam.image, work / "refs" / Path(cam.image).name)
+    hires = bundle.root / "texture.png"
+    if hires.exists():
+        shutil.copy(hires, baseline / "texture.png")
+    else:
+        Image.fromarray(bundle.ortho).save(baseline / "texture.png")
+    if (bundle.root / "refs").exists():
+        shutil.copytree(bundle.root / "refs", work / "refs")
+    else:
+        (work / "refs").mkdir()
     (work / "grid.json").write_text(json.dumps({
         "x0": bundle.grid.x0,
         "y0": bundle.grid.y0,
@@ -46,25 +50,12 @@ def init_workspace(bundle_dir: Path, work: Path) -> dict:
         "center_x": bundle.grid.center_x,
         "center_y": bundle.grid.center_y,
     }, indent=2) + "\n")
-    cameras = []
-    for cam in bundle.cameras:
-        image = None if cam.image is None else "refs/" + Path(cam.image).name
-        cameras.append({
-            "name": cam.name,
-            "role": cam.role,
-            "xyz": list(cam.xyz),
-            "heading_deg": cam.heading_deg,
-            "pitch_deg": cam.pitch_deg,
-            "fov_deg": cam.fov_deg,
-            "width": cam.width,
-            "height": cam.height,
-            "image": image,
-        })
-    (work / "viewpoints.json").write_text(json.dumps({
-        "frame": "site_enu",
-        "bubble_id": bundle.bubble_id,
-        "cameras": cameras,
-    }, indent=2) + "\n")
+    raw_view = json.loads((bundle.root / "viewpoints.json").read_text())
+    for item in raw_view.get("cameras", []):
+        if item.get("image"):
+            item["image"] = "refs/" + Path(item["image"]).name
+    raw_view["bubble_id"] = bundle.bubble_id
+    (work / "viewpoints.json").write_text(json.dumps(raw_view, indent=2) + "\n")
     sets = build_sets(bundle.cameras)
     (work / "sets.json").write_text(json.dumps({
         "max_images": MAX_IMAGES,

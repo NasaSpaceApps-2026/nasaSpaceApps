@@ -28,32 +28,46 @@ profiles:
     flat_speed_mps: 0.04
     display_speed_factor: 200   # sim runs this many times faster than real
     mass_kg: 1025               # Perseverance
+    auto_brake: true            # drive motors hold the wheels when idle
     power_w: 40                 # wheel drive power (assumed)
     traction_mu: 0.6
     rolling_coeff: 0.08
+    # Browser rigid-body model (web/src/rover/physics.ts). The rocker-bogie is approximated by four
+    # soft, well-damped corner springs (assumed); k = (m/4)(2 pi f)^2, c = 2 zeta sqrt(k m/4).
+    suspension_hz: 1.0
+    damping_ratio: 0.6
+    suspension_travel_m: 0.3
     caution_slope_deg: 15
     nogo_slope_deg: 20
     eva_limit_min: 1440
     reserve_frac: 0.1
     source: "flat speed close to Perseverance top speed (~4.2 cm/s); slopes assumed"
   crew_buggy:
-    title: Crewed buggy (Apollo LRV-derived, unpressurised)
-    flat_speed_mps: 3.6          # LRV ~13 km/h nominal top speed
-    boost_speed_mps: 5.0         # LRV record ~18 km/h (Apollo 17)
+    title: Crewed performance buggy (concept; LRV-derived geometry, unpressurised)
+    # Reference: Apollo LRV was ~13 km/h top (18 km/h record), ~750 W, 25 deg rating.
+    # This concept is faster and more powerful than the LRV; speeds/power are assumed.
+    flat_speed_mps: 24           # 86 km/h (assumed concept)
+    boost_speed_mps: 40          # 144 km/h (assumed concept)
     speed_curve_k: 2.0           # more torque than the scout: loses less speed on slopes (assumed)
     # Browser force model (web/src/rover/physics.ts):
     mass_kg: 700                 # LRV 210 kg + 2 suited crew + gear
-    power_w: 1500                # LRV had ~750 W (4 x 0.25 hp); doubled for Mars gravity (assumed)
+    power_w: 25000               # 25 kW (assumed concept; LRV had ~750 W)
     boost_power_factor: 1.6
     traction_mu: 0.6             # wheel-regolith grip (assumed); climb limit ~atan(mu - Crr) ~ 27 deg
     rolling_coeff: 0.08          # loose regolith (assumed)
+    driven_load_share: 0.61      # rear-wheel drive, ~61 % static rear weight (browser BUGGY_PARAMS)
     display_speed_factor: 1      # real time; the viewer can time-lapse
     min_turn_radius_m: 3.1       # LRV ~3 m turning radius (4-wheel steering)
+    # Suspension (assumed; soft long-travel off-road tune). Spring k = (m/4)(2 pi f)^2 = 9.1 kN/m per wheel,
+    # damper c = 2 zeta sqrt(k m/4) = 0.96 kN s/m, static sag m g / (4 k) = 7.1 cm on Mars.
+    suspension_hz: 1.15          # sprung (heave) natural frequency
+    damping_ratio: 0.38
+    suspension_travel_m: 0.25    # full droop to bump stop
     caution_slope_deg: 15
     nogo_slope_deg: 25           # LRV rated for 25 deg slopes
     eva_limit_min: 480
     reserve_frac: 0.2
-    source: "Apollo LRV specs (NASA): 13 km/h top, 18 km/h record, 25 deg slope rating, ~3 m turn radius; use on Mars assumed"
+    source: "assumed performance-buggy concept; geometry, 25 deg slope rating and ~3 m turn radius from Apollo LRV (NASA)"
   crew_rover:
     title: Pressurised crew rover (concept)
     flat_speed_mps: 2.5
@@ -64,4 +78,5 @@ profiles:
     source: "assumed"
 
 default_profile: astronaut_walk
-rover_profile: rover_scout
+rover_profile: rover_scout     # validation benchmark vehicle (Perseverance-like)
+vehicle_profile: crew_buggy    # vehicle the API simulator drives by default (same as the viewer); POST /rover/vehicle switches

@@ -5,9 +5,11 @@
  * Query params: ?base=<tile/manifest base URL, default same origin>
  *               &api=<API base, default http://localhost:8000>
  *               &level=<height level to load>  &x=&y=&heading=  (start pose)
+ *               &world=projection | vision   (omit world for the server default site)
  */
 
 import * as THREE from 'three';
+import sandUrl from './mars_sand.jpg';
 import {
   ChaseCamera,
   BUGGY_PARAMS,
@@ -18,7 +20,6 @@ import {
   BUGGY_DIMENSIONS,
   applyPose,
   createBuggyModel,
-  headingToDir,
   loadHeightTiles,
   profileFromSite,
   tileBounds,
@@ -28,10 +29,59 @@ import {
 } from '../index';
 
 const q = new URLSearchParams(location.search);
-const BASE = q.get('base') ?? '';
+// No `world` keeps the site the dev server was started with. projection is the
+// Navcam drape on frozen heights; vision (alias llm) is the edited model.
+const WORLD_BASE: Record<string, string> = {
+  projection: '/worlds/projection',
+  image: '/worlds/projection',
+  vision: '/worlds/vision',
+  llm: '/worlds/vision',
+  crater: '/worlds/crater',
+  olympus: '/worlds/olympus',
+};
+const rawWorld = (q.get('world') ?? '').trim().toLowerCase();
+const worldBase = rawWorld ? WORLD_BASE[rawWorld] : undefined;
+const worldName: 'projection' | 'vision' | 'crater' | 'olympus' | null =
+  worldBase === '/worlds/vision' ? 'vision'
+  : worldBase === '/worlds/projection' ? 'projection'
+  : worldBase === '/worlds/crater' ? 'crater'
+  : worldBase === '/worlds/olympus' ? 'olympus'
+  : null;
+const worldError = rawWorld && !worldBase ? `Unknown world "${q.get('world')}". Use projection, vision, crater, or olympus.` : '';
+const BASE = worldBase ?? q.get('base') ?? '';
 const API = (q.get('api') ?? 'http://localhost:8000').replace(/\/$/, '');
 const WS = API.replace(/^http/, 'ws') + '/ws';
-const START = { x: Number(q.get('x') ?? 100), y: Number(q.get('y') ?? -60), heading_deg: Number(q.get('heading') ?? 90) };
+const START = {
+  x: Number(q.get('x') ?? (worldName ? 0 : 100)),
+  y: Number(q.get('y') ?? (worldName ? 0 : -60)),
+  heading_deg: Number(q.get('heading') ?? (worldName ? 0 : 90)),
+};
+
+function worldHref(name: 'projection' | 'vision' | 'crater' | 'olympus' | null): string {
+  const next = new URLSearchParams(location.search);
+  next.delete('base');
+  next.delete('x');
+  next.delete('y');
+  next.delete('heading');
+  if (name) next.set('world', name);
+  else next.delete('world');
+  const s = next.toString();
+  return s ? `?${s}` : location.pathname;
+}
+
+function renderWorldSwitch() {
+  const items: Array<['default' | 'photo projection' | 'vision loop' | 'crater' | 'olympus', 'projection' | 'vision' | 'crater' | 'olympus' | null]> = [
+    ['default', null],
+    ['photo projection', 'projection'],
+    ['vision loop', 'vision'],
+    ['crater', 'crater'],
+    ['olympus', 'olympus'],
+  ];
+  $('worlds').innerHTML = items.map(([label, name]) => {
+    const on = name === worldName;
+    return `<a href="${worldHref(name)}" class="${on ? 'on' : ''}">${label}</a>`;
+  }).join('');
+}
 
 /** Start at the site's base POI unless x/y are given in the URL. */
 async function resolveStart(): Promise<void> {
@@ -61,12 +111,102 @@ async function fetchProfile(): Promise<RoverProfile> {
   }
 }
 
-function buildTerrain(manifest: Manifest, sampler: TileHeightSampler, level: number, stride = 2): THREE.Group {
+/** Repeating sand from a real Mastcam frame. The normal map is what makes grains catch the sun. */
+function marsGrit(): { color: THREE.Texture; normal: THREE.Texture } {
+  const loader = new THREE.TextureLoader();
+  const color = loader.load(sandUrl);
+  color.colorSpace = THREE.SRGBColorSpace;
+  color.wrapS = color.wrapT = THREE.RepeatWrapping;
+  color.anisotropy = 8;
+  const s = 256;
+  const flat = new Uint8Array(s * s * 4);
+  for (let i = 0; i < s * s; i++) {
+    flat[i * 4] = 128;
+    flat[i * 4 + 1] = 128;
+    flat[i * 4 + 2] = 255;
+    flat[i * 4 + 3] = 255;
+  }
+  const normal = new THREE.DataTexture(flat, s, s);
+  normal.wrapS = normal.wrapT = THREE.RepeatWrapping;
+  normal.colorSpace = THREE.NoColorSpace;
+  normal.flipY = false;
+  normal.needsUpdate = true;
+  const image = new Image();
+  image.onload = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = s;
+    canvas.height = s;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(image, 0, 0, s, s);
+    const src = ctx.getImageData(0, 0, s, s).data;
+    const h = new Float32Array(s * s);
+    for (let i = 0; i < s * s; i++) h[i] = (src[i * 4] + src[i * 4 + 1] + src[i * 4 + 2]) / (3 * 255);
+    const out = new Uint8Array(s * s * 4);
+    const strength = 3.2;
+    for (let y = 0; y < s; y++) {
+      for (let x = 0; x < s; x++) {
+        const left = h[y * s + (x + s - 1) % s];
+        const right = h[y * s + (x + 1) % s];
+        const up = h[((y + s - 1) % s) * s + x];
+        const down = h[((y + 1) % s) * s + x];
+        let nx = (left - right) * strength;
+        let ny = (up - down) * strength;
+        let nz = 1;
+        const len = Math.hypot(nx, ny, nz) || 1;
+        nx /= len; ny /= len; nz /= len;
+        const i = (y * s + x) * 4;
+        out[i] = (nx * 0.5 + 0.5) * 255;
+        out[i + 1] = (ny * 0.5 + 0.5) * 255;
+        out[i + 2] = (nz * 0.5 + 0.5) * 255;
+        out[i + 3] = 255;
+      }
+    }
+    normal.image = { data: out, width: s, height: s };
+    normal.needsUpdate = true;
+  };
+  image.src = sandUrl;
+  return { color, normal };
+}
+
+const GRIT = marsGrit();
+
+function terrainMaterial(tex: THREE.Texture, tileM: number): THREE.MeshStandardMaterial {
+  // One copy of the sand photo every 2.5 m, on top of the unique satellite colour.
+  const copies = Math.max(1, tileM / 2.5);
+  GRIT.color.repeat.set(copies, copies);
+  GRIT.normal.repeat.set(copies, copies);
+  const mat = new THREE.MeshStandardMaterial({
+    map: tex,
+    normalMap: GRIT.normal,
+    normalScale: new THREE.Vector2(0.9, 0.9),
+    roughness: 0.96,
+    metalness: 0,
+    toneMapped: false,
+  });
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.detailMap = { value: GRIT.color };
+    shader.fragmentShader = 'uniform sampler2D detailMap;\n' + shader.fragmentShader;
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <map_fragment>',
+      `#include <map_fragment>
+      {
+        vec3 grit = texture2D(detailMap, vMapUv * ${copies.toFixed(3)}).rgb;
+        float gritL = dot(grit, vec3(0.299, 0.587, 0.114));
+        diffuseColor.rgb *= 0.78 + 0.45 * gritL;
+      }`,
+    );
+  };
+  return mat;
+}
+
+function buildTerrain(manifest: Manifest, sampler: TileHeightSampler, level: number): THREE.Group {
   const group = new THREE.Group();
   group.name = 'terrain';
   const ortho = manifest.layers.find((l) => l.id === 'ortho');
   const useOrtho = !!ortho && ortho.max_level >= level;
   const loader = new THREE.TextureLoader();
+  const tileM = manifest.size_m / 2 ** level;
   const n = 2 ** level;
   for (let ty = 0; ty < n; ty++) {
     for (let tx = 0; tx < n; tx++) {
@@ -74,6 +214,9 @@ function buildTerrain(manifest: Manifest, sampler: TileHeightSampler, level: num
       if (!data) continue;
       const px = Math.round(Math.sqrt(data.length));
       const b = tileBounds(manifest.size_m, level, tx, ty);
+      // Keep posts that are already about 2 m. Coarser tiles use every post.
+      const postM = b.size / (px - 1);
+      const stride = postM > 1.2 ? 1 : 2;
       const m = Math.floor((px - 1) / stride);
       const verts = (m + 1) * (m + 1);
       const pos = new Float32Array(verts * 3);
@@ -112,11 +255,9 @@ function buildTerrain(manifest: Manifest, sampler: TileHeightSampler, level: num
       if (useOrtho) {
         const tex = loader.load(`${BASE}/tiles/ortho/${level}/${tx}/${ty}.webp`);
         tex.colorSpace = THREE.SRGBColorSpace;
-        tex.anisotropy = 4;
+        tex.anisotropy = 16;
         tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
-        // Imagery already carries shading; draw it unlit so we do not shade it twice.
-        // toneMapped: false keeps the imagery's own colours under ACES tone mapping.
-        mat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
+        mat = terrainMaterial(tex, tileM);
       } else {
         mat = new THREE.MeshLambertMaterial({ color: 0x9b8a78 });
       }
@@ -131,6 +272,11 @@ function buildTerrain(manifest: Manifest, sampler: TileHeightSampler, level: num
 const f = (v: number, d = 1) => (Number.isFinite(v) ? v.toFixed(d) : '-');
 
 async function main() {
+  renderWorldSwitch();
+  if (worldError) {
+    $('msg').textContent = worldError;
+    return;
+  }
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(innerWidth, innerHeight);
@@ -174,7 +320,7 @@ async function main() {
     `<b>Imagery</b>: ${ortho ? `${ortho.title} - ${ortho.credit ?? ''}` : 'none'}`;
 
   const profile = await fetchProfile();
-  await resolveStart();
+  if (!worldName) await resolveStart();
   const controls = new KeyboardControls();
   const link = new RoverLink({ url: WS });
   const driver = new RoverDriver({ sampler, profile, params: BUGGY_PARAMS, controls, link, start: START });
@@ -182,22 +328,23 @@ async function main() {
   const buggy = createBuggyModel({ castShadow: true });
   const rover = buggy.group;
   scene.add(rover);
-  const wheelOffsets = (p: { x: number; y: number; z: number; heading_deg: number; pitch_deg: number; roll_deg: number }): [number, number, number, number] => {
-    // Terrain height under each wheel minus the body plane, so the suspension follows bumps.
-    const [fx, fy] = headingToDir(p.heading_deg);
-    const rx = fy;
-    const ry = -fx;
-    const a = BUGGY_DIMENSIONS.wheelbase_m / 2;
-    const b = BUGGY_DIMENSIONS.track_m / 2;
-    const tp = Math.tan((p.pitch_deg * Math.PI) / 180);
-    const tr = Math.tan((p.roll_deg * Math.PI) / 180);
-    const out: [number, number, number, number] = [0, 0, 0, 0];
-    [[a, -b], [a, b], [-a, -b], [-a, b]].forEach(([fa, rb], i) => {
-      const h = sampler.sampleHeight(p.x + fx * fa + rx * rb, p.y + fy * fa + ry * rb);
-      const plane = p.z + fa * tp - rb * tr;
-      out[i] = Number.isFinite(h) ? Math.max(-0.12, Math.min(0.12, h - plane)) : 0;
-    });
-    return out;
+  // The physics and the model share the wheel geometry (BUGGY_PARAMS = BUGGY_DIMENSIONS).
+  if (BUGGY_PARAMS.wheelbase_m !== BUGGY_DIMENSIONS.wheelbase_m || BUGGY_PARAMS.track_m !== BUGGY_DIMENSIONS.track_m || BUGGY_PARAMS.wheel_radius_m !== BUGGY_DIMENSIONS.wheel_radius_m) {
+    console.warn('BUGGY_PARAMS and BUGGY_DIMENSIONS disagree; the wheels will not sit on the simulated contact points');
+  }
+  /** Wheel offsets, spin and steer from the suspension simulation (manual mode); null in auto mode. */
+  const wheelAnim = (mode: string) => {
+    if (mode !== 'manual') return null;
+    const st = driver.physics.state;
+    const rate = driver.physics.profile.display_speed_factor * st.time_scale;
+    const w = st.wheels;
+    const q = <T>(f: (i: number) => T) => [f(0), f(1), f(2), f(3)] as [T, T, T, T];
+    return {
+      wheelGroundOffsets: q((i) => w[i].offset_m),
+      wheelSpinRadS: q((i) => w[i].spin_rad_s * rate),
+      wheelSteerDeg: q((i) => w[i].steer_deg),
+      suspensionFromPhysics: true,
+    };
   };
   const chase = new ChaseCamera(camera, { sampler });
 
@@ -213,6 +360,7 @@ async function main() {
     chase.height = chase.distance * 0.43;
   }, { passive: false });
   addEventListener('keydown', (e) => {
+    if (e.code === 'KeyC' && !e.repeat) chase.orbitDeg = (chase.orbitDeg + 90) % 360; // side / front views to watch the suspension
     if (e.code === 'KeyR' && !e.repeat) {
       driver.teleport(START.x, START.y, START.heading_deg);
       chase.snap();
@@ -222,6 +370,10 @@ async function main() {
   $('msg').remove();
 
   const hud = $('hud');
+  let showDetails = false;
+  addEventListener('keydown', (e) => {
+    if (e.code === 'KeyH' && !e.repeat) showDetails = !showDetails;
+  });
   let hudT = 0;
   let last = performance.now();
   const loop = () => {
@@ -230,7 +382,7 @@ async function main() {
     last = t;
     const p = driver.step(dt);
     applyPose(rover, p);
-    buggy.update({ speedMps: p.display_speed_mps, steerDeg: p.steer * 25, boost: p.boost_active, dt, wheelGroundOffsets: wheelOffsets(p) });
+    buggy.update({ speedMps: p.display_speed_mps, steerDeg: p.steer * 25, boost: p.boost_active, dt, ...wheelAnim(p.mode) });
     chase.update(dt, p);
     sun.position.set(rover.position.x + 20, rover.position.y + 35, rover.position.z + 10);
     sun.target.position.copy(rover.position);
@@ -243,9 +395,18 @@ async function main() {
       const st = driver.physics.state;
       const slopeCls = p.slope_deg > prof.nogo_slope_deg ? 'bad' : p.slope_deg > prof.caution_slope_deg ? 'warn' : '';
       const aheadCls = p.ahead_slope_deg > prof.nogo_slope_deg ? 'bad' : p.ahead_slope_deg > prof.caution_slope_deg ? 'warn' : '';
-      const statusCls = ['sliding', 'slipping', 'tip_risk', 'blocked_edge', 'steep'].includes(String(p.status)) ? 'bad' : p.status === 'caution' ? 'warn' : '';
+      const statusCls = ['sliding', 'slipping', 'tip_risk', 'blocked_edge', 'steep'].includes(String(p.status)) ? 'bad' : p.status === 'caution' || p.status === 'airborne' ? 'warn' : '';
       const fc = st.forces;
-      hud.innerHTML = `<table>
+      const susp = driver.physics.suspension;
+      const compact = `<table>
+        <tr><td>speed</td><td><b>${f(Math.abs(p.speed_mps) * 3.6, 0)} km/h</b>${p.time_scale !== 1 ? ` (time x${f(prof.display_speed_factor * p.time_scale, 2)})` : ''}</td></tr>
+        <tr><td>boost</td><td class="${p.boost_active ? 'warn' : ''}"><span class="meter"><span style="width:${Math.round(p.boost_charge * 100)}%"></span></span>${p.boost_active ? ' BOOST' : ''}</td></tr>
+        <tr><td>slope</td><td class="${slopeCls}">${f(p.slope_deg)}&deg;</td></tr>
+        <tr><td>status</td><td class="${statusCls}">${p.status}</td></tr>
+        ${p.stop_reason ? `<tr><td colspan="2" class="src">${p.stop_reason}</td></tr>` : ''}
+        <tr><td colspan="2" class="src">H details</td></tr>
+      </table>`;
+      hud.innerHTML = showDetails ? `<table>
         <tr><td>x, y</td><td>${f(p.x)} E, ${f(p.y)} N m</td></tr>
         <tr><td>elevation</td><td>${f(p.z, 2)} m</td></tr>
         <tr><td>heading</td><td>${f(p.heading_deg)}&deg;</td></tr>
@@ -257,15 +418,17 @@ async function main() {
         <tr><td>mode</td><td>${p.mode}</td></tr>
         <tr><td>status</td><td class="${statusCls}">${p.status}</td></tr>
         <tr><td>note</td><td>${p.stop_reason ?? '-'}</td></tr>
+        <tr><td>last jump</td><td>${st.last_impact_mps > 0 ? `${f(st.air_time_s, 1)} s air, landed at ${f(st.last_impact_mps, 1)} m/s into the ground` : '-'}</td></tr>
+        <tr><td>suspension</td><td>${st.wheels.map((w) => (w.in_contact ? `${f(w.compression_m * 100, 0)}` : 'air')).join(' / ')} cm (FL/FR/RL/RR, travel ${f(susp.travel_m * 100, 0)} cm, sag ${f(susp.static_sag_m * 100, 1)} cm); loads ${st.wheels.map((w) => f(w.load_n, 0)).join(' / ')} N</td></tr>
         <tr><td>forces</td><td>motor ${f(fc.motor, 0)} N, gravity ${f(fc.gravity, 0)} N, rolling ${f(fc.resistance, 0)} N (grip limit ${f(fc.grip_limit, 0)} N)</td></tr>
         <tr><td>odometer</td><td>${f(st.odometer_m)} m, mission time ${f(st.mission_time_s / 60)} min</td></tr>
         <tr><td>API link</td><td>${driver.linkStatus} (${WS})</td></tr>
         <tr class="sep"><td>caution slope</td><td>${prof.caution_slope_deg}&deg;</td></tr>
         <tr><td>no-go slope</td><td>${prof.nogo_slope_deg}&deg;</td></tr>
-        <tr><td>vehicle</td><td>${prof.mass_kg} kg, ${prof.power_w} W, grip &mu; ${prof.traction_mu}, rolling ${prof.rolling_coeff}, cap ${prof.flat_speed_mps} m/s${prof.min_turn_radius_m ? `, turn radius ${prof.min_turn_radius_m} m` : ''}</td></tr>
-        <tr><td colspan="2" class="src">W/S drive &middot; A/D steer &middot; Shift/Space boost &middot; [ ] time-lapse &middot; R reset &middot; wheel zoom</td></tr>
-        <tr><td colspan="2" class="src">Limits source: ${prof.source}. Force model: Mars g 3.71 m/s&sup2;; motor limited by power and grip. Slope limits are safety advisories, not walls.</td></tr>
-      </table>`;
+        <tr><td>vehicle</td><td>${prof.mass_kg} kg, ${prof.power_w} W, grip &mu; ${prof.traction_mu}, rolling ${prof.rolling_coeff}, cap ${prof.flat_speed_mps} m/s${prof.min_turn_radius_m ? `, turn radius ${prof.min_turn_radius_m} m` : ''}; springs ${f(susp.k_n_per_m / 1000, 1)} kN/m (${prof.suspension_hz ?? '-'} Hz), dampers ${f(susp.c_ns_per_m, 0)} N s/m (&zeta; ${prof.damping_ratio ?? '-'})</td></tr>
+        <tr><td colspan="2" class="src">W/S drive (S brakes when moving forward) &middot; A/D steer &middot; Shift boost &middot; Space brake &middot; release W to coast &middot; [ ] time-lapse &middot; R reset &middot; C camera side &middot; H hide details &middot; wheel zoom</td></tr>
+        <tr><td colspan="2" class="src">Limits source: ${prof.source}. Rigid-body model: Mars g 3.71 m/s&sup2;; four spring-damper wheels; tyre forces inside the friction circle &mu;F<sub>z</sub> (drive limited by power and grip). Slope limits are safety advisories, not walls.</td></tr>
+      </table>` : compact;
     }
     requestAnimationFrame(loop);
   };

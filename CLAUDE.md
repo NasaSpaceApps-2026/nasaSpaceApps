@@ -27,6 +27,12 @@ api/.venv/bin/python api/scripts/make_dev_layers.py      # synthetic mineral lay
 api/.venv/bin/uvicorn ares_api.main:app --app-dir api --port 8000
 ARES_DATA_DIR=api/fixtures/playground api/.venv/bin/uvicorn ares_api.main:app --app-dir api --port 8000  # richer 2 km test site
 api/.venv/bin/python api/scripts/make_playground.py   # regenerate the playground (~2 min)
+# Real Jezero (8 km, HiRISE DTM + Perseverance traverse) into data/build/ (gitignored), ~5 min:
+#   api/.venv/bin/python pipeline/00_fetch.py dtm && git checkout data/SOURCES.md
+#   curl -o data/raw/m20_traverse.json https://mars.nasa.gov/mmgis-maps/M20/Layers/json/M20_traverse.json
+#   curl -o data/raw/m20_waypoints.json https://mars.nasa.gov/mmgis-maps/M20/Layers/json/M20_waypoints.json
+#   api/.venv/bin/python pipeline/build_tiles.py && api/.venv/bin/python pipeline/05_vectors.py && api/.venv/bin/python pipeline/05b_names.py
+ARES_DATA_DIR=data/build api/.venv/bin/uvicorn ares_api.main:app --app-dir api --port 8000   # real site
 api/.venv/bin/python -m pytest api -q                     # tests build their own synthetic terrain
 api/.venv/bin/python api/scripts/dump_contract.py         # regenerate OpenAPI + canned responses
 ```
