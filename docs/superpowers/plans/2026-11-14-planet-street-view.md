@@ -4,7 +4,7 @@
 
 **Goal:** Show the whole Mars globe in Cesium, with the Jezero fan and the Olympus Mons scarp as sharper bubbles, and enter the rover street view by dragging a pegman onto one of those bubbles.
 
-**Architecture:** One page, two views. Planet view is the existing Cesium viewer (`web/`) with the ion Mars tileset left unclipped, plus two ground rectangles that use the bubble orthophotos. Street view is the existing three.js sandbox scene for that bubble (`?world=crater` or `?world=olympus`), shown in place of the globe. A pegman drop is accepted only inside a bubble. Dropping on the rest of Mars does nothing, the same way Street View refuses a place with no coverage. The sandbox keeps the high-resolution mesh, the sand grain, and the buggy. The globe does not try to draw that mesh for the whole planet.
+**Architecture:** One page, two views. Planet view is the existing Cesium viewer (`web/`) with the ion Mars tileset left unclipped, plus two ground rectangles that use the same red-brown orthophotos as street view. Street view is the existing three.js sandbox scene for that bubble (`?world=crater` or `?world=olympus`), mounted only after a pegman drop. Planet view does not construct the rover and does not load the driving sim. A pegman drop is accepted only inside a bubble. Dropping on the rest of Mars does nothing. The globe does not try to draw a unique mesh for the whole planet.
 
 **Tech Stack:** React 19, Cesium 1.147, the existing `web/src/rover/sandbox` Vite app, TypeScript, Vitest is not set up in `web/` so pure logic is tested with `node --experimental-strip-types` or a tiny `tsx` assert script. Do not add a new test framework.
 
@@ -18,7 +18,10 @@
 - Radius for conversions: `3396190` m.
 - Pegman accepts a drop only when the ground point is inside a bubble square. Outside, the drop is refused and the view stays on the planet.
 - Street view starts the rover at the drop’s local x,y, heading `0`.
-- Do not change rover physics, the vision-loop model format, or the bubble tile files.
+- Do not change rover physics or the vision-loop model format.
+- Planet view must not construct `CesiumRover`, must not mount the sandbox iframe, and must not start the drive loop. Those start only after a pegman drop enters street view.
+- Street-view ground color is red-brown, the same family as the zoomed-out Cesium Mars globe, not grey and not yellow-tan. The chromaticity anchor is RGB weights `1.00, 0.42, 0.28` (red dominant, brown, not peach). A mid-grey input through that anchor must satisfy `R > G > B` and `G/R < 0.55`.
+- The orthophoto drawn on the globe for a bubble is the same image family as the street-view ground for that bubble. Do not show a yellow bubble on a red planet.
 
 ---
 
@@ -272,6 +275,74 @@ Press Map. Expected: the globe returns with both patches.
 git add web/src/App.tsx web/src/App.css
 git commit -m "Enter rover street view by dropping the pegman on a bubble."
 ```
+
+### Task 5: Red-brown street view, matching the globe
+
+**Files:**
+- Modify: `pipeline/colorize.py`
+- Create: `tests/color/test_street_anchor.py`
+- Modify: `web/src/rover/sandbox/main.ts` only if the live grit multiply pushes the ground back toward yellow. Prefer fixing the baked ortho.
+
+**Interfaces:**
+- Consumes: existing `colorize()` in `pipeline/colorize.py`
+- Produces: `STREET_ANCHOR = np.array([1.00, 0.42, 0.28], dtype=np.float32)` used for bubble street-view colour. The previous anchor `1.00, 0.76, 0.58` is the yellow-tan the street view must leave behind.
+
+The zoomed-out Cesium Mars globe is rusty red-brown. The current street view is grey-yellow because `ANCHOR` is `[1.00, 0.76, 0.58]` and bright HiRISE values then clip toward cream. Street view and the bubble footprints on the globe must use the red-brown anchor.
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+import numpy as np
+from colorize import STREET_ANCHOR, colorize
+
+def test_mid_grey_becomes_red_brown():
+    gray = np.full((4, 4), 128, np.uint8)
+    chroma = np.ones((4, 4, 3), np.float32)
+    rgb = colorize(gray, chroma)
+    mean = rgb.reshape(-1, 3).mean(axis=0)
+    assert mean[0] > mean[1] > mean[2]
+    assert mean[1] / mean[0] < 0.55
+    assert np.allclose(STREET_ANCHOR, [1.00, 0.42, 0.28])
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `python3 -m pytest tests/color/test_street_anchor.py -q`
+Expected: FAIL because `STREET_ANCHOR` is not exported and the current anchor is yellow-tan (`G/R` about `0.76`).
+
+- [ ] **Step 3: Switch the anchor and keep detail**
+
+In `pipeline/colorize.py`, set `ANCHOR` to `STREET_ANCHOR` and export that name. Leave `VARIATION`, `AXIS`, and the HiRISE luminance path alone so ridges and rocks stay. Do not paint a flat red over the image.
+
+Rebuild is not part of the unit test. After the test passes, recolor is applied by re-running the existing exporters for the two bubbles the globe will show:
+
+```bash
+PYTHONPATH=pipeline python3 -c "
+from pathlib import Path
+from PIL import Image
+import numpy as np, json
+from colorize import colorize
+from export_rover_worlds import write_pyramid, export_crater, export_olympus
+" 
+```
+
+Do not invent a second colorizer. `export_crater` and `export_olympus` already read `texture.png`. Those files were baked with the old anchor. A small script `pipeline/recolor_street.py` may reload each bubble `ortho` luminance and write a new `texture.png` with `colorize(gray, ones * STREET_ANCHOR)`, then call `export_crater` and `export_olympus`. Keep the script if that is how the tiles get rebuilt. The test above does not need the tiles.
+
+- [ ] **Step 4: Run the test**
+
+Run: `python3 -m pytest tests/color/test_street_anchor.py -q`
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add pipeline/colorize.py tests/color/test_street_anchor.py pipeline/recolor_street.py contracts/fixtures/rover_worlds/crater contracts/fixtures/rover_worlds/olympus
+git commit -m "Tint street view the same red-brown as the Mars globe."
+```
+
+### Task 4 amendment: no rover until street view
+
+Planet view does not render the driving sim. In `App.tsx`, do not call `new CesiumRover` during planet setup. Construct the street-view iframe only inside the street-view branch, after `dropOnBubbles` returns a hit. Leaving street view must remove that iframe so the rover loop is not running on the planet.
 
 ## Out of scope
 
