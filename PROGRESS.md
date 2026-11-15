@@ -18,7 +18,7 @@ Scope tasks from `docs/scope-c-d.md`:
 | 8 | Browser rover driving (`web/src/rover/`) | Done as a standalone module + sandbox (`cd web/src/rover/sandbox && npm install && npm run dev`, port 5174; `npm run check` → 10 physics checks). Waiting on Rithvik's `web/` app to plug in (see `web/src/rover/README.md`) |
 | 9 | Science traverse + validation | Done |
 | 10 | Hardening | Partly: readable 422 errors, input validation |
-| 11 | More realistic physics | Browser rover v2 force model (`web/src/rover/physics.ts`): Mars gravity, power- and grip-limited motor, rolling resistance, brakes; slips/slides instead of hard blocks; slope limits are advisory. Crewed buggy (`crew_buggy`, Apollo LRV-based) with boost, car steering, time-lapse. 12 physics checks |
+| 11 | More realistic physics | v3 rigid-body vehicle (`web/src/rover/physics.ts`): chassis with momentum and rotation, per-wheel spring-damper suspension (buggy 1.15 Hz, ζ 0.38, 25 cm travel), friction-circle tyres (grip-limited cornering), Mars g, power/grip-limited drive, coasting, brakes, jumps and roll-overs. Crewed buggy concept (`crew_buggy`) with boost and time-lapse. 19 physics checks |
 | — | Detailed buggy + astronaut model (`web/src/rover/buggyModel.ts`, `buggy/`) | Done: ~120k tris, ~130 draw calls; wired into sandbox with boost dust + suspension |
 | — | Playground test site (`api/fixtures/playground/`, `api/scripts/make_playground.py`) | Done: 2 km synthetic site with gullied delta front (detour story works: direct line 36°, route 14° via gully), breached crater, dunes, butte, channels; 22 POIs, 2.5 km traverse. Sandbox serves it by default; run API with `ARES_DATA_DIR=api/fixtures/playground` |
 

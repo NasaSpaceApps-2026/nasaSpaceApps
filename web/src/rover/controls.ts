@@ -11,7 +11,8 @@ const FORWARD = new Set(['KeyW', 'ArrowUp']);
 const BACK = new Set(['KeyS', 'ArrowDown']);
 const LEFT = new Set(['KeyA', 'ArrowLeft']);
 const RIGHT = new Set(['KeyD', 'ArrowRight']);
-const BOOST = new Set(['ShiftLeft', 'ShiftRight', 'Space']);
+const BOOST = new Set(['ShiftLeft', 'ShiftRight']);
+const BRAKE = new Set(['Space']);
 const DRIVE_KEYS = new Set([...FORWARD, ...BACK, ...LEFT, ...RIGHT]);
 /** Time-lapse: ] faster, [ slower. */
 const TIME_UP = 'BracketRight';
@@ -62,12 +63,13 @@ export class KeyboardControls {
 
   /** Current input from held keys. */
   getInput(): DriveInput {
-    if (!this.enabled) return { throttle: 0, steer: 0, boost: false };
+    if (!this.enabled) return { throttle: 0, steer: 0, boost: false, brake: false };
     const any = (set: Set<string>) => [...set].some((k) => this.down.has(k));
     return {
       throttle: (any(FORWARD) ? 1 : 0) - (any(BACK) ? 1 : 0),
       steer: (any(RIGHT) ? 1 : 0) - (any(LEFT) ? 1 : 0),
       boost: any(BOOST),
+      brake: any(BRAKE),
     };
   }
 
@@ -90,9 +92,9 @@ export class KeyboardControls {
       for (const fn of this.timeFns) fn(e.code === TIME_UP ? 1 : -1);
       return;
     }
-    if (BOOST.has(e.code)) {
+    if (BOOST.has(e.code) || BRAKE.has(e.code)) {
       if (this.prevent) e.preventDefault();
-      this.down.add(e.code); // boost alone is not a takeover
+      this.down.add(e.code); // boost/brake alone is not a takeover
       return;
     }
     if (!DRIVE_KEYS.has(e.code)) return;
