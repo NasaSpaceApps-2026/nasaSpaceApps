@@ -2,32 +2,39 @@
 
 One-line commands from the repo root. Install once: `npm install` in `web/` and `web/src/rover/sandbox`; for the API, `source activatevenv311` then `pip install -r api/requirements.txt` (`python3.11` on PATH).
 
-Optional Cesium ion token for the full Mars tileset: put `VITE_CESIUM_ION_TOKEN=…` in a repo-root `.env.local` (gitignored). Without it the globe still shows as a rust sphere and the Jezero / Olympus bubbles still drape.
+Optional Cesium ion token for the textured Mars tileset: put `VITE_CESIUM_ION_TOKEN=…` in a repo-root `.env.local` (gitignored). Without it the globe is a rust sphere; the Jezero / Olympus bubbles and labels still show.
 
 ## Planet + street view (two terminals)
 
-Street view iframes the rover sandbox at `http://localhost:5174`, so both servers must be running.
+Street view iframes the rover sandbox at `http://localhost:5174`, so both must be running.
 
-**Terminal 1 — Mars globe (port 5173):**
+**Important:** bare `http://localhost:5173/` boots **site** mode (close-up Jezero fixture). That is not the Mars globe. Planet mode needs `?view=planet` (or click the **planet** button after load).
+
+**Terminal 1 — Mars globe (port 5173), opens in planet mode:**
 
 ```sh
-cd web && VITE_SITE_DIR=../contracts/fixtures npm run dev
+cd web && VITE_SITE_DIR=../contracts/fixtures npm run dev -- --open '/?view=planet'
 ```
 
-Open `http://localhost:5173/?view=planet`. Click **planet**, then drag the pegman onto the Jezero fan or Olympus Mons scarp bubble. Drops outside a bubble are refused. **Map** leaves street view.
-
-**Terminal 2 — rover sandbox (port 5174):**
+**Terminal 2 — rover sandbox for street view (port 5174):**
 
 ```sh
 cd web/src/rover/sandbox && npm run dev
 ```
 
-A pegman drop loads `/?world=crater|olympus&x=&y=&heading=0` in an iframe. Drive with W/S, steer A/D, boost Shift/Space, reset R.
+Then:
 
-| Bubble on the globe | Street-view `?world=` | Size |
+1. Confirm the **planet** control is the mode you want (URL should keep `?view=planet`).
+2. You should see the whole globe plus **Jezero fan** and **Olympus Mons scarp** labels. Zoom in on a label until the orthophoto patch appears.
+3. Drag the yellow pegman (lower right) onto that bubble. Drops outside a bubble are refused.
+4. **Map** leaves street view.
+
+| Bubble label | Street-view `?world=` | Size |
 |---|---|---|
 | Jezero fan | `crater` | 1.8 km |
 | Olympus Mons scarp | `olympus` | ~2.2 km |
+
+Drive in street view: W/S, steer A/D, boost Shift/Space, reset R.
 
 ## Rover sandbox alone (port 5174)
 
@@ -38,8 +45,8 @@ Same sandbox without the globe. Top-right links also switch worlds.
 | *(omit / default)* | Playground or 1 km fixture |
 | `projection` | 80 m Jezero sol 9 Navcam drape on frozen heights |
 | `vision` (alias `llm`) | 80 m sol 9 vision-loop refine |
-| `crater` | 1.8 km Jezero fan front (HiRISE + vision-loop crest bumps) |
-| `olympus` | ~2.2 km Olympus Mons scarp (HiRISE + vision-loop layer bumps) |
+| `crater` | 1.8 km Jezero fan front |
+| `olympus` | ~2.2 km Olympus Mons scarp |
 
 ```sh
 cd web/src/rover/sandbox && npm run dev
@@ -63,7 +70,7 @@ cd web/src/rover/sandbox && npm run dev -- --open '/?world=olympus'
 
 ## Jezero Cesium site viewer (port 5173)
 
-Site / orbit / ground / rover cameras without the planet pegman flow (still useful with fixtures or `data/build`):
+Close-up site / orbit / ground / rover cameras (not the planet pegman flow):
 
 ```sh
 cd web && VITE_SITE_DIR=../contracts/fixtures npm run dev

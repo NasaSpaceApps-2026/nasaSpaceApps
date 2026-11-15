@@ -19,6 +19,7 @@ let roverCtl: CesiumRover | null = null // set once the viewer is up; used by fl
 let placesCtl: PlacesLayer | null = null
 let marsTileset: Cesium.Cesium3DTileset | null = null
 let bubblePrimitives: Cesium.GroundPrimitive[] = []
+let bubbleLabels: Cesium.Entity[] = []
 let siteImageryShown: boolean[] | null = null
 let roverPoseHud: ((p: DriverPose) => void) | null = null
 
@@ -462,6 +463,8 @@ function clearPlanetBubbles(v: Cesium.Viewer) {
     if (!prim.isDestroyed()) prim.destroy()
   }
   bubblePrimitives = []
+  for (const label of bubbleLabels) v.entities.remove(label)
+  bubbleLabels = []
 }
 
 function showPlanetBubbles(v: Cesium.Viewer) {
@@ -490,6 +493,22 @@ function showPlanetBubbles(v: Cesium.Viewer) {
     })
     v.scene.primitives.add(prim)
     bubblePrimitives.push(prim)
+    // Ortho patches are ~2 km; at planet distance they are sub-pixel. Labels mark the drops.
+    bubbleLabels.push(v.entities.add({
+      position: Cesium.Cartesian3.fromDegrees(lon, bubble.lat, 0, SPHERE),
+      label: {
+        text: bubble.title,
+        font: 'bold 16px sans-serif',
+        fillColor: Cesium.Color.WHITE,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 4,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        pixelOffset: new Cesium.Cartesian2(0, -12),
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        scaleByDistance: new Cesium.NearFarScalar(5e4, 1.4, 1.2e7, 0.55),
+      },
+    }))
   }
 }
 
@@ -503,8 +522,10 @@ function fly(v: Cesium.Viewer, s: Site, mode: Mode, duration: number) {
     v.scene.globe.show = !marsTileset
     hideSiteImagery(v)
     showPlanetBubbles(v)
+    // Midpoint lon between Jezero (~77E) and Olympus (~222E). Height high enough that both
+    // sit inside the visible disk (horizon ~75°); at 4e6 m both were over the limb.
     v.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(150, 18.65, 4_000_000, SPHERE),
+      destination: Cesium.Cartesian3.fromDegrees(150, 20, 9_000_000, SPHERE),
       orientation: { heading: 0, pitch: Cesium.Math.toRadians(-90), roll: 0 },
       duration,
     })
