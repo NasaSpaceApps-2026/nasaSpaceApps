@@ -4,9 +4,9 @@
   "lat0": 18.44462715,
   "lon0": 77.45088572,
   "radius_m": 3396190,
-  "size_m": 1200.0,
-  "elev_min": -2554.5012500000003,
-  "elev_max": -2468.3565625,
+  "size_m": 1800.0,
+  "elev_min": -2563.9762115478516,
+  "elev_max": -2455.6898193359375,
   "center_x": 1000.84655868176,
   "center_y": 1766.3859861944097,
   "height": {
@@ -21,7 +21,7 @@
       "instrument": "Navcam",
       "max_level": 0,
       "kind": "base",
-      "credit": "HiRISE brightness and dirt pattern, Mars orange from the anchored Viking tint, plus the vision-loop crest bumps"
+      "credit": "HiRISE brightness and dirt pattern, Mars orange from the anchored Viking tint, with close-up grain"
     }
   ]
 }

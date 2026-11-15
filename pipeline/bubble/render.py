@@ -14,8 +14,9 @@ def sample_texture_uv(texture, u, v):
     return sample_rgb(texture, col, row)
 
 
-def render_mesh(dem, texture, cam, grid):
+def render_mesh(dem, texture, cam, grid, row0: int = 0, col0: int = 0, full_shape=None):
     height, width = dem.shape
+    full_h, full_w = full_shape or (height, width)
     xs, ys = grid_xy(grid, height, width)
     u, v, depth, valid = project_points(cam, xs, ys, dem)
     image = np.zeros((cam.height, cam.width, 3), dtype=np.float64)
@@ -34,7 +35,7 @@ def render_mesh(dem, texture, cam, grid):
                     (float(u[rr, cc]), float(v[rr, cc]), float(depth[rr, cc]))
                     for rr, cc in tri
                 ]
-                uvs = [(cc / (width - 1), 1 - rr / (height - 1)) for rr, cc in tri]
+                uvs = [((col0 + cc) / (full_w - 1), 1 - (row0 + rr) / (full_h - 1)) for rr, cc in tri]
                 _shade(image, zbuf, points[0], points[1], points[2], uvs[0], uvs[1], uvs[2], texture)
     return np.clip(np.rint(image), 0, 255).astype(np.uint8)
 

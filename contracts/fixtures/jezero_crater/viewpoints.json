@@ -4,7 +4,8 @@
   "requires_human": true,
   "registration_rms_m": null,
   "bubble_id": "jezero_fan_front",
-  "pose_note": "Overhead camera over the colourised HiRISE crop. The reference is that same mesh from overhead, so edits have to keep the satellite picture. Brightness and dirt pattern are HiRISE. Orange is the anchored Mars dust tone plus Viking redness variation.",
+  "ticks_per_image": 12,
+  "pose_note": "1.8 km of the Jezero fan front. Height is the 2 m HiRISE DTM, so the sand ridges already follow the picture. Texture is 0.5 m HiRISE colour plus Mastcam-Z grain. Close cameras are specific places. Do not move a ridge off its crest.",
   "center_lat": 18.4818,
   "center_lon": 77.4358,
   "cameras": [
@@ -14,7 +15,7 @@
       "xyz": [
         1000.84655868176,
         1766.3859861944097,
-        -1127.3930131258528
+        -451.8733331653418
       ],
       "heading_deg": 0.0,
       "pitch_deg": -90.0,
@@ -24,25 +25,101 @@
       "image": null
     },
     {
-      "name": "satellite",
+      "name": "01_whoops",
+      "role": "fit",
+      "xyz": [
+        586.84655868176,
+        1409.3859861944097,
+        -2464.50390625
+      ],
+      "heading_deg": 0.0,
+      "pitch_deg": -32.0,
+      "fov_deg": 36.0,
+      "width": 220,
+      "height": 220,
+      "image": "refs/01_whoops.png",
+      "crop_m": 220
+    },
+    {
+      "name": "02_scarp",
+      "role": "fit",
+      "xyz": [
+        496.84655868176003,
+        1191.3859861944097,
+        -2467.208740234375
+      ],
+      "heading_deg": 0.0,
+      "pitch_deg": -32.0,
+      "fov_deg": 36.0,
+      "width": 220,
+      "height": 220,
+      "image": "refs/02_scarp.png",
+      "crop_m": 220
+    },
+    {
+      "name": "03_crater",
+      "role": "fit",
+      "xyz": [
+        1192.8465586817601,
+        1771.3859861944097,
+        -2501.48486328125
+      ],
+      "heading_deg": 0.0,
+      "pitch_deg": -32.0,
+      "fov_deg": 36.0,
+      "width": 220,
+      "height": 220,
+      "image": "refs/03_crater.png",
+      "crop_m": 220
+    },
+    {
+      "name": "04_overview",
       "role": "fit",
       "xyz": [
         1000.84655868176,
         1766.3859861944097,
-        -1127.3930131258528
+        -451.8733331653418
       ],
       "heading_deg": 0.0,
       "pitch_deg": -90.0,
       "fov_deg": 50.0,
       "width": 192,
       "height": 192,
-      "image": "refs/nadir.png"
+      "image": "refs/04_overview.png"
+    }
+  ],
+  "enhance_targets": [
+    {
+      "name": "01_whoops",
+      "x": 586.84655868176,
+      "y": 1454.3859861944097,
+      "z": -2466.50390625,
+      "heading_deg": 0.0,
+      "pitch_deg": -50.0,
+      "fov_deg": 28.0,
+      "width": 240,
+      "height": 240,
+      "crop_m": 70,
+      "detail": "refs/detail/detail_87_ZL0_0087_067465861.jpg"
+    },
+    {
+      "name": "02_scarp",
+      "x": 496.84655868176003,
+      "y": 1236.3859861944097,
+      "z": -2469.208740234375,
+      "heading_deg": 0.0,
+      "pitch_deg": -50.0,
+      "fov_deg": 28.0,
+      "width": 240,
+      "height": 240,
+      "crop_m": 70,
+      "detail": "refs/detail/detail_87_ZL0_0087_067465861.jpg"
     }
   ],
   "credits": [
     {
-      "name": "nadir",
-      "source": "HiRISE ortho JEZ_hirise_soc_006, colourised with Viking MDIM 2.1 and the Mars dust anchor"
+      "name": "satellite",
+      "source": "HiRISE ortho JEZ_hirise_soc_006, Viking MDIM tint, Mastcam-Z close-up grain"
     }
   ]
 }

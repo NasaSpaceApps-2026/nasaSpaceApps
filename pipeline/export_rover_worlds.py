@@ -171,14 +171,16 @@ def export_crater(repo: Path, out_root: Path) -> None:
     if not (bundle / "dem.npy").exists() and not (vision / "height.u16").exists():
         return
     grid = json.loads((bundle / "grid.json").read_text())
-    credit = "HiRISE brightness and dirt pattern, Mars orange from the anchored Viking tint"
+    dem = np.load(bundle / "dem.npy")
+    credit = "HiRISE brightness and dirt pattern, Mars orange from the anchored Viking tint, with close-up grain"
+    hires = bundle / "texture.png"
+    texture = Image.open(hires if hires.exists() else bundle / "ortho.png").convert("RGB")
     if (vision / "height.u16").exists():
-        dem, texture, header = _from_drive(vision)
-        grid = {**grid, "x0": float(header["x0"]), "y0": float(header["y0"]), "res_m": float(header["res_m"])}
-        credit = credit + ", plus the vision-loop crest bumps"
-    else:
-        dem = np.load(bundle / "dem.npy")
-        texture = Image.open(bundle / "ortho.png").convert("RGB")
+        _elev, _texture, header = _from_drive(vision)
+        if int(header["width"]) == dem.shape[1]:
+            dem, texture = _elev, _texture
+            grid = {**grid, "x0": float(header["x0"]), "y0": float(header["y0"]), "res_m": float(header["res_m"])}
+            credit = credit + ", plus the vision-loop crest bumps"
     size_m = (dem.shape[1] - 1) * float(grid["res_m"])
     write_site(
         out_root / "crater",
