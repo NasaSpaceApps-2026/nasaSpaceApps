@@ -9,7 +9,7 @@ import { BUBBLES, type Bubble } from '../bubbles'
 import type { DockApi } from '../panels/chat/AtlasDock'
 import type { Feature, RouteLine } from '../panels/chat/features'
 import { PlaceLabels, type LabelItem } from './labels'
-import { addMarker, ApiError, describeAt, driveTo, fetchPois, removeMarker, terrainProfile, walkRoute,
+import { addMarker, ApiError, describeAt, driveTo, refreshPois, STATIC_POIS, removeMarker, terrainProfile, walkRoute,
   type ProfileResult, type WalkRoute } from './api'
 import { fmtDist, fmtLatLon, fmtMinutes, mineralLines, noMineralData, placeQuestions, placeSummary, placesFromPois, qualityWords,
   slopeWords, type DescribeLoc, type NamedPlace, type Poi } from './words'
@@ -108,21 +108,28 @@ export function Interactions(p: Props) {
   useEffect(() => {
     if (!site) return
     let dead = false
-    void fetchPois().then((ps) => { if (!dead) setPois(ps) })
+    setPois(STATIC_POIS)
+    void refreshPois().then((ps) => { if (!dead && ps) setPois(ps) })
     return () => { dead = true }
   }, [site])
   useEffect(() => {
     if (!site) return
     let tries = 0
+    let dead = false
+    let timer = 0
     const build = () => {
+      if (dead) return
       const iau = props.current.getPlaces().filter((q) => q.kind === 'name')
-      if (!iau.length && tries++ < 40) { window.setTimeout(build, 500); return }
+      if (!iau.length && tries++ < 40) { timer = window.setTimeout(build, 500); return }
       const half = site.manifest.size_m / 2
       const iauPl: NamedPlace[] = iau.filter((q) => Math.abs(q.x) <= half && Math.abs(q.y) <= half)
         .map((q) => ({ id: 'iau:' + q.id, name: q.name, kind: 'iau' as const, x: q.x, y: q.y, priority: 2, also: [], iauDetail: `${q.detail ?? 'Official IAU name'}` }))
       setPlaces([...placesFromPois(pois), ...iauPl])
     }
+    // Render POIs right away; IAU names are merged in once they have loaded (stale timers are cancelled).
+    setPlaces(placesFromPois(pois))
     build()
+    return () => { dead = true; window.clearTimeout(timer) }
   }, [site, pois])
 
   // ---- label overlay -----------------------------------------------------------------------------------------------
@@ -145,8 +152,8 @@ export function Interactions(p: Props) {
       for (const q of places) {
         const id = 'pl:' + q.id
         pickers.current.set(id, { k: 'place', place: q })
-        items.push({ id, text: q.name, hint: q.kind === 'region' ? 'Sampling area' : q.kind === 'sample' ? 'Rover sample site' : q.kind === 'landing' ? 'Landing site' : 'IAU place name',
-          pos: site.position(q.x, q.y, 30), priority: q.priority, kind: q.kind, maxDistance: q.kind === 'sample' ? 22000 : undefined })
+        items.push({ id, text: q.name, hint: q.kind === 'region' ? 'Sampling area' : q.kind === 'sample' ? 'Rover sample site' : q.kind === 'landing' ? 'Landing site' : q.kind === 'base' ? 'Assumed mission base' : 'IAU place name',
+          pos: site.position(q.x, q.y, 30), priority: q.priority, kind: q.kind, ...(q.kind === 'base' ? { always: true, dy: -34 } : {}), maxDistance: q.kind === 'sample' ? 22000 : undefined })
       }
       pl.occlude = false
     } else if (mode === 'mars') {
@@ -441,7 +448,7 @@ export function Interactions(p: Props) {
       const pl = c.place
       const lines = placeSummary(pl, pois)
       content = (
-        <Card title={pl.name} badge={pl.kind === 'region' ? 'Sampling area' : pl.kind === 'sample' ? 'Sample site' : pl.kind === 'landing' ? 'Landing site' : 'IAU name'}
+        <Card title={pl.name} badge={pl.kind === 'region' ? 'Sampling area' : pl.kind === 'sample' ? 'Sample site' : pl.kind === 'landing' ? 'Landing site' : pl.kind === 'base' ? 'Assumed base' : 'IAU name'}
           sub={`${latLon(pl.x, pl.y)}`} onClose={close} cardRef={setCardEl}
           actions={[
             { label: 'Drive here', primary: true, busy: busy === 'drive', onClick: () => driveHere(pl.x, pl.y, pl.name) },

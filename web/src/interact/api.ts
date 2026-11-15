@@ -1,9 +1,10 @@
 // Direct REST calls from the browser. Query engine (devapi) on :8001, rover API on :8000. Both send CORS `*`.
 import type { DescribeLoc, Poi } from './words'
+import staticPois from './atlas_pois.json'
 
-const loc = typeof location !== 'undefined' ? location.hostname : 'localhost'
-export const ENGINE = (import.meta.env.VITE_ENGINE_URL as string | undefined) ?? `http://${loc}:8001`
-export const ROVER_API = (import.meta.env.VITE_API_URL as string | undefined) ?? `http://${loc}:8000`
+// Default: same-origin dev-server proxy (web/vite.config.ts: /__engine -> :8001, /__rover -> :8000). Env overrides still win.
+export const ENGINE = (import.meta.env.VITE_ENGINE_URL as string | undefined) ?? '/__engine'
+export const ROVER_API = (import.meta.env.VITE_API_URL as string | undefined) ?? '/__rover'
 
 export class ApiError extends Error {}
 
@@ -13,7 +14,7 @@ async function call<T>(url: string, init?: RequestInit, signal?: AbortSignal): P
     r = await fetch(url, { ...init, signal, headers: init?.body ? { 'content-type': 'application/json' } : undefined })
   } catch (e) {
     if ((e as Error).name === 'AbortError') throw e
-    throw new ApiError(`Cannot reach ${new URL(url).origin}. Is the stack running?`)
+    throw new ApiError(`Cannot reach ${new URL(url, location.href).origin}. Is the stack running?`)
   }
   const body = (await r.json().catch(() => ({}))) as Record<string, unknown>
   if (!r.ok) {
@@ -32,14 +33,28 @@ export async function describeAt(x: number, y: number, signal?: AbortSignal): Pr
   return r.locations[0]
 }
 
-export async function fetchPois(): Promise<Poi[]> {
-  for (const base of [ENGINE, ROVER_API]) {
+/** POIs bundled into the viewer build (snapshot of devapi /pois; regenerate per web/INTEGRATION.md). Needs no network. */
+export const STATIC_POIS: Poi[] = ((staticPois as { pois?: Poi[] }).pois ?? []) as Poi[]
+
+/** Fresh POIs from the API, or null (with a console.warn) if it is unreachable. */
+export async function refreshPois(): Promise<Poi[] | null> {
+  for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const r = await call<{ pois: Poi[] }>(`${base}/pois?limit=100`)
+      const r = await call<{ pois: Poi[] }>(`${ENGINE}/pois?limit=100`)
       if (r.pois?.length) return r.pois
-    } catch { /* try the next */ }
+      console.warn(`[atlas] ${ENGINE}/pois returned no places (attempt ${attempt + 1})`)
+    } catch (e) {
+      console.warn(`[atlas] ${ENGINE}/pois failed (attempt ${attempt + 1}):`, (e as Error).message)
+    }
+    await new Promise((r) => setTimeout(r, 400 * 2 ** attempt))
   }
-  return []
+  console.warn('[atlas] API unreachable; using bundled place list')
+  return null
+}
+
+/** Bundled list first (never empty), API result only if it arrives. */
+export async function fetchPois(): Promise<Poi[]> {
+  return (await refreshPois()) ?? STATIC_POIS
 }
 
 export interface ProfileSample { d: number; x: number; y: number; z: number; slope_deg: number }

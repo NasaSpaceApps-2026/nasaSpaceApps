@@ -9,9 +9,13 @@ export interface LabelItem {
   hint?: string
   pos: Cesium.Cartesian3
   priority: number
-  kind: 'landing' | 'region' | 'sample' | 'iau' | 'pin' | 'target'
+  kind: 'base' | 'landing' | 'region' | 'sample' | 'iau' | 'pin' | 'target'
   /** Hide when the camera is farther than this many metres. */
   maxDistance?: number
+  /** Never decluttered away (it still reserves its screen space so other labels move aside). */
+  always?: boolean
+  /** Vertical screen offset in px (negative = up), so labels at one spot do not overlap. */
+  dy?: number
 }
 
 const FONT = '600 12px system-ui, sans-serif'
@@ -112,16 +116,17 @@ export class PlaceLabels {
       }
       if (show && w) {
         if (redo) {
-          const r = { x0: w.x - 6, y0: w.y - 10, x1: w.x - 6 + e.w, y1: w.y + 10 }
+          const dy = e.item.dy ?? 0
+          const r = { x0: w.x - 6, y0: w.y - 10 + dy, x1: w.x - 6 + e.w, y1: w.y + 10 + dy }
           const clash = placed.some((p) => r.x0 < p.x1 && p.x0 < r.x1 && r.y0 < p.y1 && p.y0 < r.y1)
           const limited = e.item.priority > 1 && n >= cap
-          e.vis = !clash && !limited
+          e.vis = e.item.always || (!clash && !limited)
           if (e.vis) { placed.push(r); n++ }
-        } else if (e.vis) placed.push({ x0: w.x - 6, y0: w.y - 10, x1: w.x - 6 + e.w, y1: w.y + 10 })
+        } else if (e.vis) { const dy = e.item.dy ?? 0; placed.push({ x0: w.x - 6, y0: w.y - 10 + dy, x1: w.x - 6 + e.w, y1: w.y + 10 + dy }) }
       } else e.vis = false
       if (e.vis && w) {
         e.el.style.display = ''
-        e.el.style.transform = `translate(${Math.round(w.x)}px, ${Math.round(w.y)}px)`
+        e.el.style.transform = `translate(${Math.round(w.x)}px, ${Math.round(w.y + (e.item.dy ?? 0))}px)`
       } else if (e.el.style.display !== 'none') e.el.style.display = 'none'
     }
   }

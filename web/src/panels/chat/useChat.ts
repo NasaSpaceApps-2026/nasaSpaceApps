@@ -4,7 +4,7 @@ import { buildChatBody, newSessionId } from './session';
 import { initialState, reducer } from './state';
 import type { ToolEvent } from './types';
 
-export const DEFAULT_AGENT_URL = 'http://localhost:8766';
+export const DEFAULT_AGENT_URL = '/__agent'; // same-origin dev proxy to the agent on :8766 (web/vite.config.ts)
 export const START_HINT = 'Start it with: .venv/bin/python -m agent';
 
 export interface UseChatOptions {
