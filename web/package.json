@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "shots": "node scripts/shot.mjs orbit site ground"
+    "shots": "node scripts/shot.mjs orbit site ground",
+    "check:bubbles": "node --experimental-strip-types scripts/bubbles.check.ts"
   },
   "dependencies": {
     "cesium": "^1.147.0",
