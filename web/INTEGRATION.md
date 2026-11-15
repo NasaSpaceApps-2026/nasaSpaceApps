@@ -184,3 +184,16 @@ The assumed base (POI type `base`, "Mission base (assumed)", from the API `/pois
 | `src/interact/labels.ts` | `LabelItem.kind` gains `'base'`; new optional `always` (skips declutter, still reserves space) and `dy` (screen-px offset, used in overlap checks and positioning) | keep the base label from being decluttered and let it sit above the landing label |
 | `src/interact/Interactions.tsx` | base labels get `always: true, dy: -34`; hint and card badge text for `base` | wires the above; clicking still opens the normal place info card |
 | `src/interact/interact.css` | `.plabel--base` styles: green pill, dome icon, leader line and ring to the true spot | distinct from other labels |
+
+### Same-origin backend proxy (Sameer, Nov 15)
+
+Bug: in the user's Retina Brave/Chrome the Jezero map had no POI labels (Delta Front, Margin Unit, Butler Landing, Mission base); only IAU names showed. The viewer called `http://<hostname>:8001/pois` and `:8000` cross-port; when those fetches fail in a real browser (localhost -> ::1 while backends bind 127.0.0.1, or blocked local cross-port requests) `fetchPois()` silently returned `[]`. Fix: the browser now talks only to the viewer's own origin; Vite proxies to the backends. Env overrides (`VITE_ENGINE_URL`, `VITE_API_URL`, `VITE_OVERLAY_URL`, `?overlay=`) still win. Revert: undo the edits below.
+
+| File | Change | Why |
+|---|---|---|
+| `vite.config.ts` | dev + preview proxy: `/__engine` -> 127.0.0.1:8001, `/__rover` -> :8000 (ws on), `/__agent` -> :8766; ports via `ENGINE_PORT`/`ROVER_PORT`/`AGENT_PORT`, prefix stripped | same-origin access, no CORS or IPv6 issues; SSE from the agent streams through (verified) |
+| `src/interact/api.ts` | `ENGINE`/`ROVER_API` default to `/__engine`, `/__rover`; error message uses `new URL(url, location.href)`; `fetchPois` retries 5x with backoff and `console.warn`s instead of failing silently | labels, describe, routes, markers, drive, overlays (ExplorePanel uses `ENGINE`) all follow |
+| `src/panels/chat/useChat.ts` | `DEFAULT_AGENT_URL` -> `/__agent` | chat + agent health (SSE) same-origin |
+| `src/panels/chat/AtlasDock.tsx` | `DEFAULT_AGENT` -> `/__agent`; `DEFAULT_WS` -> `ws(s)://<host>/__rover/ws`; (frame check, route fetch derive from it) | rover WebSocket and `/site`, `/route` calls same-origin |
+
+Not changed: `rover/link.ts` default and `rover/sandbox` (the dock passes its own URL; sandbox is a separate app on 5174).

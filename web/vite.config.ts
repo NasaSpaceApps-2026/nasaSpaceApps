@@ -15,6 +15,18 @@ const repo = path.resolve(here, '..')
 const VIEWER_PORT = Number(process.env.VIEWER_PORT ?? 5173)
 const SANDBOX_PORT = Number(process.env.SANDBOX_PORT ?? 5174)
 
+// Backends are reached same-origin through this proxy (/__engine, /__rover, /__agent) so the browser never makes a cross-port
+// request: some browsers resolve localhost to ::1 (the backends bind 127.0.0.1) or block local cross-port fetches.
+const ENGINE_PORT = Number(process.env.ENGINE_PORT ?? 8001)
+const ROVER_PORT = Number(process.env.ROVER_PORT ?? 8000)
+const AGENT_PORT = Number(process.env.AGENT_PORT ?? 8766)
+const strip = (prefix: string) => (p: string) => p.replace(new RegExp(`^${prefix}`), '') || '/'
+const backendProxy = {
+  '/__engine': { target: `http://127.0.0.1:${ENGINE_PORT}`, changeOrigin: true, rewrite: strip('/__engine') },
+  '/__rover': { target: `http://127.0.0.1:${ROVER_PORT}`, changeOrigin: true, ws: true, rewrite: strip('/__rover') },
+  '/__agent': { target: `http://127.0.0.1:${AGENT_PORT}`, changeOrigin: true, rewrite: strip('/__agent') },
+}
+
 // vite-plugin-cesium is CommonJS; unwrap its default export under ESM.
 const cesium = ((cesiumPlugin as unknown as { default?: () => unknown }).default ?? cesiumPlugin) as unknown as () => never
 
@@ -113,8 +125,10 @@ export default defineConfig(() => {
       port: VIEWER_PORT,
       fs: { allow: [repo] },
       proxy: {
+        ...backendProxy,
         '/sandbox': { target: `http://127.0.0.1:${SANDBOX_PORT}`, changeOrigin: true, ws: true },
       },
     },
+    preview: { proxy: backendProxy },
   }
 })

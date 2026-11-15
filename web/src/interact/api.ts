@@ -1,9 +1,9 @@
 // Direct REST calls from the browser. Query engine (devapi) on :8001, rover API on :8000. Both send CORS `*`.
 import type { DescribeLoc, Poi } from './words'
 
-const loc = typeof location !== 'undefined' ? location.hostname : 'localhost'
-export const ENGINE = (import.meta.env.VITE_ENGINE_URL as string | undefined) ?? `http://${loc}:8001`
-export const ROVER_API = (import.meta.env.VITE_API_URL as string | undefined) ?? `http://${loc}:8000`
+// Default: same-origin dev-server proxy (web/vite.config.ts: /__engine -> :8001, /__rover -> :8000). Env overrides still win.
+export const ENGINE = (import.meta.env.VITE_ENGINE_URL as string | undefined) ?? '/__engine'
+export const ROVER_API = (import.meta.env.VITE_API_URL as string | undefined) ?? '/__rover'
 
 export class ApiError extends Error {}
 
@@ -13,7 +13,7 @@ async function call<T>(url: string, init?: RequestInit, signal?: AbortSignal): P
     r = await fetch(url, { ...init, signal, headers: init?.body ? { 'content-type': 'application/json' } : undefined })
   } catch (e) {
     if ((e as Error).name === 'AbortError') throw e
-    throw new ApiError(`Cannot reach ${new URL(url).origin}. Is the stack running?`)
+    throw new ApiError(`Cannot reach ${new URL(url, location.href).origin}. Is the stack running?`)
   }
   const body = (await r.json().catch(() => ({}))) as Record<string, unknown>
   if (!r.ok) {
@@ -33,12 +33,19 @@ export async function describeAt(x: number, y: number, signal?: AbortSignal): Pr
 }
 
 export async function fetchPois(): Promise<Poi[]> {
-  for (const base of [ENGINE, ROVER_API]) {
-    try {
-      const r = await call<{ pois: Poi[] }>(`${base}/pois?limit=100`)
-      if (r.pois?.length) return r.pois
-    } catch { /* try the next */ }
+  for (let attempt = 0; attempt < 5; attempt++) {
+    for (const base of [ENGINE, ROVER_API]) {
+      try {
+        const r = await call<{ pois: Poi[] }>(`${base}/pois?limit=100`)
+        if (r.pois?.length) return r.pois
+        console.warn(`[atlas] ${base}/pois returned no places (attempt ${attempt + 1})`)
+      } catch (e) {
+        console.warn(`[atlas] ${base}/pois failed (attempt ${attempt + 1}):`, (e as Error).message)
+      }
+    }
+    await new Promise((r) => setTimeout(r, 400 * 2 ** attempt))
   }
+  console.warn('[atlas] could not load place labels from the API; map shows IAU names only')
   return []
 }
 

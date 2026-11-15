@@ -71,8 +71,8 @@ export interface DriveInfo {
 const DOCK_W = 380;
 /** Rover poses closer than this to the street-view world's edge are not mirrored (the world is a square patch). */
 const STREET_EDGE_M = 15;
-const DEFAULT_AGENT = 'http://localhost:8766';
-const DEFAULT_WS = 'ws://localhost:8000/ws';
+const DEFAULT_AGENT = '/__agent';
+const DEFAULT_WS = typeof location !== 'undefined' ? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/__rover/ws` : 'ws://localhost:8000/ws';
 /** Tools whose result is a camera instruction: the WebSocket usually delivers it first, this is the fallback. */
 const CAMERA_TOOLS = new Set(['fly_camera', 'set_view']);
 const FIT_TOOLS = new Set(['find_locations', 'find_regions', 'find_sites', 'search_pois', 'nearest', 'plan_route', 'plan_science_traverse', 'list_markers']);
