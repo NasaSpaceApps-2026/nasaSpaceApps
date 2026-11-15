@@ -114,3 +114,62 @@ All in `web/` (no changes to mcp/, agent/, devapi/, atlas_core/, api/). New: `sr
 Endpoints used from the browser (both send CORS `*`): devapi :8001 `POST /describe`, `GET /pois?limit=100`, `POST /terrain/profile`, `POST /route` (profile `eva_walkable`; stores a route in devapi only); rover API :8000 `POST /rover/command {cmd:goto, wait:false}` (real time: 10 Hz `rover.state` over the WS), `GET/POST/DELETE /markers`, WS `/ws`.
 
 Gaps: no explicit `realtime` flag in the API (`wait:false` + display speed factor is the real-time path); `ViewReq.mode` does not accept `planet` yet (the other builder's emit path); `GET /pois` is capped at 100; walking route times use the assumed pace; `scene.pick` on thin entities is unreliable in SwiftShader (fallback added). Test markers created while verifying were removed again through the UI.
+
+## Explore toolset (Nov 15, Jezero tab)
+
+New in `web/src/explore/` (ours): `ExplorePanel.tsx` (drawer, tools, tour, keys), `OverlayManager.ts` (overlay PNGs on Cesium), `ActiveOverlays.tsx` (legend cards),
+`overlayApi.ts` (pure helpers: URLs, site rectangle, debounce, stats lines), `historyData.ts`, `tour.ts`, `scene.ts`, `explore.css`. Tests: `src/panels/chat/explore.test.ts`
+(21 tests; lives there because `chat-dev` vitest already includes that folder). `scripts/overlay-stub.mjs` is a stand-in for the backend contract.
+
+| Tool | What it does |
+|---|---|
+| Ancient lake | Slider from the site minimum to maximum elevation (m), ticks at the named levels of `docs/lake-levels.md` (hover = what it is + citation; click snaps), presets, stats line ("Lake level -2,410 m: 64.7 km² underwater, deepest 228 m"), caveat in the legend card |
+| Sun & shadows | LTST 05:00-19:00 slider, sol field (default = today's mission sol, computed from the touchdown date), play (steps 0.5 h, waits for each frame, prefetches the next, loops), sun elevation / sunrise / sunset line |
+| Science layers | Chips: Olivine, Carbonate, Clay (`fe_mg_smectite`), Geology, Slope hazard. Own slot, so it sits under any other tool. Legend, source, caveat from the overlay JSON |
+| Reach (EVA) | "Click a start point" (crosshair, hint, Esc cancels) or "Use landing site"; budget 1-8 h, reserve 10/20/30% (20% default); re-fetches as sliders move |
+| Viewshed | Click a point or use the landing site; eye height 1.7 m astronaut / 2 m rover mast |
+| Rover history | Sol slider grows the traverse (from `/data/traverse.geojson`, per-sol segments) and sample-site pins appear on their sol (from `GET /pois`, `sol` field); play button; "km driven in this map, N of 23 samples sealed" + latest sample. The static traverse is hidden while active and restored after |
+| Guided tour | 6 stops (landing site, South Séítah, delta front, Belva crater, margin unit, lake at -2410 m): camera flight, numbered pin, overlay, caption, source line, Prev / Next / Exit; Esc exits, Left/Right arrow keys step. Captions come from `docs/lake-levels.md`, `docs/science-validity.md` and the sample POI descriptions; the `cite` field of each stop in `tour.ts` names the source |
+
+UI: left tool rail gets a compass button (`aria-pressed`), key **E** toggles the drawer (Jezero view only). The drawer sits right of the rail, below the top bar, and is capped
+at `100% - --dock-w`, so it never covers the copilot dock; the tour caption is centred in the stage minus the dock. Esc: leaves the tour, else cancels a pick, else stops a
+play loop. Leaving the Jezero view (Mars / Drive) clears every overlay, tool and the tour. Slider requests are debounced (220-260 ms, flushed on release), the last image stays
+until the new one has loaded (a new layer is added, the old one removed 250 ms later), stale answers are dropped by a per-slot token, up to 40 frames are cached as blobs.
+
+### Files touched in teammates' code
+
+| File | Change | Revert |
+|---|---|---|
+| `src/App.tsx` | import, `exploreOpen` + `pickRef` state, compass button in `.viewtools`, `<ExplorePanel .../>` before `<AtlasDock>`, `pickRef` prop to `Interactions` | delete those lines |
+| `src/interact/Interactions.tsx` | optional `pickRef` prop: while set, a terrain click inside the map calls it (site metres) instead of opening the info card; crosshair cursor | delete the `if (pr.pickRef?.current)` block |
+
+Measure and Explore picking are mutually exclusive (turning one on turns the other off); the info card, measure tool and copilot highlights are otherwise unchanged.
+
+### Overlay contract (devapi, default `:8001`)
+
+Implemented by `devapi/routes_overlay.py`; contract, params and stats keys are in `devapi/OVERLAYS.md`. The viewer uses `GET /overlay/kinds` (lake `named_levels` for the ticks, `sun.sol` default),
+`GET /overlay/{kind}.png|.json` and `GET /traverse.geojson` (Rover history: one LineString with per-vertex `x`/`y`, waypoints with `sol` + `vertex_index`; runs are split where the clipped line jumps >120 m).
+`overlayApi.statLine` reads the documented stats keys; a missing field only drops its clause. Service location: `?overlay=http://host:port`, else `VITE_OVERLAY_URL`, else the engine URL
+(`VITE_ENGINE_URL` or `:8001`, so it works once the stack restarts with the new devapi). `scripts/overlay-stub.mjs` remains as an offline stand-in (`?overlay=http://localhost:8091`).
+Esc order: tour, pick mode, play loop, active tool, then the drawer.
+
+### Copilot hook: `window.atlasOverlay`
+
+```js
+await atlasOverlay.show('lake', { level: -2450 })           // opens the drawer, selects the tool, shows it; returns { ok, error? }
+await atlasOverlay.show('sun', { ltst: 15.5, sol: 2040 })
+await atlasOverlay.show('envelope', { x: 1844, y: -433, budget_min: 360, reserve: 0.2 })
+await atlasOverlay.show('viewshed', { x: 1844, y: -433, h: 2 })
+await atlasOverlay.show('evidence', { layer: 'carbonate' }) // science kinds: evidence | geology | slope (own slot, stays under a tool overlay)
+atlasOverlay.clear('lake')   // or clear() for everything
+atlasOverlay.setOpacity('lake', 0.5)
+atlasOverlay.state()         // { main: {kind, params, meta, loading, error, opacity}, science: {...} }
+atlasOverlay.base()          // overlay service URL
+```
+Outside the Jezero view `show` first switches to it. Unknown kinds return `{ ok: false, error }`. Extra params are forwarded to the backend untouched.
+
+### Verified
+
+`npm run build` and `npm run lint` pass (0 errors; the new files add react-hooks style warnings of the kind the repo already has). `cd chat-dev && npx vitest run`: all pass (21 new in explore.test.ts on top of the existing 48; the count has since grown).
+Headless Brave (SwiftShader): lake / sun / layers / reach / history / tour screenshots in `docs/explore_*.png`, a 10-event slider drag sends one request, sun play steps frames and Esc stops it,
+Mars/Jezero round trip leaves the imagery stack at its baseline (4 layers), `atlasOverlay` calls work. Final screenshots were taken against the real devapi (port 8092, new code).

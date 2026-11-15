@@ -38,6 +38,8 @@ interface Props {
   onJezero: () => void
   onDriveBubble: (b: Bubble) => void
   handleRef: MutableRefObject<InteractionsHandle | null>
+  /** Explore: while set, the next terrain click (site metres) goes here instead of opening the info card. */
+  pickRef?: MutableRefObject<((xy: [number, number]) => void) | null>
 }
 
 type CardSpec =
@@ -269,6 +271,12 @@ export function Interactions(p: Props) {
         return
       }
       if (pr.mode !== 'jezero') return
+      if (pr.pickRef?.current) { // Explore is waiting for a point
+        const xy = terrainAt(ev.position)
+        if (xy && site && !Number.isNaN(site.elevationAtXY(xy[0], xy[1]))) pr.pickRef.current(xy)
+        else pr.note('Click inside the Jezero map')
+        return
+      }
       if (!pr.measureOn && (/^(feat|halo|ring|route):/.test(eid) || pr.dockApi.current?.hit(ev.position))) return // the dock opens these (highlight card)
       const xy = terrainAt(ev.position)
       if (!xy) { setCard(null); return }
@@ -279,7 +287,7 @@ export function Interactions(p: Props) {
       const pr = props.current
       const picked = viewer.scene.pick(ev.endPosition) as { id?: Cesium.Entity } | undefined
       const eid = typeof picked?.id?.id === 'string' ? picked.id.id : ''
-      viewer.canvas.style.cursor = pr.measureOn ? 'crosshair' : pr.mode === 'mars' && eid.startsWith('bubble:') ? 'pointer' : ''
+      viewer.canvas.style.cursor = pr.measureOn || pr.pickRef?.current ? 'crosshair' : pr.mode === 'mars' && eid.startsWith('bubble:') ? 'pointer' : ''
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE)
     return () => { h.destroy(); if (!viewer.isDestroyed()) viewer.canvas.style.cursor = '' }
   }, [viewer, site, terrainAt, addMeasurePoint])

@@ -13,6 +13,7 @@ import { Interactions, type InteractionsHandle } from './interact/Interactions'
 import { TopBar, type LayerRow, type Mode as UiMode } from './ui/TopBar'
 import { StatusBar } from './ui/StatusBar'
 import { NoWebGL } from './ui/NoWebGL'
+import { ExplorePanel } from './explore/ExplorePanel'
 import './App.css'
 
 type SurfaceView = 'planet' | 'street'
@@ -152,6 +153,8 @@ export default function App() {
   const [pegging, setPegging] = useState(false)
   const streetFrame = useRef<HTMLIFrameElement>(null)
   const [measureOn, setMeasureOn] = useState(false)
+  const [exploreOpen, setExploreOpen] = useState(false)
+  const pickRef = useRef<((xy: [number, number]) => void) | null>(null) // Explore: next terrain click goes here instead of the info card
   const interRef = useRef<InteractionsHandle | null>(null)
   const dockApi = useRef<DockApi | null>(null)
   const ownDriveAt = useRef(0) // last time THIS tab asked for a drive (chat drive tool or "Drive here")
@@ -683,6 +686,9 @@ export default function App() {
             <button type="button" className="iconbtn" aria-label="Measure distance" aria-pressed={measureOn} title="Measure: click A then B (M)" onClick={() => setMeasureOn(!measureOn)}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 17 17 3l4 4L7 21l-4-4ZM7 13l2 2M10 10l2 2M13 7l2 2" /></svg>
             </button>
+            <button type="button" className="iconbtn" aria-label="Explore tools" aria-pressed={exploreOpen} title="Explore: lake, sun, minerals, reach, viewshed, rover history, tour (E)" onClick={() => setExploreOpen(!exploreOpen)}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="m15.5 8.5-2 5-5 2 2-5 5-2Z" /></svg>
+            </button>
             <button type="button" className="iconbtn" aria-label="Ground view" aria-pressed={cameraMode === 'ground'} title="Ground-level view (drag to look around)" onClick={toggleGround}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="2" /><path d="M12 8v7M8 22l4-7 4 7M7 12h10" /></svg>
             </button>
@@ -730,8 +736,10 @@ export default function App() {
         {viewer && site && (
           <Interactions viewer={viewer} site={site} mode={uiMode} cameraMode={cameraMode} namesOn={vec.names} measureOn={measureOn} setMeasureOn={setMeasureOn}
             getPlaces={() => placesCtl?.places ?? []} dockApi={dockApi} note={note} onOwnDrive={() => { ownDriveAt.current = Date.now() }}
-            onJezero={() => goJezero()} onDriveBubble={(b) => driveAt(b.lat, b.lon, b.title)} handleRef={interRef} />
+            onJezero={() => goJezero()} onDriveBubble={(b) => driveAt(b.lat, b.lon, b.title)} handleRef={interRef} pickRef={pickRef} />
         )}
+        <ExplorePanel viewer={viewer} site={site} mode={uiMode} open={exploreOpen} setOpen={setExploreOpen} measureOn={measureOn} setMeasureOn={setMeasureOn}
+          pickRef={pickRef} traverseOn={vec.traverse} setTraverseVisible={(on) => placesCtl?.setTraverse(on)} enterSite={() => goJezero(2.5)} />
         <AtlasDock
           apiRef={dockApi}
           onHighlight={(h, kind, sx, sy) => interRef.current?.highlight(h, kind, sx, sy)}
