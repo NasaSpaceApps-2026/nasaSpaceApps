@@ -6,15 +6,18 @@ import { siteImagery, siteTerrain } from './providers'
 import { CesiumRover } from './cesiumRover'
 import type { DriverPose } from './rover/driver'
 import { PlacesLayer, type Place } from './places'
-import { BUBBLES } from './bubbles'
+import { BUBBLES, type Bubble } from './bubbles'
 import { dropOnBubbles, type StreetDrop } from './pegman'
-import { AtlasDock } from './panels/chat/AtlasDock'
+import { AtlasDock, type DriveInfo } from './panels/chat/AtlasDock'
+import { TopBar, type LayerRow, type Mode as UiMode } from './ui/TopBar'
+import { StatusBar } from './ui/StatusBar'
+import { NoWebGL } from './ui/NoWebGL'
 import './App.css'
 
 type SurfaceView = 'planet' | 'street'
 
 const MARS_ION_ASSET = 3644333
-type Mode = 'orbit' | 'site' | 'ground' | 'rover' | 'planet'
+type Mode = 'site' | 'ground' | 'rover' | 'planet'
 let roverCtl: CesiumRover | null = null // set once the viewer is up; used by fly()
 let placesCtl: PlacesLayer | null = null
 let marsTileset: Cesium.Cesium3DTileset | null = null
@@ -73,6 +76,15 @@ function releaseRover() {
   delete (window as unknown as { __rover?: CesiumRover }).__rover
 }
 
+function webglAvailable(): boolean {
+  try {
+    const c = document.createElement('canvas')
+    return !!(c.getContext('webgl2') || c.getContext('webgl'))
+  } catch {
+    return false
+  }
+}
+
 function pickMarsLatLon(viewer: Cesium.Viewer, clientX: number, clientY: number): { latDeg: number; lonDeg: number } | null {
   const rect = viewer.canvas.getBoundingClientRect()
   const win = new Cesium.Cartesian2(clientX - rect.left, clientY - rect.top)
@@ -96,13 +108,19 @@ export default function App() {
   const [site, setSite] = useState<Site | null>(null)
   const [viewer, setViewer] = useState<Cesium.Viewer | null>(null)
   const [layers, setLayers] = useState<Record<string, { on: boolean; layer: Cesium.ImageryLayer }>>({})
-  const [status, setStatus] = useState('loading site…')
-  const [hud, setHud] = useState('')
+  const [toast, setToast] = useState('')
+  const [cursor, setCursor] = useState('')
   const [drive, setDrive] = useState('')
+  const [loaded, setLoaded] = useState(false)
+  const [driveInfo, setDriveInfo] = useState<DriveInfo | null>(null)
+  const wasActive = useRef(false)
+  const [glFail, setGlFail] = useState<string | null>(null)
+  const [loadErr, setLoadErr] = useState<string | null>(null)
+  const creditsEl = useRef<HTMLDivElement>(null)
   const [vec, setVec] = useState({ traverse: true, names: true })
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<Place[]>([])
-  const initialMode = ((new URLSearchParams(location.search).get('view') as Mode) || 'site')
+  const initialMode = ((new URLSearchParams(location.search).get('view') as Mode) || 'planet')
   const [cameraMode, setCameraMode] = useState<Mode>(initialMode)
   const [surfaceView, setSurfaceView] = useState<SurfaceView>('planet')
   const [streetDrop, setStreetDrop] = useState<StreetDrop | null>(null)
@@ -114,12 +132,14 @@ export default function App() {
     let dead = false
     let v: Cesium.Viewer | undefined
     ;(async () => {
+      if (!webglAvailable()) { setGlFail('WebGL context unavailable'); return }
       const s = await Site.load()
       if (dead || !box.current) return
       // Everything uses the sphere of contract 1 so site metres map exactly to lon/lat.
       Cesium.Ellipsoid.default = SPHERE
       const token = import.meta.env.VITE_CESIUM_ION_TOKEN as string | undefined
       if (token) Cesium.Ion.defaultAccessToken = token
+      try {
       v = new Cesium.Viewer(box.current, {
         baseLayer: false,
         terrainProvider: siteTerrain(s),
@@ -133,7 +153,13 @@ export default function App() {
         fullscreenButton: false,
         infoBox: false,
         selectionIndicator: false,
+        showRenderLoopErrors: false,
+        creditContainer: creditsEl.current ?? undefined,
       })
+      } catch (e) {
+        setGlFail(String(e instanceof Error ? e.message : e).slice(0, 200))
+        return
+      }
       const scene = v.scene
       addMarsBasemap(v)
       // Visible while the mosaic tiles are still arriving. The ion tileset hides this globe.
@@ -212,40 +238,54 @@ export default function App() {
           v.scene.primitives.add(ts)
           tilesetRef = ts
           marsTileset = ts
-          setStatus('site + Cesium Mars globe')
         } catch (e) {
-          setStatus('site only (Mars globe failed: ' + (e as Error).message + ')')
+          console.warn('Mars globe tileset failed', (e as Error).message)
         }
-      } else setStatus('Drag the pegman onto a patch, or press Drive.')
+      }
 
-      v.camera.moveEnd.addEventListener(() => {
-        const c = v!.camera.positionCartographic
-        const [x, y] = s.lonLatToXY(c.longitude, c.latitude)
-        setHud(`x ${x.toFixed(0)} m  y ${y.toFixed(0)} m  alt ${c.height.toFixed(0)} m`)
+      // Cursor readout for the status strip: lat/lon always, site metres and elevation inside the site.
+      let lastMove = 0
+      v.canvas.addEventListener('pointermove', (ev) => {
+        const now = performance.now()
+        if (now - lastMove < 100) return
+        lastMove = now
+        const ll = pickMarsLatLon(v!, ev.clientX, ev.clientY)
+        if (!ll) { setCursor(''); return }
+        const lon = Cesium.Math.toRadians(ll.lonDeg), lat = Cesium.Math.toRadians(ll.latDeg)
+        let txt = `${Math.abs(ll.latDeg).toFixed(4)}°${ll.latDeg >= 0 ? 'N' : 'S'}  ${Math.abs(eastLon(ll.lonDeg)).toFixed(4)}°${eastLon(ll.lonDeg) >= 0 ? 'E' : 'W'}`
+        const z = s.elevation(lon, lat)
+        if (!Number.isNaN(z)) {
+          const [x, y] = s.lonLatToXY(lon, lat)
+          txt += `  ·  elev ${z.toFixed(0)} m  ·  x ${x.toFixed(0)} y ${y.toFixed(0)}`
+        }
+        setCursor(txt)
       })
+      v.canvas.addEventListener('pointerleave', () => setCursor(''))
       scene.renderError.addEventListener((_sc: unknown, err: unknown) => {
         ;(window as unknown as { __renderError?: string }).__renderError = String(err)
         console.error('cesium renderError', err)
+        if (/webgl|context/i.test(String(err))) setGlFail(String(err).slice(0, 200))
       })
+      const loadTimer = window.setTimeout(() => setLoaded(true), 30000)
       // Deterministic "fully streamed" signal for screenshot checks (tab title + window flag).
       let stable = 0
       scene.postRender.addEventListener(() => {
         const done = scene.globe.tilesLoaded && (!tilesetRef || tilesetRef.tilesLoaded)
         stable = done ? stable + 1 : 0
+        if (stable === 12) { window.clearTimeout(loadTimer); setLoaded(true) }
         if (stable === 45 && !(window as unknown as { __ready?: boolean }).__ready) {
           ;(window as unknown as { __ready?: boolean }).__ready = true
           document.title = 'READY'
         }
       })
       ;(window as unknown as { __viewer?: Cesium.Viewer }).__viewer = v
-      const bootMode = (new URLSearchParams(location.search).get('view') as Mode) || 'site'
+      const bootMode = (new URLSearchParams(location.search).get('view') as Mode) || 'planet'
       let lastHud = 0
       roverPoseHud = (p) => {
         const now = performance.now()
         if (now - lastHud < 250) return
         lastHud = now
-        setDrive(`rover ${p.status}${p.stop_reason ? ' (' + p.stop_reason + ')' : ''} · slope ${p.slope_deg.toFixed(1)}° · ` +
-          `ahead ${p.ahead_slope_deg.toFixed(1)}° · ${p.display_speed_mps.toFixed(1)} m/s shown (${p.speed_mps.toFixed(2)} real) · x ${p.x.toFixed(0)} y ${p.y.toFixed(0)}`)
+        setDrive(`Rover ${p.status}${p.stop_reason ? ' (' + p.stop_reason + ')' : ''} · ${p.display_speed_mps.toFixed(1)} m/s · slope ${p.slope_deg.toFixed(1)}°`)
       }
       if (bootMode !== 'planet') ensureRover(v, s)
       // Real Perseverance traverse/waypoints and IAU names; start the rover at the first real waypoint.
@@ -258,7 +298,10 @@ export default function App() {
       setViewer(v)
       fly(v, s, bootMode, 0)
       setCameraMode(bootMode)
-    })().catch((e) => setStatus('error: ' + e))
+    })().catch((e) => {
+      console.error('viewer init failed', e)
+      setLoadErr(String(e instanceof Error ? e.message : e).slice(0, 200))
+    })
     return () => {
       dead = true
       v?.destroy()
@@ -266,36 +309,176 @@ export default function App() {
   }, [])
 
   const toggle = (id: string) => {
+    if (id.startsWith('vec:')) {
+      const k = id.slice(4) as 'traverse' | 'names'
+      const on = !vec[k]
+      if (k === 'traverse') placesCtl?.setTraverse(on); else placesCtl?.setNames(on)
+      setVec({ ...vec, [k]: on })
+      return
+    }
     const cur = layers[id]
+    if (!cur) return
     cur.layer.show = !cur.on
     setLayers({ ...layers, [id]: { ...cur, on: !cur.on } })
   }
 
-  const toggleVec = (k: 'traverse' | 'names') => {
-    const on = !vec[k]
-    if (k === 'traverse') placesCtl?.setTraverse(on); else placesCtl?.setNames(on)
-    setVec({ ...vec, [k]: on })
+  const note = (msg: string) => {
+    setToast(msg)
+    window.setTimeout(() => setToast((t) => (t === msg ? '' : t)), 3500)
   }
+
+  function leaveStreet() {
+    setStreetDrop(null)
+    setSurfaceView('planet')
+    resetPegman(pegRef.current)
+  }
+
+  function driveAt(lat: number, lon: number, title: string) {
+    if (!viewer) return
+    const drop = dropOnBubbles(lat, lon)
+    if (!drop) {
+      note('No street view here')
+      return
+    }
+    lookAtBubble(viewer, lat, lon, 15000)
+    releaseRover()
+    setStreetDrop(drop)
+    setSurfaceView('street')
+    setCameraMode('planet')
+    void title
+  }
+
   const search = (q: string) => { setQuery(q); setHits(placesCtl ? placesCtl.search(q) : []) }
+
+  const uiMode: UiMode = surfaceView === 'street' ? 'drive' : cameraMode === 'planet' ? 'mars' : 'jezero'
+
+  const goMars = () => {
+    if (!viewer || !site) return
+    if (surfaceView === 'street') leaveStreet()
+    fly(viewer, site, 'planet', 2)
+    setCameraMode('planet')
+  }
+  const goJezero = (duration = 2.5) => {
+    if (!viewer || !site) return
+    if (surfaceView === 'street') leaveStreet()
+    fly(viewer, site, 'site', duration)
+    setCameraMode('site')
+  }
+  const goDrive = () => {
+    if (surfaceView === 'street') return
+    const b: Bubble = BUBBLES[0]
+    driveAt(b.lat, b.lon, b.title)
+  }
+  const setMode = (m: UiMode) => { if (m === 'mars') goMars(); else if (m === 'jezero') goJezero(); else goDrive() }
+  const modeRef = useRef(setMode)
+  useEffect(() => { modeRef.current = setMode })
+
+  // 1/2/3 switch modes (also when the street-view iframe has focus: it forwards these keys, see onFrameLoad).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      const el = e.target as HTMLElement | null
+      if (el && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) return
+      const m = ({ Digit1: 'mars', Digit2: 'jezero', Digit3: 'drive' } as Record<string, UiMode>)[e.code]
+      if (m) modeRef.current(m)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  const inSite = (p: Place) => {
+    if (!site) return false
+    const half = site.manifest.size_m / 2
+    return Math.abs(p.x) <= half && Math.abs(p.y) <= half
+  }
   const goTo = (p: Place) => {
     if (!viewer || !site) return
     setHits([])
     setQuery(p.name)
+    if (surfaceView === 'street') leaveStreet()
     if (p.kind === 'waypoint') {
-      if (surfaceView === 'street') leaveStreet()
       ensureRover(viewer, site).driver.teleport(p.x, p.y, p.heading ?? 0)
       fly(viewer, site, 'rover', 0)
       setCameraMode('rover')
     } else {
-      roverCtl?.setChase(false)
+      // Names inside the site are shown in Jezero, everything else on the globe (the site view clips the globe to the site).
+      const target: Mode = inSite(p) ? 'site' : 'planet'
+      if ((target === 'planet') !== (cameraMode === 'planet') || cameraMode === 'rover') {
+        fly(viewer, site, target, 0)
+        setCameraMode(target)
+      } else roverCtl?.setChase(false)
       viewer.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(p.lon, p.lat, Math.max(15000, (p.diameterKm ?? 5) * 2500), SPHERE),
+        destination: Cesium.Cartesian3.fromDegrees(p.lon, p.lat, Math.max(target === 'site' ? 3000 : 15000, (p.diameterKm ?? 5) * 2500), SPHERE),
         orientation: { heading: 0, pitch: Cesium.Math.toRadians(-90), roll: 0 }, duration: 2,
       })
     }
   }
 
-  const showPegman = cameraMode === 'planet' && surfaceView === 'planet' && viewer
+  const resetView = () => goJezero(2)
+
+  /** Camera follows the rover (smooth chase). Used by the status-strip toggle, by drives, and by "watch in Jezero". */
+  const startFollow = () => {
+    if (!viewer || !site) return
+    if (surfaceView === 'street') leaveStreet()
+    if (cameraMode === 'planet' || surfaceView === 'street') fly(viewer, site, 'site', 0)
+    fly(viewer, site, 'rover', 0)
+    setCameraMode('rover')
+  }
+  const stopFollow = () => {
+    if (!viewer || !site) return
+    roverCtl?.setChase(false)
+    setCameraMode('site')
+    applyControls(viewer, 'site', site)
+  }
+  const autoFollow = () => { if (surfaceView !== 'street') startFollow() } // street view keeps its view; the dock offers "watch in Jezero"
+  const followRef = useRef({ startFollow, stopFollow, autoFollow })
+  useEffect(() => { followRef.current = { startFollow, stopFollow, autoFollow } })
+
+  // A drive started (rover.state went auto/fsd): follow it once. The chip shows progress, then the outcome.
+  const onDrive = (d: DriveInfo) => {
+    const was = wasActive.current
+    wasActive.current = d.active
+    if (d.active && !was) followRef.current.autoFollow()
+    if (d.active || was) setDriveInfo(d)
+    if (!d.active && was) window.setTimeout(() => setDriveInfo((cur) => (cur && !cur.active ? null : cur)), 6000)
+  }
+
+  // Dragging the map while following hands the camera back to the user.
+  useEffect(() => {
+    if (!viewer) return
+    const el = viewer.canvas
+    let down: { x: number; y: number } | null = null
+    const onDown = (e: PointerEvent) => { down = { x: e.clientX, y: e.clientY } }
+    const onMove = (e: PointerEvent) => {
+      if (!down || !(e.buttons & 3)) return
+      if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6 && roverCtl?.chase) followRef.current.stopFollow()
+    }
+    const onUp = () => { down = null }
+    el.addEventListener('pointerdown', onDown)
+    el.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    return () => { el.removeEventListener('pointerdown', onDown); el.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp) }
+  }, [viewer])
+  const toggleGround = () => {
+    if (!viewer || !site) return
+    const next: Mode = cameraMode === 'ground' ? 'site' : 'ground'
+    fly(viewer, site, next, 2)
+    setCameraMode(next)
+  }
+
+  const layerRows: LayerRow[] = []
+  if (site) {
+    const row = (id: string, L: { title: string; mission?: string; instrument?: string; credit?: string }, on: boolean): LayerRow => {
+      const fc = /false colou?r/i.test(L.title)
+      return { id, title: L.title.replace(/\s*\(false colou?r\)/i, ''), sub: [L.mission, L.instrument].filter(Boolean).join(' '), on, falseColour: fc, title_attr: L.credit }
+    }
+    for (const L of site.ctx?.manifest.layers ?? []) layerRows.push(row('ctx_' + L.id, L, layers['ctx_' + L.id]?.on ?? false))
+    for (const L of site.manifest.layers) layerRows.push(row(L.id, L, layers[L.id]?.on ?? false))
+    layerRows.push({ id: 'vec:traverse', title: 'Perseverance traverse and waypoints', sub: 'Mars 2020, NASA/JPL', on: vec.traverse })
+    layerRows.push({ id: 'vec:names', title: 'Place names', sub: 'IAU/USGS Gazetteer', on: vec.names })
+  }
+
+  const showPegman = cameraMode === 'planet' && surfaceView === 'planet' && viewer && !glFail
 
   const onPegPointerDown = (e: React.PointerEvent) => {
     if (!showPegman) return
@@ -306,63 +489,32 @@ export default function App() {
     if (el) {
       el.style.right = 'auto'
       el.style.bottom = 'auto'
-      el.style.left = `${e.clientX - 14}px`
-      el.style.top = `${e.clientY - 14}px`
+      el.style.left = `${e.clientX - 16}px`
+      el.style.top = `${e.clientY - 16}px`
     }
   }
 
   const onPegPointerMove = (e: React.PointerEvent) => {
     if (!pegDrag.current || !pegRef.current) return
-    pegRef.current.style.left = `${e.clientX - 14}px`
-    pegRef.current.style.top = `${e.clientY - 14}px`
+    pegRef.current.style.left = `${e.clientX - 16}px`
+    pegRef.current.style.top = `${e.clientY - 16}px`
   }
 
   const onPegPointerUp = (e: React.PointerEvent) => {
     if (!pegDrag.current) return
     pegDrag.current = false
     e.currentTarget.releasePointerCapture(e.pointerId)
-    if (!viewer) {
-      resetPegman(pegRef.current)
-      return
-    }
-    const ll = pickMarsLatLon(viewer, e.clientX, e.clientY)
-    if (!ll) {
-      resetPegman(pegRef.current)
-      setStatus('No street view here')
-      return
-    }
-    const drop = dropOnBubbles(ll.latDeg, ll.lonDeg)
-    if (!drop) {
-      resetPegman(pegRef.current)
-      setStatus('No street view here')
-      return
-    }
-    releaseRover()
-    setStreetDrop(drop)
-    setSurfaceView('street')
-    setStatus(`Street view · ${drop.world}`)
     resetPegman(pegRef.current)
-  }
-
-  const leaveStreet = () => {
-    setStreetDrop(null)
-    setSurfaceView('planet')
-    resetPegman(pegRef.current)
-  }
-
-  const driveAt = (lat: number, lon: number, title: string) => {
     if (!viewer) return
-    const drop = dropOnBubbles(lat, lon)
+    const ll = pickMarsLatLon(viewer, e.clientX, e.clientY)
+    const drop = ll ? dropOnBubbles(ll.latDeg, ll.lonDeg) : null
     if (!drop) {
-      setStatus('No street view here')
+      note('No street view here. Drop the pegman on a marked patch.')
       return
     }
-    lookAtBubble(viewer, lat, lon, 15000)
     releaseRover()
     setStreetDrop(drop)
     setSurfaceView('street')
-    setCameraMode('planet')
-    setStatus(`Street view · ${title}`)
   }
 
   const sandboxSrc = streetDrop
@@ -378,6 +530,31 @@ export default function App() {
       viewer.scene.requestRender()
     }
   }, [viewer, surfaceView])
+
+  /** Same-origin iframe: quiet the sandbox HUD and forward the mode keys (1/2/3) to this page. */
+  const onFrameLoad = () => {
+    const win = streetFrame.current?.contentWindow
+    const doc = win?.document
+    if (!win || !doc) return
+    const st = doc.createElement('style')
+    st.textContent = `#data { display: none !important; }
+      .panel { background: rgba(22,18,15,.86) !important; border-color: #38302a !important; border-radius: 8px !important; }
+      #worlds { top: 12px !important; right: 12px !important; } #hud { top: 12px !important; left: 12px !important; }
+      #help { bottom: 12px !important; right: 12px !important; }`
+    doc.head.appendChild(st)
+    // Keep only the world links (crater / olympus) in the street-view switcher.
+    const trim = () => doc.querySelectorAll<HTMLElement>('#worlds a').forEach((a) => {
+      if (!/^(crater|olympus)$/i.test((a.textContent ?? '').trim())) a.style.display = 'none'
+    })
+    trim()
+    const worlds = doc.getElementById('worlds')
+    if (worlds) new MutationObserver(trim).observe(worlds, { childList: true, subtree: true })
+    doc.addEventListener('keydown', (e) => {
+      if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3') {
+        window.dispatchEvent(new KeyboardEvent('keydown', { code: e.code, key: e.key }))
+      }
+    })
+  }
 
   useEffect(() => {
     if (surfaceView !== 'street') return
@@ -408,113 +585,81 @@ export default function App() {
     }
   }, [surfaceView, sandboxSrc])
 
+  const statusLeft = surfaceView === 'street'
+    ? `Street view · ${streetDrop?.world === 'olympus' ? 'Olympus Mons scarp' : 'Jezero fan'}`
+    : cursor || (loaded ? (cameraMode === 'planet' ? 'Mars · move the cursor over the globe' : 'Jezero · move the cursor over the map') : '')
+
   return (
     <div className="app">
-      <div ref={box} className={`cesium${surfaceView === 'street' ? ' cesium--hidden' : ''}`} />
-      {surfaceView === 'street' && streetDrop && (
-        <>
-          <iframe ref={streetFrame} className="street-frame" title="Rover street view" src={sandboxSrc} tabIndex={0} />
-          <button type="button" className="map-back" onClick={leaveStreet}>Map</button>
-        </>
-      )}
-      {showPegman && (
-        <div
-          ref={pegRef}
-          className="pegman"
-          role="img"
-          aria-label="Drag to street view"
-          onPointerDown={onPegPointerDown}
-          onPointerMove={onPegPointerMove}
-          onPointerUp={onPegPointerUp}
-          onPointerCancel={onPegPointerUp}
-        />
-      )}
-      {surfaceView !== 'street' && <div className="panel">
-        <b>{cameraMode === 'planet' ? 'Ares Atlas — Mars' : 'Ares Atlas — Jezero'}</b>
-        {cameraMode === 'planet' && (
-          <>
-            <small>One window. Drive enters the rover on that patch. Drag the yellow pegman onto a patch to do the same.</small>
-            {BUBBLES.map((bubble) => (
-              <div className="row" key={bubble.id}>
-                <button type="button" disabled={!viewer} onClick={() => viewer && lookAtBubble(viewer, bubble.lat, bubble.lon, 20000)}>
-                  {bubble.title}
-                </button>
-                <button type="button" disabled={!viewer} onClick={() => driveAt(bubble.lat, bubble.lon, bubble.title)}>
-                  Drive
-                </button>
-              </div>
-            ))}
-          </>
+      <TopBar mode={uiMode} ready={!!viewer && !!site} onMode={setMode} query={query} hits={hits} onSearch={search} onPick={goTo}
+        layers={layerRows} onToggleLayer={toggle} />
+      <main className="stage">
+        <div ref={box} className={`cesium${surfaceView === 'street' ? ' cesium--hidden' : ''}`} />
+        {surfaceView === 'street' && streetDrop && (
+          <iframe ref={streetFrame} className="street-frame" title="Rover street view" src={sandboxSrc} tabIndex={0} onLoad={onFrameLoad} />
         )}
-        {cameraMode !== 'planet' && <div className="row">
-          {(['orbit', 'site', 'ground', 'rover', 'planet'] as Mode[]).map((m) => (
-            <button key={m} disabled={!viewer} onClick={() => {
-              fly(viewer!, site!, m, 2)
-              setCameraMode(m)
-            }}>
-              {m}
+        {uiMode === 'jezero' && (
+          <div className="viewtools">
+            <button type="button" className="iconbtn" aria-label="Reset view" title="Reset view" onClick={resetView}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5" /></svg>
             </button>
-          ))}
-        </div>}
-        {cameraMode === 'planet' && (
-          <button type="button" disabled={!viewer || !site} onClick={() => {
-            fly(viewer!, site!, 'site', 2)
-            setCameraMode('site')
-          }}>Site tools</button>
+            <button type="button" className="iconbtn" aria-label="Ground view" aria-pressed={cameraMode === 'ground'} title="Ground-level view (drag to look around)" onClick={toggleGround}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="2" /><path d="M12 8v7M8 22l4-7 4 7M7 12h10" /></svg>
+            </button>
+          </div>
         )}
-        {cameraMode !== 'planet' && <>
-        <input className="search" placeholder="Search: sol 120, Jezero, Belva…" value={query}
-          onChange={(e) => search(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && hits[0]) goTo(hits[0]) }} />
-        {hits.map((h) => (
-          <button key={h.id} className="hit" onClick={() => goTo(h)} title={h.source}>
-            {h.name} <small>{h.kind === 'waypoint' ? 'rover waypoint → drive from here' : 'IAU/USGS name'}</small>
-          </button>
-        ))}
-        {site?.ctx?.manifest.layers.map((L) => (
-          <label key={'ctx_' + L.id} title={L.credit}>
-            <input type="checkbox" checked={layers['ctx_' + L.id]?.on ?? false} onChange={() => toggle('ctx_' + L.id)} />
-            {L.title} <small>({L.mission} {L.instrument})</small>
-          </label>
-        ))}
-        {site?.manifest.layers.map((L) => (
-          <label key={L.id} title={L.credit}>
-            <input type="checkbox" checked={layers[L.id]?.on ?? false} onChange={() => toggle(L.id)} />
-            {L.title} <small>({L.mission} {L.instrument})</small>
-          </label>
-        ))}
-        <label title="NASA/JPL Mars 2020 location map (M20_traverse.json, M20_waypoints.json)">
-          <input type="checkbox" checked={vec.traverse} onChange={() => toggleVec('traverse')} />
-          Perseverance traverse + waypoints <small>(Mars 2020, NASA/JPL)</small>
-        </label>
-        </>}
-        {cameraMode !== 'planet' && <label title="USGS Gazetteer of Planetary Nomenclature (IAU-approved names)">
-          <input type="checkbox" checked={vec.names} onChange={() => toggleVec('names')} />
-          Place names <small>(IAU/USGS)</small>
-        </label>}
-        {cameraMode !== 'planet' && <details className="help"><summary>Controls</summary>
-          <small>Ground: drag = look · Orbit/site: drag = rotate, right-drag = tilt · wheel = zoom<br />Rover: W/S drive, A/D turn (limits are assumed values)</small>
-        </details>}
-        <small>{drive}</small>
-        <small>{status}</small>
-        <small>{hud}</small>
-      </div>}
-      <AtlasDock
-        viewer={viewer}
-        site={site}
-        getRover={() => roverCtl}
-        cameraMode={cameraMode}
-        onEnterSite={() => {
-          if (!viewer || !site) return
-          fly(viewer, site, 'site', 2.5)
-          setCameraMode('site')
-        }}
-        street={surfaceView === 'street' && streetDrop ? { world: streetDrop.world, frame: streetFrame } : null}
-      />
+        {showPegman && (
+          <div
+            ref={pegRef}
+            className="pegman"
+            role="img"
+            aria-label="Drag onto a marked patch for street view"
+            title="Drag onto a marked patch for street view"
+            onPointerDown={onPegPointerDown}
+            onPointerMove={onPegPointerMove}
+            onPointerUp={onPegPointerUp}
+            onPointerCancel={onPegPointerUp}
+          />
+        )}
+        {!loaded && !glFail && !loadErr && (
+          <div className="overlay-msg" role="status"><div><span className="spinner" aria-hidden="true" />Loading Mars terrain…</div></div>
+        )}
+        {loadErr && <div className="overlay-msg" role="alert"><div>Could not load the site data: {loadErr}</div></div>}
+        {driveInfo && (
+          <div className="drivechip" role="status">
+            <span className={`drivechip__dot${driveInfo.active ? ' drivechip__dot--on' : ''}`} aria-hidden="true" />
+            {driveInfo.active ? (
+              <span>
+                Driving ({driveInfo.mode})
+                {driveInfo.remaining_m != null ? ` · ${Math.round(driveInfo.remaining_m).toLocaleString()} m left` : ''}
+                {` · ${driveInfo.speed_mps.toFixed(1)} m/s`}
+              </span>
+            ) : <span>{driveInfo.last_event || 'Drive finished'}</span>}
+            {driveInfo.active && driveInfo.remaining_m != null && driveInfo.total_m ? (
+              <span className="drivechip__bar" aria-hidden="true"><span style={{ width: `${Math.min(100, Math.max(0, 100 * (1 - driveInfo.remaining_m / driveInfo.total_m)))}%` }} /></span>
+            ) : null}
+          </div>
+        )}
+        {toast && <div className="toast" role="status">{toast}</div>}
+        <AtlasDock
+          viewer={viewer}
+          site={site}
+          getRover={() => roverCtl}
+          cameraMode={cameraMode}
+          onEnterSite={() => goJezero(2.5)}
+          onDrive={onDrive}
+          onWatch={startFollow}
+          street={surfaceView === 'street' && streetDrop ? { world: streetDrop.world, frame: streetFrame } : null}
+        />
+      </main>
+      <StatusBar left={statusLeft} right={uiMode === 'jezero' ? (driveInfo?.active ? `Rover driving (${driveInfo.mode}) · ${driveInfo.speed_mps.toFixed(1)} m/s` : drive) : ''} creditsRef={creditsEl}
+        follow={uiMode === 'jezero' ? { on: cameraMode === 'rover', toggle: () => (cameraMode === 'rover' ? stopFollow() : startFollow()) } : undefined} />
+      {glFail && <NoWebGL detail={glFail} />}
     </div>
   )
 }
 
-/** Mouse controls per camera mode. Ground = first-person look; orbit/site = rotate planet + tilt. */
+/** Mouse controls per camera mode. Ground = first-person look; site/planet = rotate + tilt. */
 function applyControls(v: Cesium.Viewer, mode: Mode, s?: Site) {
   if (mode === 'planet') releaseRover()
   else if (s) ensureRover(v, s)
@@ -621,13 +766,13 @@ function showPlanetBubbles(v: Cesium.Viewer) {
       position: Cesium.Cartesian3.fromDegrees(lon, bubble.lat, 0, SPHERE),
       point: {
         pixelSize: 10,
-        color: Cesium.Color.fromCssColorString('#ffcc00'),
+        color: Cesium.Color.fromCssColorString('#e0794a'),
         outlineColor: Cesium.Color.BLACK,
         outlineWidth: 2,
       },
       label: {
         text: bubble.title,
-        font: 'bold 16px sans-serif',
+        font: '600 14px system-ui, sans-serif',
         fillColor: Cesium.Color.WHITE,
         outlineColor: Cesium.Color.BLACK,
         outlineWidth: 4,
@@ -669,12 +814,6 @@ function fly(v: Cesium.Viewer, s: Site, mode: Mode, duration: number) {
     v.camera.setView({
       destination: Cesium.Cartesian3.fromDegrees(lon0, lat0, Number(String(mode).slice(4)), SPHERE),
       orientation: { heading: 0, pitch: Cesium.Math.toRadians(-90), roll: 0 },
-    })
-  } else if (mode === 'orbit') {
-    v.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(lon0, lat0, 4_000_000, SPHERE),
-      orientation: { heading: 0, pitch: Cesium.Math.toRadians(-90), roll: 0 },
-      duration,
     })
   } else if (mode === 'site') {
     // look at the site centre from the south at ~35 degrees, 6 km out

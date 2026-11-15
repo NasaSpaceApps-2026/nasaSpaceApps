@@ -1,6 +1,6 @@
 # Ares Atlas viewer (`web/`)
 
-The 3D viewer for Ares Atlas: a CesiumJS Mars globe that zooms to a Jezero site view, with orbit, ground and rover cameras, a street view you drop into from the planet (the rover sandbox in `web/src/rover/sandbox`, shown as a page inside the globe), and the AI copilot's chat dock on the right. Stack: React, TypeScript, Vite, CesiumJS, three.js.
+The 3D viewer for Ares Atlas: a CesiumJS Mars globe that zooms to a Jezero site view, with a ground-level view and a rover-follow camera, a street view you drop into from the planet (the rover sandbox in `web/src/rover/sandbox`, shown as a page inside the globe), and the AI copilot's chat dock on the right. Stack: React, TypeScript, Vite, CesiumJS, three.js.
 
 ## Run it
 
@@ -28,7 +28,7 @@ Other scripts (`web/package.json`): `npm run build` (typecheck and production bu
 
 | Path | What |
 |---|---|
-| `src/App.tsx` | Viewer app: planet, site, orbit, ground and rover modes |
+| `src/App.tsx` | Viewer app: Mars / Jezero / Drive layout and camera handling |
 | `src/rover/` | Browser rover driving and physics, sandbox (Yousef) |
 | `src/panels/chat/` | Chat panel and dock (Sameer) |
 | `src/bubbles.ts`, `src/site.ts`, `src/providers.ts` | Imagery patches, site manifest loading, terrain/imagery providers |

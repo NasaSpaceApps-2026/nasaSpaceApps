@@ -27,8 +27,24 @@ export interface AtlasDockProps {
   onEnterSite: () => void;
   /** Street view (the sandbox iframe) is showing: which world, and its iframe so the dock can mirror the API rover into it. */
   street: { world: string; frame: RefObject<HTMLIFrameElement | null> } | null;
+  /** Rover drive progress for the viewer's chip and auto-follow (null when no state yet). */
+  onDrive?: (d: DriveInfo) => void;
+  /** The street-view note's "watch in Jezero" button. */
+  onWatch?: () => void;
   agentUrl?: string;
   apiWsUrl?: string;
+}
+
+/** What the viewer needs to show a drive in progress (from the API's rover.state, 10 Hz). */
+export interface DriveInfo {
+  active: boolean;
+  mode: string;
+  status: string;
+  speed_mps: number;
+  /** Metres left along the active route, when a route is known (null for a plain `drive`). */
+  remaining_m: number | null;
+  total_m: number | null;
+  last_event: string | null;
 }
 
 const DOCK_W = 380;
@@ -59,7 +75,7 @@ async function checkFrame(site: Site, apiUrl: string): Promise<string | null> {
 
 const rad = (d: number) => (d * Math.PI) / 180;
 
-export function AtlasDock({ viewer, site, getRover, cameraMode, onEnterSite, street, agentUrl = DEFAULT_AGENT, apiWsUrl = DEFAULT_WS }: AtlasDockProps) {
+export function AtlasDock({ viewer, site, getRover, cameraMode, onEnterSite, street, onDrive, onWatch, agentUrl = DEFAULT_AGENT, apiWsUrl = DEFAULT_WS }: AtlasDockProps) {
   const [open, setOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 900);
   const asideRef = useRef<HTMLElement>(null);
   const getRoverRef = useRef(getRover);
@@ -70,6 +86,7 @@ export function AtlasDock({ viewer, site, getRover, cameraMode, onEnterSite, str
     modeRef.current = { cameraMode, street, onEnterSite };
   });
   const [streetNote, setStreetNote] = useState<string | null>(null);
+  const [outside, setOutside] = useState(false);
   const [count, setCount] = useState(0);
   const [sources, setSources] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -81,6 +98,11 @@ export function AtlasDock({ viewer, site, getRover, cameraMode, onEnterSite, str
   const lastServer = useRef<{ x: number; y: number; h: number } | null>(null);
   const linkRef = useRef<RoverLink | null>(null);
   const lastPose = useRef<{ x: number; y: number; h: number } | null>(null);
+  const routePts = useRef<{ id: string; pts: [number, number][]; cum: number[] } | null>(null);
+  const prevAuto = useRef(false);
+  const lastEmit = useRef(0);
+  const onDriveRef = useRef(onDrive);
+  useEffect(() => { onDriveRef.current = onDrive; });
 
   const sync = useCallback(() => {
     const o = overlay.current;
@@ -104,16 +126,19 @@ export function AtlasDock({ viewer, site, getRover, cameraMode, onEnterSite, str
     if (!bubble) return;
     if (!p) {
       setStreetNote('Waiting for the API rover (is stack/up.sh running?).');
+      setOutside(false);
       return;
     }
     const [ox, oy] = site.lonLatToXY(rad(bubble.lon), rad(bubble.lat));
     const lx = p.x - ox, ly = p.y - oy;
     const half = bubble.sizeM / 2 - STREET_EDGE_M;
     if (Math.abs(lx) > half || Math.abs(ly) > half) {
-      setStreetNote(`The agent's rover is outside this street-view patch (${Math.round(Math.hypot(lx, ly))} m from its centre).`);
+      setStreetNote(`The rover is outside this street-view patch (${Math.round(Math.hypot(lx, ly))} m away).`);
+      setOutside(true);
       return;
     }
     setStreetNote(null);
+    setOutside(false);
     st.frame.current?.contentWindow?.postMessage({ type: 'ares-atlas-pose', x: lx, y: ly, heading_deg: p.h }, window.location.origin);
   }, [site]);
 
@@ -184,6 +209,17 @@ export function AtlasDock({ viewer, site, getRover, cameraMode, onEnterSite, str
           o.show([{ id: String(m.id ?? 'marker'), kind: 'marker', x: xy[0], y: xy[1], label: String(m.label ?? m.id ?? 'marker'), source: 'place_marker' }]);
           sync();
         }
+      } else if (m.type === 'route.set' && Array.isArray(m.points)) {
+        const pts = (m.points as { x?: number; y?: number }[])
+          .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y)).map((p) => [p.x as number, p.y as number] as [number, number]);
+        if (pts.length >= 2) {
+          const cum = [0];
+          for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+          const id = String(m.route_id ?? 'active');
+          routePts.current = { id, pts, cum };
+          o.showRoutes([{ id, source: 'route.set', points: thin(pts), label: 'Route' }]);
+          sync();
+        }
       } else if (m.type === 'view.highlight' && Array.isArray(m.ids)) {
         const fs = (m.ids as unknown[]).map((id) => o.known(String(id))).filter((f): f is NonNullable<typeof f> => !!f);
         if (fs.length) {
@@ -198,6 +234,36 @@ export function AtlasDock({ viewer, site, getRover, cameraMode, onEnterSite, str
       const prev = lastServer.current;
       lastServer.current = { x: s.x, y: s.y, h: s.heading_deg };
       lastPose.current = lastServer.current;
+      const auto = s.mode === 'auto' || s.mode === 'fsd';
+      // Drive progress for the viewer: remaining distance along the known route (nearest-point projection).
+      if (auto !== prevAuto.current || Date.now() - lastEmit.current > 250) {
+        lastEmit.current = Date.now();
+        prevAuto.current = auto;
+        const rp = routePts.current;
+        let remaining: number | null = null, total: number | null = null;
+        if (rp && auto && (!s.route_id || s.route_id === rp.id)) {
+          let best = Infinity, along = 0;
+          for (let i = 1; i < rp.pts.length; i++) {
+            const [ax, ay] = rp.pts[i - 1], [bx, by] = rp.pts[i];
+            const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+            const u = L2 ? Math.max(0, Math.min(1, ((s.x - ax) * dx + (s.y - ay) * dy) / L2)) : 0;
+            const d = Math.hypot(s.x - (ax + u * dx), s.y - (ay + u * dy));
+            if (d < best) { best = d; along = rp.cum[i - 1] + u * Math.sqrt(L2); }
+          }
+          total = rp.cum[rp.cum.length - 1];
+          remaining = Math.max(0, total - along);
+        }
+        onDriveRef.current?.({
+          active: auto, mode: s.mode, status: String(s.status ?? ''), speed_mps: typeof s.speed_mps === 'number' ? s.speed_mps : 0,
+          remaining_m: remaining, total_m: total, last_event: (s.last_event as string | null | undefined) ?? null,
+        });
+      }
+      if (auto) {
+        // Server-driven: render smoothly from the 10 Hz stream instead of teleporting each update.
+        getRoverRef.current()?.pushRemote(s);
+        if (modeRef.current.street) mirrorToStreet();
+        return;
+      }
       if (prev && Math.hypot(prev.x - s.x, prev.y - s.y) < 0.05 && Math.abs(prev.h - s.heading_deg) < 0.1) return;
       if (modeRef.current.street) mirrorToStreet();
       else getRoverRef.current()?.driver.teleport(s.x, s.y, s.heading_deg);
@@ -326,7 +392,7 @@ export function AtlasDock({ viewer, site, getRover, cameraMode, onEnterSite, str
     <aside ref={asideRef} className={`atlas-dock${open ? '' : ' atlas-dock--closed'}`} aria-label="Ares copilot dock">
       <button type="button" className="atlas-dock__tab" onClick={() => setOpen(!open)} aria-expanded={open}
         title={open ? 'Collapse the copilot' : 'Open the copilot'}>
-        {open ? <><span aria-hidden="true">&rsaquo;</span><span className="atlas-dock__tabtext">Hide</span></> : <><span aria-hidden="true">&lsaquo;</span><span className="atlas-dock__tabtext">Copilot</span></>}
+        {open ? <><span>Hide</span><span aria-hidden="true">&rsaquo;</span></> : <><span aria-hidden="true">&lsaquo;</span><span>Copilot</span></>}
       </button>
       <div className="atlas-dock__body" hidden={!open}>
         <div className="atlas-dock__bar" role="status">
@@ -338,8 +404,12 @@ export function AtlasDock({ viewer, site, getRover, cameraMode, onEnterSite, str
           <button type="button" className="atlas-dock__clear" onClick={clear} disabled={!count && !selected}>Clear highlights</button>
         </div>
         {warn && <div className="atlas-dock__warn" role="alert">{warn}</div>}
-        {street && streetNote && <div className="atlas-dock__note" role="status">{streetNote}</div>}
-        {street && !streetNote && <div className="atlas-dock__note" role="status">Street view: the agent's rover is mirrored here. Map highlights show on the map.</div>}
+        {street && streetNote && (
+          <div className="atlas-dock__note" role="status">
+            <span>{streetNote}</span>
+            {onWatch && outside && <button type="button" className="atlas-dock__clear" onClick={onWatch}>Watch in Jezero view</button>}
+          </div>
+        )}
         <div className="atlas-dock__chat">
           <ChatPanel agentUrl={agentUrl} getContext={getContext} onToolEvent={onToolEvent} onFocusPlace={focusPlace} />
         </div>

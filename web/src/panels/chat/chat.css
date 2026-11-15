@@ -1,16 +1,16 @@
 /* All rules are scoped under .ares-chat; variables are declared on the panel root only. */
 .ares-chat {
-  --ares-bg: #14100e;
-  --ares-surface: #1f1814;
-  --ares-surface-2: #2a201a;
-  --ares-border: #3d2e25;
-  --ares-text: #f0e6dd;
-  --ares-muted: #b3a296;
-  --ares-accent: #e0794a;
-  --ares-accent-text: #1a0e07;
-  --ares-ok: #7fc99a;
-  --ares-err: #ff8a7a;
-  --ares-focus: #ffd29a;
+  --ares-bg: var(--surface, #16120f);
+  --ares-surface: var(--surface, #16120f);
+  --ares-surface-2: var(--surface-2, #211a15);
+  --ares-border: var(--border, #38302a);
+  --ares-text: var(--text, #f0e6dd);
+  --ares-muted: var(--muted, #b3a296);
+  --ares-accent: var(--accent, #e0794a);
+  --ares-accent-text: var(--accent-ink, #1a0e07);
+  --ares-ok: var(--success, #6fcf97);
+  --ares-err: var(--danger, #ff8a7a);
+  --ares-focus: var(--focus, #ffd29a);
 
   box-sizing: border-box;
   width: 380px;
@@ -22,7 +22,7 @@
   background: var(--ares-bg);
   color: var(--ares-text);
   font: 14px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  border-left: 1px solid var(--ares-border);
+  border-left: 0;
 }
 .ares-chat *, .ares-chat *::before, .ares-chat *::after { box-sizing: border-box; }
 .ares-chat button, .ares-chat textarea { font: inherit; color: inherit; }

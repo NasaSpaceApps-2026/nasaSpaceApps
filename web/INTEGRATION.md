@@ -65,3 +65,33 @@ Teammates' files touched, all surgical:
 Ours: `panels/chat/overlay.ts` (halo under highlights, outlined rings, cyan routes), `prompts.ts` (chips = docs/demo-script.md beats).
 
 Imagery: `stack/fetch_ortho.py` reads the USGS `JEZ_hirise_soc_007_orthoMosaic_25cm_Ortho_blend120.tif` (tiled LZW, orthographic) over the 8 km site via range requests, 4x4 mean to 1 m (about 1 min) into `stack/cache/dl/`; `stack/fetch_viking.py` (copy of `pipeline/00b_fetch_color.py` with urllib) fetches the Viking colour source; `stack/build_viewer_site.sh` links both into the work dir and Caden's `build_tiles.py` colourises. Layer title/credit: "HiRISE orthomosaic, colourised (false colour)", "NASA/JPL/UArizona/USGS. HiRISE is greyscale: colour from Viking MDIM 2.1 ... Not true colour." If the fetch fails the build falls back to the DTM hillshade. Rebuild: `stack/build_viewer_site.sh --rebuild`.
+
+
+## UI redesign (Nov 15, viewer shell)
+
+Layout: slim top bar (Ares Atlas, one **Mars / Jezero / Drive** switch, place search, Layers popover, "?" help popover), the stage (globe or
+street-view iframe, with the copilot dock on the right), and one bottom status strip (cursor lat/lon/elevation, rover state, Follow rover
+toggle, Cesium data attribution). Keys: 1/2/3 switch modes (also from inside the street view), Esc closes popovers.
+
+| Was | Now |
+|---|---|
+| Left panel with text block, five camera buttons (orbit/site/ground/rover/planet), two "Drive" buttons, "Site tools", Map button | Removed. Mars/Jezero/Drive switch in the top bar; Drive always opens the Jezero fan street view (the sandbox's own crater/olympus links switch worlds) |
+| Layer checkboxes + traverse + place names in the left panel | Layers popover (Jezero only; mission/instrument as secondary text, imagery tagged false colour) |
+| "Controls" details block | "?" popover |
+| `drive` / `status` / `hud` text in the left panel | Status strip |
+| Cesium credit box bottom-left | Cesium `creditContainer` moved into the status strip (attribution kept) |
+| orbit camera | Removed (see below). Jezero keeps mouse rotate/tilt/zoom, a Reset view icon and a Ground view toggle |
+| Dock overlay, 380 px, brown theme | Dock sits below the top bar; tokens shared via `web/src/index.css` (dock.css/chat.css fall back to the old values when the tokens are absent, so chat-dev on :5199 is unchanged) |
+| Default view `site` | Default view is Mars (`?view=site` still opens Jezero; `window.__rover` exists only outside Mars) |
+
+**Orbit bug**: `fly('orbit')` flew to 4000 km over Jezero, but the site view clips the globe to the 8 km site rectangle (and the ion Mars tileset is
+absent without a token), so at that altitude only a black void and a tiny patch remained. The planet view is the orbital view, so orbit was removed.
+
+New files: `web/src/ui/{TopBar,StatusBar,NoWebGL}.tsx`, `ui.css`. WebGL failure shows a full-page message (`NoWebGL`) instead of Cesium's error box.
+The street-view iframe is same-origin, so on load App injects a small style (hides the sandbox's terrain/imagery text block and the
+non-world links) and forwards 1/2/3 to the page; the sandbox files themselves are untouched.
+
+Real-time agent drives: `AtlasDock` follows `rover.state`; in auto/fsd it calls `CesiumRover.pushRemote` (150 ms interpolation, smooth at 10 Hz) instead of
+teleporting, draws `route.set` routes, and reports `DriveInfo` (remaining metres by projecting onto the route) to App. App auto-switches to the chase
+camera when a drive starts (dragging the map or the Follow rover toggle hands the camera back) and shows a progress chip. In street view with the rover
+outside the patch the dock shows one line plus "Watch in Jezero view".
