@@ -18,6 +18,13 @@ from agent.session import run_session
 from agent.testing import ScriptedModel, text, tool
 
 
+
+@pytest.fixture(autouse=True)
+def _no_real_dotenv(tmp_path, monkeypatch):
+    """Never read the developer's real .env (it may hold a live key) in tests."""
+    import agent.config
+    monkeypatch.setattr(agent.config, "ROOT", tmp_path)
+
 def vals(t, **kw):
     return [(m.value, m.unit) for m in extract_numbers(t, **kw)]
 

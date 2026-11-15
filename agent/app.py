@@ -12,9 +12,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from .config import Settings
+from .config import Settings, has_key, load_dotenv
 from .mcp_bridge import McpBridge
-from .model import AnthropicModel, ModelClient
+from .model import ModelClient, make_model
 from .replay import replay_events
 from .session import run_session
 
@@ -26,7 +26,9 @@ class ChatRequest(BaseModel):
 
 def create_app(*, model: ModelClient | None = None, bridge: McpBridge | None = None,
                settings: Settings | None = None) -> FastAPI:
-    settings = settings or Settings.from_env()
+    if settings is None:
+        load_dotenv()  # .env fills only variables not already in the environment
+        settings = Settings.from_env()
     bridge = bridge or McpBridge(settings=settings)
     state: dict[str, Any] = {"model": model, "http": None}
 
@@ -44,15 +46,15 @@ def create_app(*, model: ModelClient | None = None, bridge: McpBridge | None = N
 
     def get_model() -> ModelClient:
         if state["model"] is None:
-            m = AnthropicModel(settings)
+            m = make_model(settings)
             m.check()  # raises ModelUnavailable without credentials; nothing is cached on failure
             state["model"] = m
         return state["model"]
 
     @app.get("/health")
     async def health():
-        key = bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
-        return {"ok": True, "model": settings.model, "api_key_present": key,
+        key = has_key(settings.provider)
+        return {"ok": True, "provider": settings.provider, "model": settings.model, "api_key_present": key,
                 "mcp_connected": bridge.connected, "tools": bridge.tool_names,
                 "mcp_target": "stdio" if settings.mcp_stdio else settings.mcp_url,
                 "rest_api": settings.api_url, "rover_api": settings.rover_api_url, "replay": settings.replay_file,

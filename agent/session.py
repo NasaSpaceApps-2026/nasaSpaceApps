@@ -48,7 +48,7 @@ async def run_session(*, model: ModelClient, bridge: McpBridge, settings: Settin
                               rover_url=getattr(settings, "rover_api_url", None))
     block = render_context_block(ctx)
     meta = {"user_prompt": msgs[-1]["content"], "messages": msgs, "context_block": block,
-            "model": getattr(model, "name", "?"), "tools": [t["name"] for t in tools],
+            "model": getattr(model, "name", "?"), "provider": settings.provider, "tools": [t["name"] for t in tools],
             "max_tool_calls": settings.max_tool_calls}
     rec = Recorder(record_dir or settings.replay_dir, meta,
                    enabled=settings.record if record is None else record)

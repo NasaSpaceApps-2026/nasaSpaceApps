@@ -52,8 +52,12 @@ send history as plain text turns). Response is `text/event-stream`:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | - | required except in replay mode |
-| `ATLAS_MODEL` | `claude-opus-5-5` | model id (use a 4.6+ model: adaptive thinking is always sent) |
+| `ATLAS_PROVIDER` | auto | `anthropic` or `deepseek`. Default: anthropic if `ANTHROPIC_API_KEY` is set, else deepseek if `DEEPSEEK_API_KEY` is set |
+| `ANTHROPIC_API_KEY` | - | required for provider anthropic (except in replay mode) |
+| `DEEPSEEK_API_KEY` | - | required for provider deepseek; may live in the git-ignored repo-root `.env` (`KEY = value`, loaded without overriding the environment; never logged or recorded) |
+| `ATLAS_DEEPSEEK_THINKING` | `0` | `1` enables DeepSeek thinking mode (reasoning is passed back each turn, as the API requires with tools) |
+| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | OpenAI-compatible endpoint |
+| `ATLAS_MODEL` | `claude-opus-5-5` / `deepseek-chat` | model id per provider (Anthropic: use a 4.6+ model; `deepseek-chat` is currently an alias of `deepseek-flash`) |
 | `ATLAS_EFFORT` | `medium` | `low`..`max`; empty string omits it |
 | `ATLAS_MAX_TOKENS` | `32000` | per model call |
 | `ATLAS_FALLBACKS` | `0` | opt-in server-side refusal fallbacks (beta; unverified, off by default) |
@@ -108,3 +112,7 @@ Exit code 0 pass, 1 failure, 2 cannot run. Run it after every prompt or tool-des
 
 `.venv/bin/python -m pytest -q tests/test_agent_loop.py tests/test_agent_evals.py` runs with no key: the loop is
 driven by `agent/testing.py::ScriptedModel` against the real MCP server over stdio (synthetic site).
+
+## DeepSeek provider
+
+`agent/model.py::DeepSeekModel` speaks the OpenAI-compatible Chat Completions API over httpx (no extra dependency). The loop keeps Anthropic-format messages; conversion happens at the API boundary (system blocks -> system message, `tool_use` -> `tool_calls`, `tool_result` -> `role: tool`, MCP tool defs -> function tools). Streamed tool-call fragments are assembled by index; malformed arguments become a non-object `input` that the loop reports back to the model as an error. 429/5xx are retried with backoff. Run live evals with `ATLAS_PROVIDER=deepseek`; results for the first run are in `docs/eval-run-deepseek.md`.

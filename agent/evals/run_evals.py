@@ -18,7 +18,7 @@ from pathlib import Path
 
 import yaml
 
-from ..config import ROOT, Settings
+from ..config import KEY_VARS, ROOT, Settings, has_key, load_dotenv
 from ..replay import load_replay
 from .scoring import Score, Session, score_session, session_from_events
 
@@ -70,9 +70,9 @@ def score_replays(cases: list[dict], always_allowed: list[str], files: list[Path
 
 async def run_live(cases: list[dict], always_allowed: list[str], settings: Settings) -> list[Score]:
     from ..mcp_bridge import McpBridge
-    from ..model import AnthropicModel
+    from ..model import make_model
     from ..session import run_session
-    model = AnthropicModel(settings)
+    model = make_model(settings)
     model.check()
     bridge = McpBridge(settings=settings)
     scores: list[Score] = []
@@ -137,20 +137,26 @@ def main(argv: list[str] | None = None) -> int:
         cases = [c for c in cases if c["id"] in args.only]
 
     unmatched: list[str] = []
+    settings = None
     if args.replay:
         scores, unmatched = score_replays(cases, always_allowed, replay_files(args.replay), args.strict)
         if not scores:
             print("No recorded session matched any case. " + "; ".join(unmatched), file=sys.stderr)
             return 2
     else:
-        if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
-            print("ANTHROPIC_API_KEY is not set, so the live eval cannot run.\n"
+        load_dotenv()
+        settings = Settings.from_env()
+        if not has_key(settings.provider):
+            print(f"Provider {settings.provider}: {KEY_VARS[settings.provider]} is not set, so the live eval cannot run.\n"
                   "Set it, or score recorded sessions without a key:\n"
                   "  .venv/bin/python -m agent.evals.run_evals --replay agent/replays", file=sys.stderr)
             return 2
-        scores = asyncio.run(run_live(cases, always_allowed, Settings.from_env()))
+        print(f"live eval: provider={settings.provider} model={settings.model}", file=sys.stderr)
+        scores = asyncio.run(run_live(cases, always_allowed, settings))
     if args.json:
-        args.json.write_text(json.dumps([s.__dict__ for s in scores], indent=2))
+        args.json.write_text(json.dumps({"provider": None if args.replay else settings.provider,
+                                         "model": None if args.replay else settings.model,
+                                         "scores": [s.__dict__ for s in scores]}, indent=2, default=str))
     return report(scores, unmatched, args.strict)
 
 

@@ -24,6 +24,13 @@ MARKERS = [{"id": "m1", "x": 10, "y": 20, "label": "A", "created_by": "user"},
            {"id": "m2", "x": -30, "y": 5, "label": "B", "created_by": "user"}]
 
 
+
+@pytest.fixture(autouse=True)
+def _no_real_dotenv(tmp_path, monkeypatch):
+    """Never read the developer's real .env (it may hold a live key) in tests."""
+    import agent.config
+    monkeypatch.setattr(agent.config, "ROOT", tmp_path)
+
 def rest_transport(down: bool = False) -> httpx.MockTransport:
     def handler(req: httpx.Request) -> httpx.Response:
         if down:

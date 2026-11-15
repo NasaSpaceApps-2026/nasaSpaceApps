@@ -2,7 +2,7 @@
 name = "ares-atlas"
 version = "0.1.0"
 requires-python = ">=3.11"
-dependencies = ["numpy", "scipy", "scikit-image", "rasterio", "pyyaml", "mcp[cli]", "fastapi", "uvicorn", "httpx", "websockets", "pyogrio", "shapely"]
+dependencies = ["numpy", "scipy", "scikit-image", "rasterio", "pyyaml", "mcp[cli]", "fastapi", "uvicorn", "httpx", "websockets", "pyogrio", "shapely", "sse-starlette"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
