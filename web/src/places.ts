@@ -1,7 +1,7 @@
 // Real NASA/USGS vectors in the viewer: the Perseverance traverse and waypoints (Mars 2020, NASA/JPL) and
 // official IAU place names (USGS Gazetteer). Built by pipeline/05_vectors.py and 05b_names.py.
 import * as Cesium from 'cesium'
-import { SPHERE, type Site } from './site'
+import { type Site } from './site'
 
 export interface Place {
   id: string
@@ -48,7 +48,8 @@ export class PlacesLayer {
     const addRun = (run: Cesium.Cartesian3[]) => {
       if (run.length < 2) return
       this.lines.push(this.viewer.entities.add({ polyline: {
-        positions: run, width: 3, arcType: Cesium.ArcType.NONE, material: Cesium.Color.fromCssColorString('#ffb020') } }))
+        positions: run, width: 4, arcType: Cesium.ArcType.NONE,
+        material: new Cesium.PolylineOutlineMaterialProperty({ color: Cesium.Color.fromCssColorString('#fff0a8'), outlineWidth: 1.5, outlineColor: Cesium.Color.fromCssColorString('#3a1608').withAlpha(0.8) }) } }))
     }
     for (const f of trav.features) {
       const xy = f.properties.xy as [number, number][] | undefined
@@ -82,23 +83,20 @@ export class PlacesLayer {
       this.places.push(pl)
       if (!has(p.x, p.y)) return // waypoint just outside the terrain data: keep it searchable, do not draw it
       const at = site.position(p.x, p.y, 1.2)
-      this.points!.add({ position: at, pixelSize: 6, color: Cesium.Color.fromCssColorString('#4de0ff'), outlineColor: Cesium.Color.BLACK, outlineWidth: 1 })
-      this.wpLabels!.add({ position: site.position(p.x, p.y, 3), text: `sol ${p.sol}`, font: '12px sans-serif', fillColor: Cesium.Color.WHITE,
+      // subtle: small, translucent, and sparse at distance (every 6th shows from far, the rest only when zoomed in)
+      this.points!.add({ position: at, pixelSize: 3.5, color: Cesium.Color.WHITE.withAlpha(0.8), outlineColor: Cesium.Color.BLACK.withAlpha(0.5), outlineWidth: 1,
+        scaleByDistance: new Cesium.NearFarScalar(300, 1.6, 6000, 0.6),
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, i % 6 === 0 ? 9000 : 1200) })
+      this.wpLabels!.add({ position: site.position(p.x, p.y, 3), text: `sol ${p.sol}`, font: '11px sans-serif', fillColor: Cesium.Color.WHITE,
         outlineColor: Cesium.Color.BLACK, outlineWidth: 3, style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 700), disableDepthTestDistance: Number.POSITIVE_INFINITY })
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 220), disableDepthTestDistance: Number.POSITIVE_INFINITY })
     })
 
-    // official place names; those inside the site sit on the terrain, others on the Mars globe
-    this.nameLabels = scene.primitives.add(new Cesium.LabelCollection())
+    // official place names: data only. They are drawn as crisp HTML labels by interact/Interactions (with the POI names).
     for (const f of names.features) {
       const p = f.properties as Record<string, number & string>
-      const inSite = !Number.isNaN(site.elevationAtXY(p.x, p.y))
-      const pos = inSite ? site.position(p.x, p.y, 40) : Cesium.Cartesian3.fromDegrees(p.lon, p.lat, 0, SPHERE)
       this.places.push({ id: p.id, name: p.name, kind: 'name', x: p.x, y: p.y, lat: p.lat, lon: p.lon, diameterKm: p.diameter_km,
         source: String(p.source_url), detail: `${p.feature_type}, approved ${p.approved} by the IAU` })
-      this.nameLabels.add({ position: pos, text: p.name, font: '600 15px sans-serif', fillColor: Cesium.Color.WHITE,
-        outlineColor: Cesium.Color.BLACK, outlineWidth: 4, style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(3000, 8_000_000), disableDepthTestDistance: Number.POSITIVE_INFINITY })
     }
   }
 

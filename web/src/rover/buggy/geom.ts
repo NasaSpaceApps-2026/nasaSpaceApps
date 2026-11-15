@@ -192,8 +192,14 @@ export function cable(pts: Array<V3 | THREE.Vector3>, r: number): THREE.BufferGe
 
 /** Helix along -Y from y=0 to y=-len (coil spring), radius R, wire r. */
 export class HelixCurve extends THREE.Curve<THREE.Vector3> {
-  constructor(public R: number, public len: number, public turns: number) {
+  R: number;
+  len: number;
+  turns: number;
+  constructor(R: number, len: number, turns: number) {
     super();
+    this.R = R;
+    this.len = len;
+    this.turns = turns;
   }
   getPoint(t: number, target = new THREE.Vector3()): THREE.Vector3 {
     const a = t * this.turns * Math.PI * 2;

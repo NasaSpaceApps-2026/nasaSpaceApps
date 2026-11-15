@@ -12,6 +12,7 @@ from .terrain import Terrain
 
 SNAP_RADIUS_M = 20.0
 POINT_SPACING_M = 5.0
+FILLED_POLICIES = ("block", "caution", "allow")
 
 
 class RouteError(ValueError):
@@ -34,9 +35,11 @@ class Planner:
         self.slope_mean = _pool(slope, self.f, np.mean)
         self.rough = _pool(np.nan_to_num(terrain.grids["rough"]), self.f, np.mean)
         self.filled = _pool(terrain.filled.astype(np.float32), self.f, np.max) > 0
+        self.nodata = _pool(terrain.nodata.astype(np.float32), self.f, np.max) > 0
         self._cost_cache: dict = {}
         self.routes: dict[str, dict] = {}
         self._ids = itertools.count(1)
+        self.default_vehicle: str | None = None  # active vehicle profile; /route uses it when no profile is given
 
     # --- profiles and costs ----------------------------------------------------
     def profile(self, name: str = None) -> dict:
@@ -53,17 +56,23 @@ class Planner:
         lim = prof["nogo_slope_deg"]
         return min(lim, max_slope) if max_slope else lim
 
-    def cost_grid(self, prof: dict, max_slope: float = None) -> tuple[np.ndarray, np.ndarray]:
-        """Seconds per metre per coarse cell, and the impassable mask."""
+    def cost_grid(self, prof: dict, max_slope: float = None, filled: str = "caution") -> tuple[np.ndarray, np.ndarray]:
+        """Seconds per metre per coarse cell, and the impassable mask.
+        `filled` is the policy for interpolated DEM cells: caution (default) = passable but penalised by
+        cost_weights.unknown, allow = no penalty, block = impassable. No-data cells are always impassable."""
+        if filled not in FILLED_POLICIES:
+            raise RouteError(f"Unknown filled policy '{filled}'. Options: {', '.join(FILLED_POLICIES)}.")
         lim = self.nogo_limit(prof, max_slope)
-        key = (prof["name"], lim)
+        key = (prof["name"], lim, filled)
         if key not in self._cost_cache:
             w = self.cfg["cost_weights"]
-            nogo = self.slope_max > lim
+            nogo = (self.slope_max > lim) | self.nodata
+            if filled == "block":
+                nogo = nogo | self.filled
             buf = int(math.ceil(w.get("nogo_buffer_m", 0) / self.res))
             if buf:
                 nogo = ndimage.binary_dilation(nogo, iterations=buf)
-            cost = (1.0 / self.speed(self.slope_mean, prof)) * (1 + w["rough"] * self.rough + w["unknown"] * self.filled)
+            cost = (1.0 / self.speed(self.slope_mean, prof)) * (1 + w["rough"] * self.rough + (w["unknown"] * self.filled if filled != "allow" else 0))
             cost = cost.astype(np.float64)
             cost[nogo] = np.inf
             self._cost_cache[key] = (cost, nogo)
@@ -105,12 +114,13 @@ class Planner:
                              f"{SNAP_RADIUS_M:.0f} m. Pick a different point.")
         return best[1], f"{label} moved {best[0] * self.res:.0f} m to the nearest safe ground."
 
-    def cost_from(self, x: float, y: float, prof: dict, max_slope: float = None, ends: list = None) -> np.ndarray:
+    def cost_from(self, x: float, y: float, prof: dict, max_slope: float = None, ends: list = None,
+                  filled: str = "caution") -> np.ndarray:
         """Cumulative travel seconds from (x, y) to coarse cells (inf where unreachable or not explored).
 
         With `ends` (list of (x, y)) the search stops once all of them are reached. That only skips
         work: every finite value is exact, cells never visited stay inf."""
-        cost, nogo = self.cost_grid(prof, max_slope)
+        cost, nogo = self.cost_grid(prof, max_slope, filled)
         rc, _ = self._snap(x, y, nogo, "Start")
         m = MCP_Geometric(cost, sampling=(self.res, self.res))
         end_cells = [self.cell(ex, ey) for ex, ey in ends] if ends else None
@@ -118,8 +128,8 @@ class Planner:
         return cum
 
     # --- planning -------------------------------------------------------------------
-    def _leg(self, a, b, prof, max_slope, labels):
-        cost, nogo = self.cost_grid(prof, max_slope)
+    def _leg(self, a, b, prof, max_slope, labels, filled="caution"):
+        cost, nogo = self.cost_grid(prof, max_slope, filled)
         warnings = []
         lim = self.nogo_limit(prof, max_slope)
         sa, wa = self._snap(*a, nogo, labels[0])  # start may be wherever the rover already is
@@ -146,9 +156,9 @@ class Planner:
 
     def plan(self, start, goal, via: list = (), labels: list = None, profile: str = None,
              max_slope_deg: float = None, time_budget_min: float = None, stops: int = 0,
-             store: bool = True) -> dict:
+             store: bool = True, filled: str = "caution") -> dict:
         """Plan a route; with store=False it is not kept (no route_id), e.g. for validation runs."""
-        prof = self.profile(profile)
+        prof = self.profile(profile or self.default_vehicle)
         pts = [start, *via, goal]
         labels = labels or [f"({p[0]:.0f}, {p[1]:.0f})" for p in pts]
         for p, lab in zip(pts, labels):
@@ -156,13 +166,13 @@ class Planner:
                 raise RouteError(f"{lab} is outside the site (|x|, |y| <= {self.t.half:.0f} m).")
         cells, warnings, leg_ends = [], [], []
         for i in range(len(pts) - 1):
-            leg, w = self._leg(pts[i], pts[i + 1], prof, max_slope_deg, (labels[i], labels[i + 1]))
+            leg, w = self._leg(pts[i], pts[i + 1], prof, max_slope_deg, (labels[i], labels[i + 1]), filled)
             warnings += w
             # exact endpoints at the ends, grid path in between
             leg = [tuple(pts[i])] + leg[1:-1] + [tuple(pts[i + 1])]
             cells += leg if not cells else leg[1:]
             leg_ends.append(len(cells) - 1)
-        route = self._summarise(cells, leg_ends, prof, max_slope_deg, labels, stops, time_budget_min)
+        route = self._summarise(cells, leg_ends, prof, max_slope_deg, labels, stops, time_budget_min, filled)
         route["warnings"] = warnings + route["warnings"]
         route["direct_line"] = self.direct_line(pts[0], pts[-1], prof, max_slope_deg)
         if store:
@@ -173,7 +183,7 @@ class Planner:
             route["route_id"] = None
         return route
 
-    def _summarise(self, raw, leg_ends, prof, max_slope, labels, stops, budget):
+    def _summarise(self, raw, leg_ends, prof, max_slope, labels, stops, budget, filled="caution"):
         # Simplify per leg so stop points survive, then resample to <= 5 m spacing.
         pts, legs, start = [], [], 0
         for i, end in enumerate(leg_ends):
@@ -206,6 +216,12 @@ class Planner:
         lim = self.nogo_limit(prof, max_slope)
         caution = int((slopes >= prof["caution_slope_deg"]).sum())
         warnings = []
+        fl = self.t.nearest(self.t.filled.astype(np.uint8), xs, ys).astype(bool)
+        seg_fl = fl[:-1] | fl[1:]
+        filled_pts, filled_m = int(fl.sum()), float(seg[seg_fl].sum())
+        if filled_pts and filled != "allow":
+            warnings.append(f"Route crosses {filled_pts} of {len(pts)} points ({filled_m:.0f} m) of interpolated "
+                            f"(filled) DEM terrain: elevation there is estimated, not measured. Policy '{filled}'.")
         if caution:
             warnings.append(f"{caution} of {len(pts)} route points are on caution slopes "
                             f"(>= {prof['caution_slope_deg']} deg).")
@@ -228,6 +244,9 @@ class Planner:
             "max_slope_deg": round(float(slopes.max()), 1),
             "slope_limit_deg": lim,
             "hazard_cells": caution,
+            "filled_policy": filled,
+            "filled_cells": filled_pts,
+            "filled_length_m": round(filled_m),
             "legs": legs,
             "consumables": {"used_frac": round(used, 3), "reserve_frac": prof["reserve_frac"],
                             "margin_frac": round(margin, 3), "eva_limit_min": prof["eva_limit_min"],

@@ -1,0 +1,134 @@
+/* All rules are scoped under .ares-chat; variables are declared on the panel root only. */
+.ares-chat {
+  --ares-bg: var(--surface, #16120f);
+  --ares-surface: var(--surface, #16120f);
+  --ares-surface-2: var(--surface-2, #211a15);
+  --ares-border: var(--border, #38302a);
+  --ares-text: var(--text, #f0e6dd);
+  --ares-muted: var(--muted, #b3a296);
+  --ares-accent: var(--accent, #e0794a);
+  --ares-accent-text: var(--accent-ink, #1a0e07);
+  --ares-ok: var(--success, #6fcf97);
+  --ares-err: var(--danger, #ff8a7a);
+  --ares-focus: var(--focus, #ffd29a);
+
+  box-sizing: border-box;
+  width: 380px;
+  min-width: 380px;
+  max-width: 380px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--ares-bg);
+  color: var(--ares-text);
+  font: 14px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  border-left: 0;
+}
+.ares-chat *, .ares-chat *::before, .ares-chat *::after { box-sizing: border-box; }
+.ares-chat button, .ares-chat textarea { font: inherit; color: inherit; }
+.ares-chat :focus-visible { outline: 2px solid var(--ares-focus); outline-offset: 2px; }
+.ares-chat .ares-sr {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+.ares-chat__header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px; border-bottom: 1px solid var(--ares-border); flex: none;
+}
+.ares-chat__header h2 { margin: 0; color: var(--ares-text); font-size: 15px; font-weight: 600; letter-spacing: 0.02em; }
+
+.ares-chat__log {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.ares-empty__lead { color: var(--ares-muted); margin: 0 0 12px; }
+
+.ares-msg { max-width: 100%; overflow-wrap: anywhere; }
+.ares-msg--user {
+  align-self: flex-end; max-width: 88%; background: var(--ares-accent); color: var(--ares-accent-text);
+  padding: 8px 11px; border-radius: 12px 12px 3px 12px; white-space: pre-wrap;
+}
+.ares-msg--assistant { display: flex; flex-direction: column; gap: 8px; }
+.ares-text p { margin: 0 0 8px; }
+.ares-text p:last-child { margin-bottom: 0; }
+.ares-text ul, .ares-text ol { margin: 0 0 8px; padding-left: 20px; }
+.ares-text code {
+  background: #3a2c22; color: #ffe2c6; border: 1px solid #6b5342; border-radius: 4px;
+  padding: 0 4px; font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.ares-thinking, .ares-note { color: var(--ares-muted); font-style: italic; }
+.ares-error {
+  border: 1px solid var(--ares-err); color: var(--ares-err); background: rgba(255, 138, 122, 0.08);
+  border-radius: 8px; padding: 8px 10px; overflow-wrap: anywhere;
+}
+
+.ares-tool { border: 1px solid var(--ares-border); border-radius: 8px; background: var(--ares-surface); overflow: hidden; }
+.ares-tool--running { border-color: var(--ares-accent); }
+.ares-tool--error { border-color: var(--ares-err); }
+.ares-tool__head {
+  display: flex; gap: 8px; align-items: flex-start; width: 100%; text-align: left;
+  background: none; border: 0; padding: 8px 10px; cursor: pointer;
+}
+.ares-tool__head:hover { background: var(--ares-surface-2); }
+.ares-tool__icon { flex: none; width: 16px; height: 16px; display: grid; place-items: center; margin-top: 2px; color: var(--ares-ok); font-weight: 700; }
+.ares-tool--error .ares-tool__icon { color: var(--ares-err); }
+.ares-tool__main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.ares-tool__name { font-weight: 600; font-size: 13px; }
+.ares-tool__args { color: var(--ares-muted); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+.ares-tool__summary { font-size: 13px; margin-top: 3px; overflow-wrap: anywhere; }
+.ares-tool__chev { flex: none; color: var(--ares-muted); }
+.ares-tool__body { border-top: 1px solid var(--ares-border); padding: 8px 10px; background: var(--ares-bg); }
+.ares-tool__label { color: var(--ares-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; margin: 4px 0; }
+.ares-tool__body pre {
+  margin: 0 0 6px; max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.ares-spinner {
+  width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid var(--ares-border); border-top-color: var(--ares-accent);
+  animation: ares-spin 0.8s linear infinite;
+}
+@keyframes ares-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ares-spinner { animation-duration: 3s; } }
+
+.ares-chips { display: flex; flex-direction: column; gap: 6px; }
+.ares-chip {
+  text-align: left; background: var(--ares-surface); border: 1px solid var(--ares-border);
+  border-radius: 16px; padding: 6px 12px; cursor: pointer;
+}
+.ares-chip:hover { border-color: var(--ares-accent); background: var(--ares-surface-2); }
+
+.ares-chat__input { flex: none; display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--ares-border); align-items: flex-end; }
+.ares-chat__input textarea {
+  flex: 1; min-width: 0; resize: none; background: var(--ares-surface); border: 1px solid var(--ares-border);
+  border-radius: 8px; padding: 8px 10px; max-height: 140px;
+}
+.ares-chat__input textarea::placeholder { color: var(--ares-muted); }
+.ares-btn { border: 1px solid var(--ares-border); background: var(--ares-surface-2); border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+.ares-btn:disabled { opacity: 0.45; cursor: default; }
+.ares-btn--primary { background: var(--ares-accent); color: var(--ares-accent-text); border-color: var(--ares-accent); font-weight: 600; }
+.ares-btn--stop { border-color: var(--ares-err); color: var(--ares-err); }
+.ares-btn--ghost { padding: 4px 10px; background: none; color: var(--ares-muted); }
+
+.ares-chat .ares-tool__rows { list-style: none; margin: 0; padding: 0 6px 6px; border-top: 1px solid var(--ares-border); }
+.ares-chat .ares-tool__row {
+  display: flex; gap: 6px; align-items: baseline; width: 100%; text-align: left; background: none; border: 0; border-radius: 6px;
+  padding: 4px 6px; cursor: pointer; font-size: 12.5px; color: var(--ares-text); overflow-wrap: anywhere;
+}
+.ares-chat .ares-tool__row:hover { background: var(--ares-surface-2); }
+.ares-chat .ares-tool__pin { color: var(--ares-accent); flex: none; }
+
+/* header status, banners, friendly errors, long results */
+.ares-chat__title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ares-status { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ares-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ares-status__dot { width: 8px; height: 8px; border-radius: 50%; background: #777; flex: none; }
+.ares-status--ok .ares-status__dot { background: #7fc99a; }
+.ares-status--warn .ares-status__dot, .ares-status--checking .ares-status__dot { background: #e0b04a; }
+.ares-status--down .ares-status__dot { background: #ff8a7a; }
+.ares-banner { flex: none; padding: 8px 12px; background: #4a1d17; color: #ffd0c6; font-size: 12.5px; line-height: 1.4; border-bottom: 1px solid #6b2c22; overflow-wrap: anywhere; }
+.ares-banner strong, .ares-error strong { display: block; color: #fff; }
+.ares-error__detail { margin-top: 4px; font-size: 11.5px; opacity: 0.75; }
+.ares-chat .ares-tool__body pre { max-height: 260px; overflow: auto; }
+.ares-chat .ares-tool__more { margin: 4px 0 2px; background: none; border: 0; color: var(--ares-accent); cursor: pointer; font-size: 12px; text-decoration: underline; padding: 0; }
+.ares-chat button:focus-visible, .ares-chat textarea:focus-visible, .ares-chat .ares-chat__log:focus-visible { outline: 2px solid #ffd29a; outline-offset: 2px; }

@@ -1,59 +1,62 @@
 # Progress
 
-Status of Streams C + D (Yousef, Sameer). Update after each meaningful change. Newest first.
+State of the repo on **Nov 15, 2026** (submission day), branch `sameer/mcp`. Per stream: done and remaining. Sources for each line are the files named; test counts were run on Nov 15 (511 Python tests, 44 chat-panel tests, all passing). Update after each meaningful change. Submission status: [docs/submission-checklist.md](docs/submission-checklist.md).
 
-## Yousef — backend + rover
+## Stream A: data pipeline (Caden)
 
-Scope tasks from `docs/scope-c-d.md`:
+Done
+- Tile pipeline and fixtures: `pipeline/` (HiRISE DTM and 25 cm ortho windows, CTX context block, vectors, names, rover-world exports), `data/SOURCES.md`.
+- Independent validation against Perseverance data: `pipeline/09_validate.py` -> [docs/science-validation.md](docs/science-validation.md) (rover tilt vs DEM r = 0.84; CTX vs HiRISE agreement).
+- Site frame source of truth: `pipeline/site_cfg.py` (read by `sitebuild/`).
 
-| # | Task | Status |
-|---|---|---|
-| 1 | Stub server / OpenAPI / canned responses | Done — real implementation instead of stubs; `contracts/api.openapi.yaml`, `contracts/fixtures/api/*.json` |
-| 2 | Terrain service (`/site`, `/terrain/*`, `/pois`, `/health`, static tiles) | Done |
-| 3 | Markers (REST + WS `marker.click`/`marker.add`/`marker.remove`) | Done |
-| 4 | Route planner (`/route`, `/route/{id}`, `/route/{id}/assess`) | Done |
-| 5 | Site search (`/search/targets`, `/search/sites`) | Done on synthetic mineral layers |
-| 6 | Rover sim + WebSocket hub (`/rover/command`, `/rover/state`, `/view`, `/ws`) | Done |
-| 7 | FSD policy (slope stop, caution slowdown, one replan) | Done |
-| 8 | Browser rover driving (`web/src/rover/`) | Done as a standalone module + sandbox (`cd web/src/rover/sandbox && npm install && npm run dev`, port 5174; `npm run check` → 10 physics checks). Waiting on Rithvik's `web/` app to plug in (see `web/src/rover/README.md`) |
-| 9 | Science traverse + validation | Done |
-| 10 | Hardening | Done: readable 422 errors, input validation, heavy endpoints in a worker thread (sim keeps ticking), markers/routes persist to `api/.state/state.json` (`ARES_STATE_FILE`), thread-safe WS emit |
-| — | One vehicle model | API sim drives `crew_buggy` by default using the browser's power/grip balance (`ares_api/vehicle.py`); `GET /rover/vehicles`, `POST /rover/vehicle` |
-| 11 | More realistic physics | v3 rigid-body vehicle (`web/src/rover/physics.ts`): chassis with momentum and rotation, per-wheel spring-damper suspension (buggy 1.15 Hz, ζ 0.38, 25 cm travel), friction-circle tyres (grip-limited cornering), Mars g, power/grip-limited drive, coasting, brakes, jumps and roll-overs. Crewed buggy concept (`crew_buggy`) with boost and time-lapse. 19 physics checks |
-| — | Detailed buggy + astronaut model (`web/src/rover/buggyModel.ts`, `buggy/`) | Done: ~120k tris, ~130 draw calls; wired into sandbox with boost dust + suspension |
-| — | Playground test site (`api/fixtures/playground/`, `api/scripts/make_playground.py`) | Done: 2 km synthetic site with gullied delta front (detour story works: direct line 36°, route 14° via gully), breached crater, dunes, butte, channels; 22 POIs, 2.5 km traverse. Sandbox serves it by default; run API with `ARES_DATA_DIR=api/fixtures/playground` |
+Remaining
+- The official science layers (minerals, geology, traverse) have not replaced our interim copies built by `sitebuild/science.py` (see `data/build/site/jezero/SOURCES_site.md`). Caden to confirm.
+- Bubble refine loop and vision loop (`pipeline/bubble`, `pipeline/vision_loop`): status not recorded here. Caden to confirm.
+- Fix the stale `lat0/lon0` in the `crater`/`olympus` rover-world manifests (`docs/frames.md`).
 
-Tests: `api/.venv/bin/python -m pytest api -q` → 17 passed.
+## Stream B: viewer (Rithvik)
 
-### Additions beyond the PRD contract (tell Sameer)
+Done
+- Cesium planet globe with Jezero fan and Olympus Mons scarp patches, street view with the pegman, site/orbit/ground/rover cameras (`usage.md`).
+- Chat dock for the copilot mounted in the viewer (`web/src/panels/chat/AtlasDock.tsx`, `web/src/App.tsx`): tool results drawn on the viewer, camera follows the agent. Integration notes: `web/INTEGRATION.md` (owned by another builder; check it exists).
 
-- `GET /route/{id}/assess` backs the `assess_route` tool; `GET /route/{id}` returns a stored route.
-- `POST /agent/event` — MCP posts each tool call here; the API broadcasts `agent.event` to the viewer.
-- `GET /view` returns last view state; viewer may send WS `view.state` with its camera pose.
-- Route responses include `direct_line` (straight-line distance, max slope, whether it crosses no-go)
-  so the agent can explain why a route detours.
-- `POST /rover/command` takes `wait` (default true) and `timeout_s`; drive results carry `stop_reason`,
-  `message`, `replans`, `events`.
-- `max_slope_deg` can only tighten a profile's limit, never loosen it.
-- `GET /rover/vehicles`, `POST /rover/vehicle {profile}`: the sim drives `crew_buggy` by default (matches the viewer); `rover_scout` for Perseverance-like scouting. Rover state includes `vehicle`.
-- Markers and routes persist across API restarts (per site). `/health` reports vehicle, viewers, marker and route counts.
-- Buggy grip μ 2.4 (4× baseline) with wheelie control (front keeps ≥ 15 % load, climbs ~36°), stability control (steering capped under roll-over) and ABS (braking under nose-over). Same climb limit in the API sim (`vehicle.py`).
+Remaining
+- The viewer's default site is the synthetic fixture frame (`VITE_SITE_DIR=../contracts/fixtures`), not the copilot's real 8 km site; they line up only with `stack/up.sh --frame crater --with-viewer` (`docs/frames.md`). Rithvik and Sameer to confirm what the final demo shows.
+- Re-check `cd web && npm run build` passes on the final commit.
 
-### Known issues / notes
+## Stream C: backend and rover (Yousef)
 
-- Caden's fixture: the crater wall and the scarp are ~30° all round, so the crater floor and the
-  east upland are unreachable on foot (25° limit). Correct behaviour, but the demo's "detour around
-  the scarp" story needs a gap; real Jezero data or a fixture tweak (ask Caden) will provide one.
-- Mineral layers are synthetic (`api/scripts/make_dev_layers.py`), labelled "not Mars data" in every
-  response. Need real CRISM-derived `layer_min_<name>.tif` (0–1) from Caden; naming not yet confirmed.
-- Real Jezero build (`ARES_DATA_DIR=data/build`, built from Caden's pipeline) works end to end. Timings on the
-  8 km grid: `/route` 3-7 km 0.4-0.7 s, `/search/sites` 0.15 s, `/route/science` 4 h 0.4-1.6 s, `/validation`
-  0.5 s then cached (`api/tests/test_real_data.py`, skipped without `data/build`). No real mineral/geology
-  layers or science-valued POIs yet, so search and science traverse have nothing real to work on until Stream A
-  ships them; IAU names inside the site (Belva) load as landmarks from `names.geojson`.
-- Browser manual driving uses the force model; the API auto/FSD sim still uses the planner speed curve and
-  stops at the no-go slope (that is the safety policy). Vehicle physics params live in `api/profiles.yaml`.
+Done
+- REST/WS API (`api/ares_api`): terrain, markers, route planner, site search, rover simulator with FSD, science traverse, `/validation`; OpenAPI in `contracts/api.openapi.yaml`. `api/.venv/bin/python -m pytest api -q`.
+- Browser rover driving (`web/src/rover/`): v3 rigid-body vehicle, crew buggy with boost, detailed buggy model, sandbox worlds (`cd web/src/rover/sandbox && npm run dev`; `npm run check` runs the physics checks). The API sim drives `crew_buggy` by default with the same power/grip balance (`api/ares_api/vehicle.py`).
+- Playground test site (`api/scripts/make_playground.py`), persistence of markers/routes, readable 422 errors.
+- Real-Jezero validation: hazard agreement 0.999 over 23.9 km of traverse; route realism median 1.00 on 8 waypoint pairs (`SCIENCE_VALIDITY.md`, `api/tests/test_real_data.py`).
 
-## Sameer — MCP, agent, chat
+Remaining
+- Dev mineral layers are synthetic by default (`api/scripts/make_dev_layers.py`); under `stack/up.sh` the API reads an export of our site with real CRISM tiers divided by 4 (a test mapping, `devapi/export_ares_dir.py`).
+- API auto-drive uses the steady-state version of the browser force model, not the full suspension dynamics (`SCIENCE_VALIDITY.md`, Known gaps).
+- Crater wall and scarp in Caden's fixture are about 30 degrees all round, so the fixture's crater floor is unreachable at the 25 degree limit; real Jezero data does not have this problem.
 
-Not started in this repo yet. Build against `contracts/fixtures/api/*.json` or the live API on :8000.
+## Stream D: MCP, agent, chat, docs (Sameer)
+
+Done
+- Query engine `atlas_core/` and its REST server `devapi/` (:8001): condition-language search, walking-time fields, evidence tiers, routes, line of sight, sun and shadow, paleolake flooding, EVA envelope, terrain layers. Real Jezero site built by `sitebuild/` (HiRISE 2 m, 7 CRISM mineral layers, USGS geologic units, 23 sample POIs, Perseverance traverse).
+- MCP server `mcp/`: 39 tools listed from the running server on Nov 15, including `select_vehicle` and `drive_to`; split-backend mode with a startup frame check (`docs/api-compat.md`, `docs/rover-connection-test.md`).
+- Agent backend `agent/` (:8766): tool loop, SSE, DeepSeek and Anthropic providers, record and replay. Recordings in `agent/replays/`.
+- Chat panel `web/src/panels/chat/` and standalone page `chat-dev/` (:5199) with minimap; one-command launcher `stack/up.sh`.
+- Evals: `agent/evals/questions.yaml` (27 cases; 24 were run live). DeepSeek: 19 of 24 on full runs with both `deepseek-chat` and `deepseek-v4-pro`; 6 of 7 on the rerun of failures; no ungrounded numbers in those 14 sessions ([docs/eval-run-deepseek.md](docs/eval-run-deepseek.md)).
+- Honesty fixes from the blind tool review ([docs/tool-review.md](docs/tool-review.md)): 17 pass / 4 hesitate / 0 fail of 21 cases.
+- Docs: README, science summary, project page, demo script, submission checklist, LICENSE, `.env.example`.
+
+Remaining
+- The 3 buggy-driving eval cases (`buggy_*`, `scout_to_marker`) have not been run live; no replay of buggy driving exists.
+- Score the evals with a Claude model (only DeepSeek was run).
+- Thresholds in `data/build/site/jezero/profiles.yaml` are all assumed; candidate citations in `docs/threshold-sources.md` are not applied.
+- Record the demo video and fill the `TEAM TO FILL` fields in `docs/project-page.md`.
+- `anthropic` is imported by the agent but missing from `pyproject.toml` dependencies; `pyproject.toml` is not edited here (README install line includes it).
+- Not tested from a clean clone; the data build needs network.
+
+## Known issues
+
+- `docs/tool-review.md` is a dated working log; its early sections describe the earlier 28-tool, terrain-only state.
+- `docs/science-validation.md` is auto-generated by `pipeline/09_validate.py`; the cross-link header added on Nov 15 is lost if it is regenerated.

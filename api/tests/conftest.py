@@ -85,3 +85,26 @@ def client(data_dir, tmp_path):
     with TestClient(app) as c:
         c.post("/rover/vehicle", json={"profile": "rover_scout"})  # existing tests drive the scout
         yield c
+
+
+@pytest.fixture()
+def filled_client(data_dir, tmp_path):
+    """Same terrain plus a strip of interpolated (filled) DEM cells at x 0..40, y -460..-140."""
+    import shutil
+
+    from fastapi.testclient import TestClient
+    from ares_api.main import create_app
+    d = tmp_path / "site"
+    shutil.copytree(data_dir, d)
+    n = int(SIZE / RES)
+    xs = -SIZE / 2 + (np.arange(n) + 0.5) * RES
+    ys = SIZE / 2 - (np.arange(n) + 0.5) * RES
+    xx, yy = np.meshgrid(xs, ys)
+    fill = ((xx >= 0) & (xx <= 40) & (yy >= -460) & (yy <= -140)).astype(np.float32)
+    meta = dict(driver="GTiff", height=n, width=n, count=1, dtype="float32", crs=CRS,
+                transform=from_origin(-SIZE / 2, SIZE / 2, RES, RES))
+    with rasterio.open(d / "analysis" / "filled.tif", "w", **meta) as f:
+        f.write(fill, 1)
+    app = create_app(d, extra_layer_dir=tmp_path / "none", state_file=None)
+    with TestClient(app) as c:
+        yield c

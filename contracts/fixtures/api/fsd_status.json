@@ -7,24 +7,27 @@
  "status": 200,
  "response": {
   "armed": true,
+  "caution_slope_deg": 15,
+  "nogo_slope_deg": 20,
   "mode": "idle",
   "policy": {
    "max_slope_deg": 18,
    "caution_slope_deg": 15,
    "caution_speed_factor": 0.5,
    "replan": true,
-   "max_replans": 1
+   "max_replans": 1,
+   "filled": "caution"
   },
   "route_id": null,
   "active_command": null,
   "remaining_route_m": 0,
   "last_hazard": {
-   "x": 165,
+   "x": 164,
    "y": -60,
-   "slope_deg": 21.3,
+   "slope_deg": 20.5,
    "reason": "blocked_slope"
   },
-  "last_event": "Stopped before 21 deg slope at (165, -60); limit is 20 deg.",
+  "last_event": "Stopped before 21 deg slope at (164, -60); limit is 20 deg.",
   "status": "teleported",
   "profile": "rover_scout",
   "vehicle": "Scout rover (Perseverance-like)",

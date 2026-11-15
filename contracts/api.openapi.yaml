@@ -697,6 +697,14 @@ components:
             exclusiveMinimum: 0.0
           - type: 'null'
           title: Time Budget Min
+        filled:
+          type: string
+          enum:
+          - block
+          - caution
+          - allow
+          title: Filled
+          default: caution
       type: object
       required:
       - goal
@@ -820,10 +828,34 @@ components:
             - orbit
             - chase
             - ground
+            - planet
           - type: 'null'
           title: Mode
         target:
           title: Target
+        lat:
+          anyOf:
+          - type: number
+            maximum: 90.0
+            minimum: -90.0
+          - type: 'null'
+          title: Lat
+        lon:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Lon
+        height_m:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Height M
+        label:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Label
         heading_deg:
           anyOf:
           - type: number

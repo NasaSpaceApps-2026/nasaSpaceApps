@@ -1,0 +1,352 @@
+# Agent eval cases. Run: .venv/bin/python -m agent.evals.run_evals   (needs ANTHROPIC_API_KEY)
+#                       .venv/bin/python -m agent.evals.run_evals --replay agent/replays   (no key)
+#
+# tool_path:
+#   required:  list of groups; each group is a tool name or a list of acceptable alternatives; every
+#              group must be called at least once.
+#   order:     groups that must first occur in this order (a subsequence of the call sequence).
+#   allowed:   optional whitelist (plus `always_allowed` below); any other tool call fails the case.
+#   forbidden: tools that must not be called.
+# checks:
+#   reply_contains_all: [group, ...]  each group (string or list of alternatives) must appear (case-insens.)
+#   reply_contains_any: [..]          at least one must appear
+#   reply_not_contains: [..]
+#   max_tool_calls: N
+#   numbers_grounded: true (default)  every measurement-like number in the reply must appear in a tool
+#                                     result of the same session (or in the prompt / app-state block)
+# setup (live runs only): {markers: [{x, y, label}], route: {start, goal, profile}} created through the REST API
+# before the case (markers are removed afterwards) for prompts that presuppose app state ("my marker", "that route").
+# A case whose required tools the MCP server does not (yet) offer is reported SKIP, not FAIL
+# (use --strict to make skips fail).
+
+always_allowed: [get_site_overview, list_layers, describe_layer, get_set, list_markers]
+
+cases:
+  # ---- the six demo prompts (docs/scope-c-d.md) ----
+  - id: demo_carbonates
+    source: scope-doc demo 1
+    prompt: "Where are the best places to find carbonates near base?"
+    tool_path:
+      required: [[find_sites, find_regions, find_locations], [set_view, fly_camera]]
+      order: [[find_sites, find_regions, find_locations], [set_view, fly_camera]]
+    checks:
+      reply_contains_all: [[CRISM, "orbital"]]
+      reply_not_contains: ["% chance", "probability", "likely contains"]
+
+  - id: demo_route_two_markers
+    source: scope-doc demo 2
+    prompt: "Plan a route between my two markers under 15°."
+    # With no markers placed, listing them and asking the user to place two is the CORRECT answer (inventing endpoints
+    # would be wrong). When two markers do exist the agent should go on to plan_route and assess_route.
+    tool_path:
+      required: [list_markers]
+      order: [list_markers, [plan_route, assess_route]]
+    checks:
+      reply_contains_any: ["feasible", "margin", "slope", "distance", "marker", "place", "click"]
+
+  - id: demo_take_me_to_delta
+    source: scope-doc demo 3
+    prompt: "Take me to the delta front."
+    tool_path:
+      required: [search_pois, teleport_rover, fly_camera]
+      order: [search_pois, [teleport_rover, fly_camera]]
+    checks:
+      max_tool_calls: 8
+
+  - id: demo_marswalk
+    source: scope-doc demo 4
+    prompt: "Plan a 4-hour Marswalk to the two best science targets."
+    tool_path:
+      required: [plan_science_traverse, assess_route]
+      order: [plan_science_traverse, assess_route]
+    checks:
+      reply_contains_any: ["margin", "reserve", "feasible", "hour", "minutes"]
+
+  - id: demo_scout
+    source: scope-doc demo 5
+    prompt: "Scout that route; stop if unsafe and tell me why."
+    # The prompt presupposes an existing route: the live runner plans one through the REST API first (`setup`).
+    setup:
+      route: {start: rover, goal: "poi:sample_16_kukaklek", profile: rover_scout}
+    tool_path:
+      required: [fsd_enable, follow_route]
+      order: [fsd_enable, follow_route]
+    checks:
+      reply_contains_any: ["arrived", "blocked", "hazard", "stopped", "timeout", "replanned", "no route"]
+
+  - id: demo_sample_near_me
+    source: scope-doc demo 6
+    prompt: "What's worth sampling near me?"
+    tool_path:
+      required: [[search_pois, find_sites, find_locations, find_regions]]
+    checks:
+      reply_contains_any: ["rover", "from your position", "from the rover", "near"]
+
+  # ---- contracts/mcp-tools.md section 6 question set ----
+  - id: q01_terrain_at_landing_site
+    source: mcp-tools q1
+    prompt: "What is the terrain like at the Perseverance landing site?"
+    tool_path:
+      required: [describe_location]
+      allowed: [describe_location, sample_terrain, search_pois]   # a harmless extra lookup of the landing-site POI is fine
+    checks:
+      reply_contains_any: ["HiRISE", "baseline", "slope"]
+
+  - id: q02_three_flat_spots_walk
+    source: mcp-tools q2
+    prompt: "Find 3 flat spots big enough for a 50 m pad within a 1 hour walk of the landing site."
+    tool_path:
+      required: [find_locations]
+      allowed: [find_locations, describe_location, nearest, set_view]   # set_view: highlighting the answer set is intended
+    checks:
+      reply_contains_any: ["assumed", "cited", "walk", "approximate"]
+
+  - id: q03_good_landing_spots
+    source: mcp-tools q3
+    prompt: "Find good landing spots."
+    tool_path:
+      required: [find_locations]
+      allowed: [find_locations, describe_location, nearest, set_view]   # set_view: highlighting the answer set is intended
+    checks:
+      reply_contains_any: ["pad", "not a landing ellipse", "footprint"]
+
+  - id: q04_zero_slope_pad
+    source: mcp-tools q4
+    prompt: "Find a pad with zero slope anywhere."
+    tool_path:
+      required: [find_locations]
+    checks:
+      reply_contains_any: ["no spot", "no location", "none", "nothing", "relax", "no place", "not find", "could not", "couldn't",
+                           "doesn't exist", "doesn’t exist", "does not exist", "no cell", "bottleneck"]
+
+  - id: q05_crater_rim_walk
+    source: mcp-tools q5
+    prompt: "Is this crater rim safe to walk?"
+    tool_path:
+      required: [describe_location]
+    checks:
+      reply_contains_any: ["max", "maximum", "steepest"]
+
+  - id: q06_slope_layer_limits
+    source: mcp-tools q6
+    prompt: "What can the slope layer not tell me?"
+    tool_path:
+      required: [describe_layer]
+      allowed: [describe_layer, list_layers]
+      forbidden: [find_locations, find_regions]
+    checks:
+      max_tool_calls: 4
+      reply_contains_any: ["does not measure", "cannot", "can't", "below", "smaller than", "not measure"]
+
+  - id: q07_outside_hirise_coverage
+    source: mcp-tools q7
+    prompt: "Find spots outside the HiRISE coverage."
+    tool_path:
+      required: [[describe_layer, list_layers, find_locations, find_regions]]
+    checks:
+      reply_contains_any: ["coverage", "unknown", "no data", "cannot", "can't"]
+      reply_not_contains: ["is flat", "are flat", "safe to land"]
+
+  - id: q08_carbonate_reachable_and_pad
+    source: mcp-tools q8 (needs mineral data)
+    prompt: "Find carbonate outcrops reachable in 2 hours and the nearest landing pad to each."
+    tool_path:
+      required: [find_regions, find_locations, nearest]
+      order: [find_regions, find_locations, nearest]
+    checks:
+      reply_contains_any: ["weak_orbital", "strong_orbital", "orbital", "confirmed_in_situ", "tier"]
+      reply_not_contains: ["% chance", "probability"]
+
+  - id: q09_rover_confirmed_carbonate
+    source: mcp-tools q9 (needs mineral data)
+    prompt: "Where has carbonate been confirmed by the rover?"
+    # find_sites(target="carbonate", min_tier="confirmed_in_situ") is the direct route (its description says so);
+    # find_regions with an evidence condition at tier 4 gives the same answer, so all three are accepted.
+    tool_path:
+      required: [[find_sites, find_regions, find_locations]]
+    checks:
+      reply_contains_any: ["confirmed_in_situ", "in situ", "in-situ", "sample site"]
+
+  - id: q10_olivine_delta_front
+    source: mcp-tools q10 (needs mineral data)
+    prompt: "Is there olivine at the delta front?"
+    tool_path:
+      required: [[describe_location, find_regions, find_locations, describe_layer, search_pois]]
+    checks:
+      reply_contains_any: ["orbital", "in situ", "in-situ", "tier", "no coverage", "cannot", "not available"]
+      reply_not_contains: ["% chance", "probability"]
+
+  # ---- sun position and illumination ----
+  - id: sun_local_time_now
+    source: sun tools
+    prompt: "What is the local time at Jezero right now, and how high is the sun?"
+    tool_path:
+      required: [sun_position]
+    checks:
+      max_tool_calls: 3
+      reply_contains_all: [["LTST", "true solar time", "local true solar"], ["LMST", "mean solar time", "local mean"]]
+      reply_not_contains: ["% chance"]
+
+  - id: sun_pad_shadow_1600
+    source: sun tools
+    prompt: "Is the landing site in shadow at 16:00 local solar time? When is it lit well enough to image (sun at least 20 degrees up)?"
+    tool_path:
+      required: [illumination_at, find_lit_windows]
+      order: [illumination_at, find_lit_windows]
+    checks:
+      reply_contains_any: ["direct sun", "twilight", "scatter", "geometric", "not modelled", "not modeled"]
+
+  # ---- line of sight ----
+  - id: los_radio_base_from_marker
+    source: visibility tools
+    prompt: "Is the base in radio line of sight from my marker, with a 3 m mast on the base?"
+    # "my marker" presupposes one marker exists: the live runner places it through the REST API (`setup`) and removes it after.
+    setup:
+      markers: [{x: 1500, y: -300, label: "my marker"}]
+    tool_path:
+      required: [line_of_sight]
+    checks:
+      reply_contains_any: ["clear", "blocked", "no marker", "place", "marker"]
+      reply_contains_all: [["Fresnel", "not modelled", "not modeled", "optical", "geometric"]]
+      reply_not_contains: ["guaranteed link"]
+
+  - id: vantage_overlook_outcrop
+    source: visibility tools
+    prompt: "Find a spot where I can stand that overlooks the biggest carbonate outcrop, gentle ground, within a 30 minute walk of base."
+    tool_path:
+      required: [[find_regions, find_sites], find_vantage_points]
+      order: [[find_regions, find_sites], find_vantage_points]
+    checks:
+      reply_contains_any: ["1.7", "eye", "assumed", "sees", "visible"]
+      max_tool_calls: 8
+
+  # ---- ancient lake and EVA safety ----
+  - id: lake_landing_underwater
+    source: lake tools
+    prompt: "Would the landing site have been underwater at the highest lake level recorded by the delta, and how deep?"
+    tool_path:
+      required: [flood_at_level]
+    checks:
+      reply_contains_any: ["present-day", "today's topography", "modern topography", "current topography"]
+      reply_contains_all: [["Mangold", "LPSC", "delta"]]
+      max_tool_calls: 4
+
+  - id: lake_shoreline_level
+    source: lake tools
+    prompt: "Show me the shoreline if the lake stood at -2450 m."
+    tool_path:
+      required: [flood_at_level, [set_view, fly_camera]]
+      order: [flood_at_level, [set_view, fly_camera]]
+    checks:
+      reply_contains_any: ["present-day", "today's topography", "modern topography", "datum", "approximation"]
+
+  - id: eva_envelope_8h
+    source: eva tools
+    prompt: "How far from base can the crew walk in an 8 hour EVA and still get back with a 20% reserve?"
+    tool_path:
+      required: [eva_envelope]
+    checks:
+      reply_contains_any: ["assumed", "placeholder", "isotropic", "twice"]
+      max_tool_calls: 4
+
+  - id: eva_route_point_of_no_return
+    source: eva tools
+    prompt: "Plan a walk from base to the Swift Run sample site and tell me whether the crew can always get back within a 4 hour EVA with 20% reserve."
+    tool_path:
+      required: [plan_route, check_eva_return]
+      order: [plan_route, check_eva_return]
+    checks:
+      reply_contains_any: ["margin", "point of no return", "walk back", "walk-back"]
+
+  - id: buggy_base_to_delta_front
+    source: buggy driving
+    prompt: "Drive the buggy from base to the delta front."
+    tool_path:
+      required: [drive_to]
+      forbidden: [teleport_rover]
+    checks:
+      reply_contains_any: ["crew_buggy", "buggy"]
+      reply_not_contains: ["scout"]
+      max_tool_calls: 5
+
+  - id: friendly_drive_to_the_crater
+    source: friendly copilot
+    prompt: "drive to the crater"
+    tool_path:
+      required: [[drive_to, goto_location]]
+      forbidden: [teleport_rover]
+    checks:
+      reply_contains_any: ["crater", "driving", "on its way", "on screen"]
+      reply_not_contains: ["can't find", "cannot find", "could not find", "couldn't find", "not found"]
+      max_tool_calls: 5
+
+  - id: friendly_go_to_seitah
+    source: friendly copilot
+    prompt: "go to seitah"
+    tool_path:
+      required: [[teleport_rover, drive_to, goto_location]]
+    checks:
+      reply_contains_any: ["Séítah", "Seitah", "seitah"]
+      reply_not_contains: ["can't find", "cannot find", "could not find", "couldn't find", "not found"]
+      max_tool_calls: 5
+
+  - id: friendly_buggy_up_the_hill
+    source: friendly copilot
+    prompt: "drive the buggy up the hill"
+    tool_path:
+      required: [drive_to]
+      forbidden: [teleport_rover]
+    checks:
+      reply_contains_any: ["hill", "high", "top", "driving", "on its way"]
+      max_tool_calls: 5
+
+  - id: friendly_mount_sons
+    source: friendly copilot
+    prompt: "drive from Jezero to Mount Sons"
+    tool_path:
+      required: [[drive_to, goto_location, plan_route]]
+    checks:
+      reply_contains_all: [["Olympus"]]
+      reply_contains_any: ["globe", "far", "km", "outside", "street"]
+      reply_not_contains: ["can't find", "cannot find", "could not find", "couldn't find", "not found", "doesn't exist"]
+      max_tool_calls: 5
+
+  - id: friendly_take_me_to_mt_sharp
+    source: friendly copilot
+    prompt: "take me to mt sharp"
+    tool_path:
+      required: [[teleport_rover, fly_camera, set_view]]
+    checks:
+      reply_contains_any: ["Mount Sharp", "Aeolis", "Gale"]
+      reply_not_contains: ["can't find", "cannot find", "could not find", "couldn't find", "not found"]
+      max_tool_calls: 5
+
+  - id: friendly_drive_300_north
+    source: friendly copilot
+    prompt: "drive 300 m north"
+    tool_path:
+      required: [drive_rover]
+    checks:
+      reply_contains_any: ["north", "driving", "on its way"]
+      max_tool_calls: 3
+
+  - id: buggy_highest_within_1km
+    source: buggy driving
+    prompt: "Drive the buggy to the highest point within 1 km."
+    tool_path:
+      required: [drive_to]
+    checks:
+      reply_contains_any: ["highest", "reachable", "top"]
+      max_tool_calls: 5
+
+  - id: scout_to_marker
+    source: buggy driving
+    setup:
+      markers: [{x: 1900, y: -380, label: "X"}]
+    prompt: "Switch to the scout rover and drive to marker X."
+    tool_path:
+      required: [[drive_to, select_vehicle]]
+      forbidden: [teleport_rover]
+    checks:
+      reply_contains_any: ["rover_scout", "scout"]
+      max_tool_calls: 6

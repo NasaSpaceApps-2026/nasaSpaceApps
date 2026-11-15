@@ -13,12 +13,12 @@
    "all checks pass"
   ],
   "distance_m": 490,
-  "duration_min": 10.1,
-  "max_slope_deg": 3.5,
+  "duration_min": 0.4,
+  "max_slope_deg": 3.9,
   "consumables": {
-   "used_frac": 0.021,
+   "used_frac": 0.001,
    "reserve_frac": 0.2,
-   "margin_frac": 0.779,
+   "margin_frac": 0.799,
    "eva_limit_min": 480,
    "basis": "time-based: (drive + stop time) / EVA limit (assumed)"
   },

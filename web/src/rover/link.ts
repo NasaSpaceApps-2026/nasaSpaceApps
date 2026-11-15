@@ -32,6 +32,8 @@ export interface PoseMessage {
   pitch_deg: number;
   roll_deg: number;
   speed_mps: number;
+  /** Set only while the server reports an auto/fsd drive: this pose is a real user takeover. */
+  takeover?: boolean;
 }
 
 export type LinkStatus = 'connecting' | 'open' | 'closed';
@@ -88,6 +90,9 @@ export class RoverLink {
   private maxRetry: number;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
+  private serverAuto = false; // last server mode was auto/fsd
+  private serverPose: { x: number; y: number } | null = null; // last pose the server reported
+  private staleUntil = 0; // until then, drop poses far from serverPose (the viewer has not adopted it yet)
   private stateFns = new Set<Fn<RemoteRoverState>>();
   private msgFns = new Set<Fn<any>>();
   private statusFns = new Set<Fn<LinkStatus>>();
@@ -145,6 +150,7 @@ export class RoverLink {
       }
       for (const fn of this.msgFns) fn(msg);
       const st = parseRoverState(msg);
+      if (st) this.noteServerPose(st);
       if (st) for (const fn of this.stateFns) fn(st);
     };
     ws.onerror = () => {
@@ -173,7 +179,25 @@ export class RoverLink {
   }
 
   sendPose(p: SitePose & { speed_mps: number }): boolean {
-    return this.send(makePoseMessage(p));
+    // The driver only sends a pose while the server is in auto/fsd after a real input (takeover()), so
+    // flag it; the server ignores unflagged periodic poses during an API drive.
+    // After a server-driven move (auto/fsd ended, or a pose jump) never report a pose that is still the old local one:
+    // the server would adopt it and the rover would snap back. Poses near the server pose clear the guard.
+    if (!this.serverAuto && this.serverPose && Date.now() < this.staleUntil) {
+      if (Math.hypot(p.x - this.serverPose.x, p.y - this.serverPose.y) > 2) return false;
+      this.staleUntil = 0;
+    }
+    const msg = makePoseMessage(p);
+    if (this.serverAuto) msg.takeover = true;
+    return this.send(msg);
+  }
+
+  private noteServerPose(st: RemoteRoverState): void {
+    const auto = st.mode === 'auto' || st.mode === 'fsd';
+    const jumped = this.serverPose != null && !auto && Math.hypot(st.x - this.serverPose.x, st.y - this.serverPose.y) > 5;
+    if ((this.serverAuto && !auto) || jumped) this.staleUntil = Date.now() + 3000;
+    this.serverAuto = auto;
+    this.serverPose = { x: st.x, y: st.y };
   }
 
   private scheduleRetry(): void {
@@ -199,7 +223,10 @@ export class RoverLink {
  */
 export class RemotePoseInterpolator {
   private buf: Array<{ t: number; s: RemoteRoverState }> = [];
-  constructor(public delayMs = 150) {}
+  delayMs: number;
+  constructor(delayMs = 150) {
+    this.delayMs = delayMs;
+  }
 
   push(s: RemoteRoverState, tMs: number): void {
     this.buf.push({ t: tMs, s });

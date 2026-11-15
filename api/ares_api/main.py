@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -21,7 +21,7 @@ from starlette.concurrency import run_in_threadpool
 from . import config
 from .hub import Hub
 from .places import PlaceError, Places
-from .planner import Planner, RouteError
+from .planner import FILLED_POLICIES, Planner, RouteError
 from .rover import RoverSim
 from .science import Validation, plan_science_traverse
 from .search import SearchError, SiteSearch
@@ -99,6 +99,7 @@ class RouteReq(BaseModel):
     profile: str | None = None
     max_slope_deg: float | None = Field(None, gt=0, lt=90)
     time_budget_min: float | None = Field(None, gt=0)
+    filled: Literal["block", "caution", "allow"] = "caution"  # interpolated DEM cells
 
 
 class ScienceReq(BaseModel):
@@ -129,8 +130,12 @@ class LayerView(BaseModel):
 
 
 class ViewReq(BaseModel):
-    mode: Literal["globe", "orbit", "chase", "ground"] | None = None
+    mode: Literal["globe", "orbit", "chase", "ground", "planet"] | None = None
     target: Position = None
+    lat: float | None = Field(None, ge=-90, le=90)  # mode "planet": planetocentric degrees
+    lon: float | None = None  # east-positive degrees
+    height_m: float | None = Field(None, gt=0)
+    label: str | None = None
     heading_deg: float | None = None
     pitch_deg: float | None = None
     distance_m: float | None = None
@@ -273,7 +278,7 @@ def create_app(data_dir: Path = None, extra_layer_dir: Path = None, state_file: 
         r = await run_in_threadpool(pl.plan, pts[0][:2], pts[-1][:2], via=[p[:2] for p in pts[1:-1]],
                                     labels=[p[2] for p in pts], profile=req.profile,
                                     max_slope_deg=req.max_slope_deg, time_budget_min=req.time_budget_min,
-                                    stops=len(req.via))
+                                    stops=len(req.via), filled=req.filled)
         world.hub.emit("route.set", r)
         world.save_state()
         return r
@@ -349,6 +354,7 @@ def create_app(data_dir: Path = None, extra_layer_dir: Path = None, state_file: 
     def rover_vehicles():
         return {"current": world.rover.prof["name"],
                 "vehicles": {k: {"title": v.get("title", k), "flat_speed_mps": v["flat_speed_mps"],
+                                 "caution_slope_deg": v["caution_slope_deg"],
                                  "nogo_slope_deg": v["nogo_slope_deg"], "source": v.get("source", "assumed")}
                              for k, v in world.cfg["profiles"].items()}}
 
@@ -387,6 +393,8 @@ def create_app(data_dir: Path = None, extra_layer_dir: Path = None, state_file: 
         if c == "fsd_enable":
             rv.fsd_armed = True
             rv.policy = {**rv.default_policy(), **(req.policy or {})}
+            if rv.policy["filled"] not in FILLED_POLICIES:
+                raise PlaceError(f"policy.filled must be one of {', '.join(FILLED_POLICIES)}.")
             if not req.route_id:
                 return {"ok": True, "cmd": c, "fsd": rv.fsd_status(),
                         "hint": "FSD armed. Call follow_route with a route_id to drive under the policy."}
@@ -402,7 +410,8 @@ def create_app(data_dir: Path = None, extra_layer_dir: Path = None, state_file: 
         elif c == "goto":
             x, y, label = world.resolve(req.target)
             r = await run_in_threadpool(pl.plan, rv.xy(), (x, y), labels=["rover", label], profile=rv.prof["name"],
-                                        max_slope_deg=rv.policy["max_slope_deg"] if rv.fsd_armed else None)
+                                        max_slope_deg=rv.policy["max_slope_deg"] if rv.fsd_armed else None,
+                                        filled=rv.policy["filled"] if rv.fsd_armed else "caution")
             world.save_state()
             world.hub.emit("route.set", r)
             cmd = rv.start("goto", [(p["x"], p["y"]) for p in r["points"][1:]], label, req.speed_factor, r["route_id"])
@@ -414,7 +423,8 @@ def create_app(data_dir: Path = None, extra_layer_dir: Path = None, state_file: 
             x0, y0 = rv.xy()
             if math.hypot(path[0][0] - x0, path[0][1] - y0) > 10:
                 approach = await run_in_threadpool(pl.plan, (x0, y0), path[0], labels=["rover", r["start"]],
-                                                   profile=rv.prof["name"])
+                                                   profile=rv.prof["name"],
+                                                   filled=rv.policy["filled"] if rv.fsd_armed else "caution")
                 path = [(p["x"], p["y"]) for p in approach["points"][1:]] + path[1:]
             cmd = rv.start("follow_route", path, r["goal"], req.speed_factor, req.route_id)
         else:
@@ -439,6 +449,19 @@ def create_app(data_dir: Path = None, extra_layer_dir: Path = None, state_file: 
     @app.post("/view")
     def set_view(req: ViewReq):
         out = {}
+        if req.mode == "planet":
+            if req.lat is None or req.lon is None:
+                raise HTTPException(422, "mode 'planet' needs lat and lon (planetocentric degrees, east longitude).")
+            pl = {"mode": "planet", "lat": req.lat, "lon": req.lon}
+            if req.height_m is not None:
+                pl["height_m"] = req.height_m
+            if req.label:
+                pl["label"] = req.label
+            cam = {**pl, "payload": pl}  # flat fields for old consumers, payload form for the viewer
+            world.view["mode"] = "planet"
+            world.hub.emit("view.camera", cam)
+            out["camera"] = cam
+            req = req.model_copy(update={"mode": None, "target": None})
         if req.mode or req.target is not None:
             cam = {"mode": req.mode or world.view["mode"], "heading": req.heading_deg, "pitch": req.pitch_deg,
                    "distance": req.distance_m}

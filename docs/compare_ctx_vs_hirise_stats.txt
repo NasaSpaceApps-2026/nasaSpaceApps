@@ -1,0 +1,12 @@
+window 2000 m square centred on 18.4447N 77.4508E
+CTX done
+HiRISE DTM done
+orthos done
+
+Elevation HiRISE minus CTX: median -1.71 m, RMS 3.09 m, p99 |dz| 8.73 m
+                p50    p95    p99    max   >15deg   >20deg   >25deg
+CTX 20 m        2.2    5.5    8.1   11.7    0.00%    0.00%    0.00%
+HiRISE 4 m      2.9    9.2   13.5   27.8    0.56%    0.06%    0.00%
+HiRISE 2 m      3.1    9.8   14.4   33.4    0.81%    0.12%    0.01%
+wrote docs/compare_ctx_vs_hirise_2000m.png
+wrote docs/compare_zoom_300m.png

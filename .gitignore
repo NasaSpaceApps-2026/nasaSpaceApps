@@ -16,3 +16,8 @@ web/.env.local
 # Regenerate with: api/.venv/bin/python api/scripts/make_playground.py
 api/fixtures/playground/
 api/.state/
+
+# Local stack launcher (stack/up.sh): logs, pid files, exported data dirs; chat-dev minimap render
+stack/logs/
+stack/cache/
+chat-dev/public/minimap/

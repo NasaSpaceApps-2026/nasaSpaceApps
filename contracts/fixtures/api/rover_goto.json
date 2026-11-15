@@ -18,16 +18,17 @@
   "replans": 0,
   "events": [],
   "route_id": "r4",
+  "filled_crossed_m": 0.0,
   "state": {
    "x": -20.0,
    "y": -60.0,
    "z": -2399.9,
-   "heading_deg": 71.2,
+   "heading_deg": 70.7,
    "pitch_deg": -1.9,
    "roll_deg": -0.2,
    "speed_mps": 0.0,
    "mode": "idle",
-   "odometer_m": 490.1,
+   "odometer_m": 489.1,
    "route_id": "r4",
    "status": "arrived",
    "last_event": "Arrived at Core sample site 1.",
@@ -36,7 +37,9 @@
    "lon": 77.409644,
    "slope_deg": 1.9,
    "vehicle": "rover_scout",
-   "mission_time_min": 204.23
+   "caution_slope_deg": 15,
+   "nogo_slope_deg": 20,
+   "mission_time_min": 204.21
   },
   "fsd": null
  }

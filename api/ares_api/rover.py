@@ -19,6 +19,7 @@ STOP_REASONS = ("arrived", "blocked_slope", "blocked_hazard", "out_of_bounds", "
                 "stopped_by_user", "timeout")
 SUBSTEP_M = 1.0
 ARRIVE_M = 0.5
+STALE_POSE_M = 2.0  # unflagged viewer pose farther than this from the server pose, after a server-driven move, is stale
 
 
 class Command:
@@ -33,6 +34,8 @@ class Command:
         self.fsd = fsd
         self.replans = 0
         self.distance = 0.0
+        self.filled_noted = False
+        self.filled_m = 0.0  # metres driven over interpolated (filled) DEM cells
         self.events: list[str] = []
         self.future: asyncio.Future = asyncio.get_event_loop().create_future()
 
@@ -50,11 +53,16 @@ class RoverSim:
         self.t = terrain
         self.planner = planner
         self.hub = hub
+        self._filled_u8 = terrain.filled.astype(np.uint8)  # cached: sampled every 1 m sub-step
+        self._nodata_u8 = terrain.nodata.astype(np.uint8)
         self.prof = planner.profile(planner.cfg.get("vehicle_profile") or planner.cfg["rover_profile"])
+        planner.default_vehicle = self.prof["name"]
         self.cmd: Command | None = None
         self.fsd_armed = False
         self.policy = self.default_policy()
         self.last_hazard = None
+        self._await_ack = False  # server moved the rover; viewer has not yet reported a pose near it
+        self._stale_seen = None  # (x, y) of the last ignored stale pose
         x, y = start
         self.s = {"x": x, "y": y, "z": 0.0, "heading_deg": 0.0, "pitch_deg": 0.0, "roll_deg": 0.0,
                   "speed_mps": 0.0, "mode": "idle", "odometer_m": 0.0, "mission_time_s": 0.0,
@@ -63,7 +71,8 @@ class RoverSim:
 
     def default_policy(self) -> dict:
         return {"max_slope_deg": self.prof["nogo_slope_deg"], "caution_slope_deg": self.prof["caution_slope_deg"],
-                "caution_speed_factor": 0.5, "replan": True, "max_replans": 1}
+                "caution_speed_factor": 0.5, "replan": True, "max_replans": 1,
+                "filled": "caution"}  # interpolated DEM cells: block | caution (slow, report) | allow
 
     # --- state ----------------------------------------------------------------------
     def _settle(self):
@@ -79,6 +88,8 @@ class RoverSim:
         s["slope_deg"] = round(float(self.t.slope(s["x"], s["y"])), 1)
         s["fsd_armed"] = self.fsd_armed
         s["vehicle"] = self.prof["name"]
+        s["caution_slope_deg"] = self.prof["caution_slope_deg"]
+        s["nogo_slope_deg"] = self.prof["nogo_slope_deg"]
         s["mission_time_min"] = round(s.pop("mission_time_s") / 60, 2)
         return s
 
@@ -111,6 +122,7 @@ class RoverSim:
         if self.cmd:
             self._finish("stopped_by_user", f"Vehicle changed to {name}.")
         self.prof = prof
+        self.planner.default_vehicle = prof["name"]
         self.policy = self.default_policy()
         return prof
 
@@ -122,7 +134,7 @@ class RoverSim:
         dz = float(self.t.elevation(nx, ny)) - float(self.t.elevation(x, y))
         return math.degrees(math.atan2(dz, d))
 
-    def _speed(self, slope: float, cmd: Command, grade: float = None) -> tuple[float, float, str | None]:
+    def _speed(self, slope: float, cmd: Command, grade: float = None, filled: bool = False) -> tuple[float, float, str | None]:
         """(display speed, real mission speed, stall note) in m/s.
         Vehicles with a force model use the same power/grip balance as the browser rover on the
         signed grade; others use the planner's speed curve on the slope."""
@@ -133,6 +145,8 @@ class RoverSim:
             real = float(self.planner.speed(slope, self.prof))
         if cmd.fsd and slope >= self.policy["caution_slope_deg"]:
             real *= self.policy["caution_speed_factor"]  # FSD drives cautiously on steep ground
+        if cmd.fsd and filled and self.policy.get("filled", "caution") == "caution":
+            real *= self.policy["caution_speed_factor"]  # ... and on interpolated terrain
         return real * cmd.speed_factor, real, stall
 
     def _advance(self, dt: float):
@@ -156,11 +170,15 @@ class RoverSim:
             if not self.t.in_bounds(nx, ny):
                 return self._finish("out_of_bounds", f"Stopped at the site edge near ({s['x']:.0f}, {s['y']:.0f}).")
             slope = float(self.t.slope(nx, ny))
-            filled = bool(self.t.nearest(self.t.filled.astype(np.uint8), nx, ny))
+            filled = bool(self.t.nearest(self._filled_u8, nx, ny))
+            nodata = bool(self.t.nearest(self._nodata_u8, nx, ny)) or not math.isfinite(slope)
+            fpol = self.policy.get("filled", "caution")
             limit = self.policy["max_slope_deg"] if cmd.fsd else self.prof["nogo_slope_deg"]
-            if slope > limit or (cmd.fsd and filled):
-                reason = "blocked_hazard" if filled and slope <= limit else "blocked_slope"
-                what = "unknown (interpolated) terrain" if reason == "blocked_hazard" else f"{slope:.0f} deg slope"
+            block_filled = cmd.fsd and filled and fpol == "block"
+            if nodata or slope > limit or block_filled:
+                reason = "blocked_hazard" if (nodata or block_filled) and not slope > limit else "blocked_slope"
+                what = ("no-data terrain" if nodata else "unknown (interpolated) terrain") if reason == "blocked_hazard" \
+                    else f"{slope:.0f} deg slope"
                 self.last_hazard = {"x": round(nx), "y": round(ny), "slope_deg": round(slope, 1), "reason": reason}
                 self.hub.emit("rover.hazard", self.last_hazard)
                 if cmd.fsd and self.policy["replan"] and cmd.replans < self.policy["max_replans"]:
@@ -168,7 +186,13 @@ class RoverSim:
                         return
                 return self._finish(reason, f"Stopped before {what} at ({nx:.0f}, {ny:.0f}); "
                                             f"limit is {limit:.0f} deg.")
-            _, real, stall = self._speed(slope, cmd, self._grade(s["x"], s["y"], nx, ny))
+            _, real, stall = self._speed(slope, cmd, self._grade(s["x"], s["y"], nx, ny), filled)
+            if filled:
+                cmd.filled_m += step
+                if not cmd.filled_noted and fpol != "allow":
+                    cmd.filled_noted = True
+                    self._event(f"Entering interpolated (filled) terrain at ({nx:.0f}, {ny:.0f})"
+                                + ("; slowing down." if cmd.fsd and fpol == "caution" else "."))
             if stall:
                 self.last_hazard = {"x": round(nx), "y": round(ny), "slope_deg": round(slope, 1), "reason": "stalled"}
                 self.hub.emit("rover.hazard", self.last_hazard)
@@ -194,7 +218,8 @@ class RoverSim:
         cmd.replans += 1
         try:
             r = self.planner.plan(self.xy(), goal, labels=["rover", cmd.goal_label], profile=self.prof["name"],
-                                  max_slope_deg=self.policy["max_slope_deg"])
+                                  max_slope_deg=self.policy["max_slope_deg"],
+                                  filled=self.policy.get("filled", "caution"))
         except RouteError as e:
             self._event(f"Hit {what}; replan failed: {e}")
             return False
@@ -209,6 +234,7 @@ class RoverSim:
     def _finish(self, reason: str, message: str):
         cmd = self.cmd
         self.cmd = None
+        self._await_ack, self._stale_seen = True, None
         self.s["speed_mps"] = 0.0
         self.s["mode"] = "idle"
         self.s["status"] = reason
@@ -216,7 +242,8 @@ class RoverSim:
         self._settle()
         if cmd and not cmd.future.done():
             cmd.future.set_result({"stop_reason": reason, "message": message, "distance_m": round(cmd.distance, 1),
-                                   "replans": cmd.replans, "events": cmd.events, "route_id": cmd.route_id})
+                                   "replans": cmd.replans, "events": cmd.events, "route_id": cmd.route_id,
+                                   "filled_crossed_m": round(cmd.filled_m, 1)})
         self.hub.emit("rover.state", self.state())
 
     # --- commands --------------------------------------------------------------------------
@@ -230,6 +257,7 @@ class RoverSim:
         self.s["status"] = kind
         self.s["route_id"] = route_id
         self.s["last_event"] = None
+        self.hub.emit("rover.state", self.state())  # viewers switch to auto now, not on the next tick
         return self.cmd
 
     def stop(self, reason: str = "stopped_by_user", message: str = "Stopped on request."):
@@ -242,6 +270,7 @@ class RoverSim:
         if self.cmd:
             self._finish("stopped_by_user", "Teleported.")
         self.s["x"], self.s["y"] = x, y
+        self._await_ack, self._stale_seen = True, None
         if heading is not None:
             self.s["heading_deg"] = heading % 360
         self.s["mode"] = "idle"
@@ -255,9 +284,25 @@ class RoverSim:
         self.hub.emit("rover.state", self.state())
 
     def manual_pose(self, p: dict):
-        """Viewer reports a pose from manual driving; any manual input cancels auto."""
+        """Viewer reports a pose from manual driving. While a command is running, only a pose flagged
+        `takeover: true` (a real key press / explicit control) takes over; the viewer's periodic pose
+        reports are ignored so they cannot cancel an API or agent drive."""
+        takeover = bool(p.get("takeover"))
+        if self.cmd and not takeover:
+            return
         if self.cmd:
             self._finish("stopped_by_user", "Manual takeover from the viewer.")
+        if not takeover and self._await_ack and "x" in p and "y" in p:
+            d = math.hypot(float(p["x"]) - self.s["x"], float(p["y"]) - self.s["y"])
+            if d <= STALE_POSE_M:
+                self._await_ack = False  # the viewer caught up with the server pose
+            else:
+                # The browser keeps reporting its last manual pose after an API/agent drive. A constant far pose
+                # is stale: ignore it. A far pose that keeps changing is the user really driving: accept it.
+                prev, self._stale_seen = self._stale_seen, (float(p["x"]), float(p["y"]))
+                if prev is None or math.hypot(prev[0] - self._stale_seen[0], prev[1] - self._stale_seen[1]) < 0.05:
+                    return
+        self._await_ack, self._stale_seen = False, None
         s = self.s
         moved = math.hypot(p.get("x", s["x"]) - s["x"], p.get("y", s["y"]) - s["y"])
         for k in ("x", "y", "z", "heading_deg", "pitch_deg", "roll_deg", "speed_mps"):
@@ -271,7 +316,8 @@ class RoverSim:
     def fsd_status(self) -> dict:
         s = self.s
         cmd = self.cmd
-        return {"armed": self.fsd_armed, "mode": s["mode"], "policy": self.policy,
+        return {"armed": self.fsd_armed, "caution_slope_deg": self.prof["caution_slope_deg"],
+                "nogo_slope_deg": self.prof["nogo_slope_deg"], "mode": s["mode"], "policy": self.policy,
                 "route_id": s["route_id"], "active_command": cmd.kind if cmd else None,
                 "remaining_route_m": round(cmd.remaining(s["x"], s["y"])) if cmd else 0,
                 "last_hazard": self.last_hazard, "last_event": s["last_event"], "status": s["status"],

@@ -1,5 +1,7 @@
 # Science validity log
 
+*This is the detailed log. Judges: read the summary [docs/science-validity.md](docs/science-validity.md) first. The auto-generated checks (rover tilt vs DEM, CTX vs HiRISE, assumptions register) are in [docs/science-validation.md](docs/science-validation.md). Last reviewed Nov 15, 2026.*
+
 What the simulation claims, what each claim rests on, and how sure we are. Feeds the
 submission's Validity section. Add an entry whenever a number or model changes.
 
@@ -16,7 +18,8 @@ Status key: **cited** (published NASA/peer value) · **derived** (computed from 
 | Terrain elevation | HiRISE DTM, 1 m posts (CTX 20 m fallback) | cited | USGS Mars 2020 TRN products (Stream A) |
 | Imagery | HiRISE ortho, 25 cm, greyscale | cited | USGS; colour shown only as labelled false colour |
 | Slope, roughness | Derived from the DTM (gradient; 5×5 std dev) | derived | Standard DEM analysis |
-| Mineral layers | CRISM-derived abundance, 0–1 | **synthetic** for now | Placeholder rasters labelled "not Mars data" until Stream A ships CRISM products |
+| Mineral layers (query engine, used by the copilot) | Ordinal evidence tiers, 7 minerals; not abundances | cited | Real CRISM map (Parente et al.), see "Query engine and science tools" below |
+| Mineral layers (Yousef's API dev layers) | `layer_min_*` 0–1 | **synthetic** by default | `api/scripts/make_dev_layers.py` rasters labelled "not Mars data" (`api/fixtures/analysis`). Under `stack/up.sh` the API instead loads an export of our site, where `layer_min_*` = real CRISM tier / 4 (test mapping, tier indices not abundances; `devapi/export_ares_dir.py`) |
 | Test sites (fixture, playground) | Analytic / seeded-noise terrain | **synthetic** | Used only for development; manifest says so |
 
 ## Vehicles
@@ -56,9 +59,28 @@ Status key: **cited** (published NASA/peer value) · **derived** (computed from 
 | Rover rigid-body model (browser) | 6-DOF chassis (quaternion attitude, box inertia) on four spring-damper wheels; tyre forces from per-wheel load inside μF_z; motor limited by power (P/v) and grip; chassis corners collide with the ground | derived | Sequential-impulse solver with an implicit spring-damper, 1/240 s sub-steps (slow rovers: up to 0.1 s, ≤ 5 cm per step; ≤ 400 per frame), so it is stable at rest, at 20 m/s and at 3200× time-lapse. Massless wheels, rigid DEM ground (no sinkage), no slip-ratio soil model. Climbs, stalls, slides, jumps and roll-overs emerge from forces |
 | Route planner speed | speed = flat · exp(−k·\|tan slope\|) | assumed | Earth hiking-function shape (Tobler-style). Placeholder for time estimates only |
 | Route planner safety | Cells over the profile's no-go slope (plus a 4 m buffer) are impassable | assumed limits | Policy, not physics: astronaut 25°, scout 20°, buggy 25° (LRV-cited) |
+| Interpolated (filled) DEM cells | Planner: passable, cost x(1 + 4.0), reported in route warnings (default policy `caution`; `block` = impassable, `allow` = no penalty). FSD `caution`: speed x0.5 and an event on entry; `block` stops with `blocked_hazard`. No-data cells are always impassable | assumed | Policy, not physics: the 4.0 penalty and 0.5 speed factor are placeholders (api/profiles.yaml, rover.py); elevation on filled cells is estimated, so slope there is less certain. Changed 2026-11-15 from FSD always stopping |
 | Least-cost path | skimage `MCP_Geometric` on a 4 m grid | derived | Standard cost-distance; path resampled to 5 m |
 | Consumables | (drive + stop time) / EVA limit, minus reserve | assumed | Time-based only; no O₂/power model yet |
 | Site search | Threshold layer → connected regions → score by value, area, slope | derived | Evidence (layer, instrument, values) returned with every site |
+
+## Query engine and science tools (Sameer: `atlas_core/`, `sitebuild/`, MCP)
+
+Narrative summary for judges: `docs/science-validity.md`. These rows cover the real Jezero site our
+MCP query engine uses (`data/build/site/jezero`, built by `sitebuild/`; interim science layers until
+Stream A's official ones land).
+
+| Item | Value | Status | Basis |
+|---|---|---|---|
+| Mineral evidence (query engine) | Ordinal tiers (rover-confirmed / strong orbital / weak orbital / not detected / no coverage), 7 minerals | cited | Parente et al. CRISM map of Jezero (Zenodo, CC BY 4.0), 36 m; black = no coverage. Not abundances: no source gives 0–1 abundance at this scale |
+| Rover-confirmed minerals | Olivine + carbonate at samples 4–7; olivine at 14–15 | cited | Farley et al. 2022 (Science); Williams et al. 2023 and Hurowitz et al. 2023. Positions derived from waypoints (10–50 m) |
+| Geologic units | USGS SIM 3464, shifted +25.8 m E / −98.1 m N to our terrain | cited (shift derived) | Shift measured against HiRISE hillshade; 16 tiles agree within 25 m |
+| Sun position | Mars24 algorithm | cited | Allison & McEwen 2000; NASA GISS algorithm page. Reproduces its Jan 6 2000 example (Ls 277.18758, EOT −5.18774) and Perseverance landing LMST 15:53 (JPL) |
+| Paleolake levels | −2410 m uppermost foresets; breach ca. −2400 m; others in `docs/lake-levels.md` | cited (abstracts) | Mangold et al. LPSC 2024; Villette et al. 2025 (modelled). Datum not stated in sources; floods today's topography |
+| Terrain layers | Aspect, curvature, TPI, TRI, local relief, exposure index | derived | Horn 1981; Zevenbergen & Thorne 1987; Weiss 2001; Riley et al. 1999; Evans 1972. `outcrop_exposure` is our heuristic and is inflated in the noisy-DTM zone |
+| Line of sight | Radial sweep with curvature correction | derived | Franklin & Ray 1994; R = 3,396,190 m; no refraction, Fresnel zone or antenna model |
+| EVA return time | 2 × one-way walking time | assumed | Isotropic placeholder speed curve; reserve 20 % from profile (assumed) |
+| DTM quality flags | Seams 7.4 %, noisy zones 8.2 % of site | derived | Our detectors (`sitebuild/seams.py`, `noise.py`); flags only, elevations never altered |
 
 ## Validation done
 
@@ -67,12 +89,16 @@ Status key: **cited** (published NASA/peer value) · **derived** (computed from 
 | Physics checks (static sag = m g/4k with no jitter; climb speed on 20° = P / (m g (sin θ + C_rr cos θ)) within 0.3 %; scout slips on 30°; brakes hold 20° with no creep, slide on 35°/33°; coasting rollback = g (sin θ − C_rr cos θ); braking time v/(μ g); dip in/out; jump: ≥ 0.3 s air, per-frame Δz/Δpitch bounded, settles in 2 s; cornering radius at 12 m/s ≥ v²/(μ g) (68 m vs 59 m) and 3.1 m at 2 m/s; boost never airborne on flat; scout stable at 16× time-lapse) | 19 / 19 pass | `web/src/rover/sandbox/physics.check.ts` |
 | Height-tile decode vs source terrain | < 0.08 m error (1 m posts) | same |
 | Planner: no route crosses a no-go cell (50 random pairs); flat-terrain duration = distance / speed within 2 % | Pass | `api/tests/test_api.py` |
+| Query-engine slope map vs real Perseverance traverse (24.9 km, MMGIS) | Traverse spends 0.41 % of its length on > 15° vs 4.79 % of site (≈ 12× less), 0.10 % on > 20° vs 1.96 % (≈ 20× less). The "99.9 % safe/caution" headline alone is weak because 98 % of the site is safe | `devapi` `GET /validation`, real site |
+| CTX 20 m vs HiRISE 2 m slope, 2 km around landing site | Max 11.7° vs 33.4°; > 15°: 0 % vs 0.81 % | `docs/compare_ctx_vs_hirise_stats.txt` |
+| Query engine search / travel / visibility vs independent slow oracles | Agree (all cases tested) | `tests/oracle.py`, `tests/oracle_travel.py`, `tests/test_visibility.py` |
+| Site frame (query engine) vs `pipeline/site_cfg.py` | 0.3 mm max | `tests/test_site_build.py` |
 | Hazard map vs real Perseverance traverse (Mars 2020 MMGIS traverse, 279 drives, 23.9 km inside the site, sols 13–1019; slope from the HiRISE DTM doi:10.5066/P9REJ9JN on the 2 m grid; rover_scout classes: caution ≥ 15°, no-go ≥ 20°) | **derived**, 2026-11-14: hazard_agreement **0.999** (99.6 % safe, 0.3 % caution, 0.1 % no-go by length). Baseline over the whole 8 km site: 94.9 % safe, 3.0 % caution, 2.1 % no-go, so the rover drove on our no-go ground ~20× less often than chance. Map slope along the drives: median 3.1°, p95 9.7°, p99 12.7°, max 23.0°. Limit: most of the site is flat, so agreement alone is weak; the baseline comparison is the stronger signal | `GET /validation`, `api/tests/test_real_data.py` |
 | Planned vs driven leg length (8 consecutive real waypoint pairs with 100–1500 m driven, spread over sols 129–1001; actual = rover odometry `dist_total_m`; planner profile rover_scout) | **derived**, 2026-11-14: route_realism planned/driven median **1.00**; 6 of 8 pairs 0.88–1.03; 0.77 (sol 713→714) and 0.14 (sol 1000→1001: 136 m driven between points 19 m apart, an out-and-back) where the rover did not drive point to point. All 8 planned within the 20° limit (max 8.7°). Limit: these drives are near-straight on flat floor, so this checks plausibility, not detour choice | `GET /validation`, `api/tests/test_real_data.py` |
 
 ## Known gaps
 
-- Mineral layers and test terrains are synthetic; real CRISM and HiRISE data replace them via Stream A.
+- Test terrains (fixture, playground) are synthetic, and so are Yousef's API dev mineral layers when it runs on its defaults. The copilot's data (query engine) is real HiRISE and CRISM; the official pipeline layers (Stream A) have not replaced our interim copies.
 - Grip, rolling resistance and buggy power are assumptions; worth one literature check each.
 - API auto-drive uses the steady-state version of the browser force model (power/grip balance on the signed
   grade, `api/ares_api/vehicle.py`), not the full rigid-body/suspension dynamics; the route planner still
@@ -87,6 +113,8 @@ Status key: **cited** (published NASA/peer value) · **derived** (computed from 
   at 15+ m/s the post-to-post slope kinks make the wheels chatter.
 
 ## Change log
+
+- 2026-11-15: Cross-linked the three science documents; corrected the mineral-layer rows (query engine uses real CRISM tiers; the API's dev layers are synthetic only on its defaults).
 
 - 2026-11-14: First run on the real Jezero build (Caden's pipeline: HiRISE DTM 2 m grid, Mars 2020 traverse). `/validation` now uses every traverse drive (not just the first), length-weighted, with a site-wide baseline, and re-plans 8 odometry-measured waypoint pairs; results in the table above.
 
@@ -111,3 +139,4 @@ Status key: **cited** (published NASA/peer value) · **derived** (computed from 
 
 - 2026-11-14: Force-based rover physics replaces hard slope blocking; buggy profile from Apollo LRV specs.
 - 2026-11-14: Planner, site search, validation endpoint; slope limits as safety policy.
+- 2026-11-14: Query engine science rows (real CRISM tiers, rover-confirmed samples, Mars24 sun, paleolake levels, terrain layers, line of sight) and real-traverse validation added (Sameer).

@@ -2082,6 +2082,9 @@
   "max_slope_deg": 4.8,
   "slope_limit_deg": 25,
   "hazard_cells": 0,
+  "filled_policy": "caution",
+  "filled_cells": 0,
+  "filled_length_m": 0,
   "legs": [
    {
     "from": "Fixture base",

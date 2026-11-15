@@ -11,7 +11,7 @@
  "status": 200,
  "response": {
   "feasible": true,
-  "profile": "astronaut_walk",
+  "profile": "crew_buggy",
   "start": "My marker",
   "goal": "Marker 2",
   "stops": [],
@@ -438,25 +438,28 @@
    }
   ],
   "distance_m": 337,
-  "duration_min": 7.1,
+  "duration_min": 0.3,
   "stop_minutes": 0,
   "ascent_m": 7.9,
   "descent_m": 0.7,
   "max_slope_deg": 3.3,
   "slope_limit_deg": 15.0,
   "hazard_cells": 0,
+  "filled_policy": "caution",
+  "filled_cells": 0,
+  "filled_length_m": 0,
   "legs": [
    {
     "from": "My marker",
     "to": "Marker 2",
     "distance_m": 337,
-    "duration_min": 7.1
+    "duration_min": 0.3
    }
   ],
   "consumables": {
-   "used_frac": 0.015,
+   "used_frac": 0.001,
    "reserve_frac": 0.2,
-   "margin_frac": 0.785,
+   "margin_frac": 0.799,
    "eva_limit_min": 480,
    "basis": "time-based: (drive + stop time) / EVA limit (assumed)"
   },
@@ -464,7 +467,7 @@
   "warnings": [],
   "sources": {
    "slope": "synthetic fixture",
-   "speeds": "assumed"
+   "speeds": "assumed performance-buggy concept; geometry, 25 deg slope rating and ~3 m turn radius from Apollo LRV (NASA)"
   },
   "direct_line": {
    "distance_m": 316,

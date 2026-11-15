@@ -1,0 +1,158 @@
+{
+ "cases": {
+  "A delta remnant W ~2.3 km (PIA24485, Mastcam-Z 22 Feb 2021, from landing site)": {
+   "NHjf2_cells": {
+    "target_0m": {
+     "visible_share": 0.256,
+     "cells_in_sector(step2)": 10518
+    },
+    "target_5m": {
+     "visible_share": 0.452,
+     "cells_in_sector(step2)": 10518
+    },
+    "target_20m": {
+     "visible_share": 0.808,
+     "cells_in_sector(step2)": 10518
+    }
+   },
+   "all_cells_same_sector": {
+    "target_0m": {
+     "visible_share": 0.048,
+     "cells_in_sector(step2)": 50176
+    },
+    "target_5m": {
+     "visible_share": 0.056,
+     "cells_in_sector(step2)": 50176
+    },
+    "target_20m": {
+     "visible_share": 0.196,
+     "cells_in_sector(step2)": 50176
+    }
+   },
+   "Njf_floor_cells_same_sector": {
+    "target_0m": {
+     "visible_share": 0.0,
+     "cells_in_sector(step2)": 37588
+    },
+    "target_5m": {
+     "visible_share": 0.0,
+     "cells_in_sector(step2)": 37588
+    },
+    "target_20m": {
+     "visible_share": 0.004,
+     "cells_in_sector(step2)": 37588
+    }
+   },
+   "NHjf2_eye_sensitivity_tgt0": {
+    "eye_0.5": 0.108,
+    "eye_1.7": 0.192,
+    "eye_2.0": 0.24,
+    "eye_2.12": 0.212
+   }
+  },
+  "B delta scarp NW ~2.2 km (NASA 7 Oct 2021 release)": {
+   "NHjf2_cells": {
+    "target_0m": {
+     "visible_share": 0.428,
+     "cells_in_sector(step2)": 41310
+    },
+    "target_5m": {
+     "visible_share": 0.684,
+     "cells_in_sector(step2)": 41310
+    },
+    "target_20m": {
+     "visible_share": 0.98,
+     "cells_in_sector(step2)": 41310
+    }
+   },
+   "all_cells_same_sector": {
+    "target_0m": {
+     "visible_share": 0.4,
+     "cells_in_sector(step2)": 47982
+    },
+    "target_5m": {
+     "visible_share": 0.676,
+     "cells_in_sector(step2)": 47982
+    },
+    "target_20m": {
+     "visible_share": 0.964,
+     "cells_in_sector(step2)": 47982
+    }
+   },
+   "Njf_floor_cells_same_sector": {
+    "target_0m": {
+     "visible_share": 0.196,
+     "cells_in_sector(step2)": 6672
+    },
+    "target_5m": {
+     "visible_share": 0.704,
+     "cells_in_sector(step2)": 6672
+    },
+    "target_20m": {
+     "visible_share": 0.804,
+     "cells_in_sector(step2)": 6672
+    }
+   },
+   "NHjf2_eye_sensitivity_tgt0": {
+    "eye_0.5": 0.344,
+    "eye_1.7": 0.44,
+    "eye_2.0": 0.388,
+    "eye_2.12": 0.416
+   }
+  },
+  "C Kodiak SW ~2.2 km (same release)": {
+   "NHjf2_cells": {
+    "target_0m": null,
+    "target_5m": null,
+    "target_20m": null
+   },
+   "all_cells_same_sector": {
+    "target_0m": {
+     "visible_share": 0.0,
+     "cells_in_sector(step2)": 47984
+    },
+    "target_5m": {
+     "visible_share": 0.0,
+     "cells_in_sector(step2)": 47984
+    },
+    "target_20m": {
+     "visible_share": 0.0,
+     "cells_in_sector(step2)": 47984
+    }
+   },
+   "Njf_floor_cells_same_sector": {
+    "target_0m": {
+     "visible_share": 0.0,
+     "cells_in_sector(step2)": 35401
+    },
+    "target_5m": {
+     "visible_share": 0.0,
+     "cells_in_sector(step2)": 35401
+    },
+    "target_20m": {
+     "visible_share": 0.0,
+     "cells_in_sector(step2)": 35401
+    }
+   },
+   "NHjf2_eye_sensitivity_tgt0": {
+    "eye_0.5": null,
+    "eye_1.7": null,
+    "eye_2.0": null,
+    "eye_2.12": null
+   }
+  }
+ },
+ "sw_fan_extra": {
+  "n_fan_cells_step2": 7791,
+  "bearing_min_max": [
+   258.2631420743134,
+   267.07627772686334
+  ],
+  "range_min_max_m": [
+   2195.696188387638,
+   2674.4711312145437
+  ],
+  "visible_share_tgt0": 0.1675,
+  "visible_share_tgt5": 0.2675
+ }
+}

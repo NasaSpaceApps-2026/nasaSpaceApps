@@ -37,7 +37,10 @@ export class ChaseCamera {
   private target = new THREE.Vector3();
   private init = false;
 
-  constructor(public camera: THREE.PerspectiveCamera, o: ChaseCameraOptions = {}) {
+  camera: THREE.PerspectiveCamera;
+
+  constructor(camera: THREE.PerspectiveCamera, o: ChaseCameraOptions = {}) {
+    this.camera = camera;
     this.distance = o.distance ?? 14;
     this.height = o.height ?? 6;
     this.targetHeight = o.targetHeight ?? 1.2;

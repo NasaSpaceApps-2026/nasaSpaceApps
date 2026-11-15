@@ -5,6 +5,7 @@
 import * as Cesium from 'cesium'
 import { RoverDriver, type DriverPose } from './rover/driver'
 import { KeyboardControls } from './rover/controls'
+import { RemotePoseInterpolator, type RemoteRoverState } from './rover/link'
 import { DEFAULT_ROVER_PROFILE } from './rover/physics'
 import { SPHERE, type Site } from './site'
 
@@ -40,6 +41,8 @@ export class CesiumRover {
   private parts: Part[]
   private last = performance.now()
   private smoothHeading = 0
+  private remote = new RemotePoseInterpolator(150)
+  private remoteAt = -1e9
   private off: () => void
   private viewer: Cesium.Viewer
   private site: Site
@@ -75,6 +78,12 @@ export class CesiumRover {
     const cb = () => this.tick()
     viewer.scene.preRender.addEventListener(cb)
     this.off = () => viewer.scene.preRender.removeEventListener(cb)
+  }
+
+  /** An API-driven (auto/fsd) server state: rendered interpolated (10 Hz updates become smooth motion). */
+  pushRemote(s: RemoteRoverState) {
+    this.remote.push(s, performance.now())
+    this.remoteAt = performance.now()
   }
 
   setChase(on: boolean) {
@@ -113,6 +122,10 @@ export class CesiumRover {
     const now = performance.now()
     const dt = Math.min(0.1, (now - this.last) / 1000)
     this.last = now
+    if (now - this.remoteAt < 700) {
+      const r = this.remote.sample(now)
+      if (r) this.driver.teleport(r.x, r.y, r.heading_deg)
+    }
     const p = this.driver.step(dt)
     // Use the sampled ground height so the rover and the terrain provider agree exactly.
     const { origin, fw, lw, uw } = this.frame(p)
