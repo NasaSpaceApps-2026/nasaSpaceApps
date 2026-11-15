@@ -121,7 +121,7 @@ export interface Poi {
   position_uncertainty_m?: number
 }
 
-export type PlaceKind = 'landing' | 'region' | 'sample' | 'iau'
+export type PlaceKind = 'base' | 'landing' | 'region' | 'sample' | 'iau'
 
 export interface NamedPlace {
   id: string
@@ -146,7 +146,8 @@ export function placesFromPois(pois: Poi[]): NamedPlace[] {
   const landing = pois.find((p) => p.type === 'landmark' && /landing/i.test(p.name))
   const base = pois.find((p) => p.type === 'base')
   if (landing) out.push({ id: landing.id, name: landing.name, kind: 'landing', x: landing.x, y: landing.y, priority: 0, also: base ? [base] : [], poi: landing })
-  else if (base) out.push({ id: base.id, name: 'Mission base', kind: 'landing', x: base.x, y: base.y, priority: 0, also: [], poi: base })
+  // The assumed base gets its own, always-visible marker (kind 'base'); the landing label stays at the same spot.
+  if (base) out.unshift({ id: base.id, name: base.name || 'Mission base (assumed)', kind: 'base', x: base.x, y: base.y, priority: -1, also: [], poi: base })
   for (const p of pois.filter((q) => q.type === 'named_region')) {
     out.push({ id: p.id, name: cleanPoiName(p.name), kind: 'region', x: p.x, y: p.y, priority: 1, also: [], poi: p })
   }
@@ -170,7 +171,9 @@ export function placesFromPois(pois: Poi[]): NamedPlace[] {
 export function placeSummary(pl: NamedPlace, all: Poi[]): string[] {
   const lines: string[] = []
   const minerals = (ps: Poi[]) => [...new Set(ps.flatMap((p) => p.in_situ_minerals ?? []))]
-  if (pl.kind === 'landing') {
+  if (pl.kind === 'base') {
+    lines.push('Assumed mission base for planning: there is no real base on Mars. Walk and drive limits are measured from here. It is placed at the Perseverance landing coordinates.')
+  } else if (pl.kind === 'landing') {
     lines.push('Where Perseverance touched down (published coordinates). The planning base for walks and drives is assumed to be here.')
   } else if (pl.kind === 'region') {
     const samples = all.filter((p) => p.type === 'sample_site' && cleanPoiName(pl.name).toLowerCase() === (p.region ?? '').toLowerCase())
@@ -197,6 +200,7 @@ export function placeSummary(pl: NamedPlace, all: Poi[]): string[] {
 
 export function placeQuestions(pl: NamedPlace): string[] {
   const n = pl.kind === 'sample' ? (pl.poi?.name.split(':')[1] ?? pl.name).replace(/\s*\(aka[^)]*\)/i, '').trim() : pl.name
+  if (pl.kind === 'base') return ['Drive the buggy to the base', 'Find 3 flat landing pads within a 30 minute walk of base']
   if (pl.kind === 'landing') return ['Drive the buggy to the landing site', 'Find 3 flat landing pads within a 30 minute walk of base']
   if (pl.kind === 'iau') return [`What is ${n}?`, `Is ${n} a good place to land?`]
   return [`What did the rover find at ${n}?`, `Drive the buggy to ${n}`]

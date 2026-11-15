@@ -173,3 +173,14 @@ Outside the Jezero view `show` first switches to it. Unknown kinds return `{ ok:
 `npm run build` and `npm run lint` pass (0 errors; the new files add react-hooks style warnings of the kind the repo already has). `cd chat-dev && npx vitest run`: all pass (21 new in explore.test.ts on top of the existing 48; the count has since grown).
 Headless Brave (SwiftShader): lake / sun / layers / reach / history / tour screenshots in `docs/explore_*.png`, a 10-event slider drag sends one request, sun play steps frames and Esc stops it,
 Mars/Jezero round trip leaves the imagery stack at its baseline (4 layers), `atlasOverlay` calls work. Final screenshots were taken against the real devapi (port 8092, new code).
+
+### Mission base marker (Sameer, Nov 15)
+
+The assumed base (POI type `base`, "Mission base (assumed)", from the API `/pois`) now has its own always-visible marker instead of being folded into the landing label. Verified in headless Brave: `scratchpad/pp/base_default.png`, `base_zoom.png`, `base_card.png`. Revert: undo the edits below.
+
+| File | Change | Why |
+|---|---|---|
+| `src/interact/words.ts` | `PlaceKind` gains `'base'`; `placesFromPois` emits a separate `base` place (priority -1, name from the POI, so "(assumed)" stays); `placeSummary`/`placeQuestions` text for it | base was hidden under / merged into the Butler Landing label |
+| `src/interact/labels.ts` | `LabelItem.kind` gains `'base'`; new optional `always` (skips declutter, still reserves space) and `dy` (screen-px offset, used in overlap checks and positioning) | keep the base label from being decluttered and let it sit above the landing label |
+| `src/interact/Interactions.tsx` | base labels get `always: true, dy: -34`; hint and card badge text for `base` | wires the above; clicking still opens the normal place info card |
+| `src/interact/interact.css` | `.plabel--base` styles: green pill, dome icon, leader line and ring to the true spot | distinct from other labels |

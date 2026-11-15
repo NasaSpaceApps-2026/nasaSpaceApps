@@ -145,8 +145,8 @@ export function Interactions(p: Props) {
       for (const q of places) {
         const id = 'pl:' + q.id
         pickers.current.set(id, { k: 'place', place: q })
-        items.push({ id, text: q.name, hint: q.kind === 'region' ? 'Sampling area' : q.kind === 'sample' ? 'Rover sample site' : q.kind === 'landing' ? 'Landing site' : 'IAU place name',
-          pos: site.position(q.x, q.y, 30), priority: q.priority, kind: q.kind, maxDistance: q.kind === 'sample' ? 22000 : undefined })
+        items.push({ id, text: q.name, hint: q.kind === 'region' ? 'Sampling area' : q.kind === 'sample' ? 'Rover sample site' : q.kind === 'landing' ? 'Landing site' : q.kind === 'base' ? 'Assumed mission base' : 'IAU place name',
+          pos: site.position(q.x, q.y, 30), priority: q.priority, kind: q.kind, ...(q.kind === 'base' ? { always: true, dy: -34 } : {}), maxDistance: q.kind === 'sample' ? 22000 : undefined })
       }
       pl.occlude = false
     } else if (mode === 'mars') {
@@ -441,7 +441,7 @@ export function Interactions(p: Props) {
       const pl = c.place
       const lines = placeSummary(pl, pois)
       content = (
-        <Card title={pl.name} badge={pl.kind === 'region' ? 'Sampling area' : pl.kind === 'sample' ? 'Sample site' : pl.kind === 'landing' ? 'Landing site' : 'IAU name'}
+        <Card title={pl.name} badge={pl.kind === 'region' ? 'Sampling area' : pl.kind === 'sample' ? 'Sample site' : pl.kind === 'landing' ? 'Landing site' : pl.kind === 'base' ? 'Assumed base' : 'IAU name'}
           sub={`${latLon(pl.x, pl.y)}`} onClose={close} cardRef={setCardEl}
           actions={[
             { label: 'Drive here', primary: true, busy: busy === 'drive', onClick: () => driveHere(pl.x, pl.y, pl.name) },

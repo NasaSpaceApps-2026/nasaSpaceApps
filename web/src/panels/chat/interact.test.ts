@@ -41,9 +41,10 @@ describe('places', () => {
     { id: 's4', name: 'Sample 4: Salette', type: 'sample_site', x: 100, y: 100, sol: 262 },
     { id: 's5', name: 'Sample 5: Coulettes', type: 'sample_site', x: 100, y: 100, sol: 271 },
   ];
-  it('merges base into landing, groups samples, cleans names', () => {
+  it('gives the base its own place, groups samples, cleans names', () => {
     const pl = placesFromPois(pois);
-    expect(pl.map((p) => p.name)).toEqual(['Octavia E. Butler Landing', 'South Séítah', 'Salette · sample 4 +1']);
-    expect(placeQuestions(pl[1])).toEqual(['What did the rover find at South Séítah?', 'Drive the buggy to South Séítah']);
+    const base = pois.find((p) => p.type === 'base')!;
+    expect(pl.map((p) => p.name)).toEqual([base.name, 'Octavia E. Butler Landing', 'South Séítah', 'Salette · sample 4 +1']);
+    expect(placeQuestions(pl[2])).toEqual(['What did the rover find at South Séítah?', 'Drive the buggy to South Séítah']);
   });
 });
