@@ -23,14 +23,7 @@ In that window:
 | Jezero fan | `crater` | 1.8 km |
 | Olympus Mons scarp | `olympus` | ~2.2 km |
 
-Drive: W/S, steer A/D, boost Shift/Space, reset R.
-
-| Bubble label | Street-view `?world=` | Size |
-|---|---|---|
-| Jezero fan | `crater` | 1.8 km |
-| Olympus Mons scarp | `olympus` | ~2.2 km |
-
-Drive in street view: W/S, steer A/D, boost Shift/Space, reset R.
+Drive with the arrow keys or W/S. Steer with the left and right arrows or A/D. Boost is Shift, brake is Space, reset is R.
 
 ## Rover sandbox alone (port 5174)
 

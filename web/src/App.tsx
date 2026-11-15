@@ -10,7 +10,6 @@ import { BUBBLES } from './bubbles'
 import { dropOnBubbles, type StreetDrop } from './pegman'
 import './App.css'
 
-const SANDBOX_DEV = 'http://localhost:5174'
 type SurfaceView = 'planet' | 'street'
 
 const MARS_ION_ASSET = 3644333
@@ -108,6 +107,7 @@ export default function App() {
   const [streetDrop, setStreetDrop] = useState<StreetDrop | null>(null)
   const pegRef = useRef<HTMLDivElement>(null)
   const pegDrag = useRef(false)
+  const streetFrame = useRef<HTMLIFrameElement>(null)
 
   useEffect(() => {
     let dead = false
@@ -364,15 +364,54 @@ export default function App() {
   }
 
   const sandboxSrc = streetDrop
-    ? `${SANDBOX_DEV}/?world=${streetDrop.world}&x=${streetDrop.x}&y=${streetDrop.y}&heading=0`
+    ? `/sandbox/?world=${encodeURIComponent(streetDrop.world)}&x=${streetDrop.x}&y=${streetDrop.y}&heading=0&link=0`
     : ''
+
+  useEffect(() => {
+    if (!viewer) return
+    const driving = surfaceView === 'street'
+    viewer.useDefaultRenderLoop = !driving
+    if (!driving) {
+      viewer.resize()
+      viewer.scene.requestRender()
+    }
+  }, [viewer, surfaceView])
+
+  useEffect(() => {
+    if (surfaceView !== 'street') return
+    const frame = streetFrame.current
+    const focusFrame = () => {
+      frame?.focus()
+      try { frame?.contentWindow?.focus() } catch { /* focus is allowed cross-origin */ }
+    }
+    focusFrame()
+    const later = window.setTimeout(focusFrame, 500)
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null
+      if (el && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) return
+      frame?.contentWindow?.postMessage({
+        type: 'ares-drive-key',
+        code: e.code,
+        down: e.type === 'keydown',
+        repeat: e.repeat,
+      }, window.location.origin)
+      if (e.type === 'keydown' && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault()
+    }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('keyup', onKey)
+    return () => {
+      window.clearTimeout(later)
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('keyup', onKey)
+    }
+  }, [surfaceView, sandboxSrc])
 
   return (
     <div className="app">
       <div ref={box} className={`cesium${surfaceView === 'street' ? ' cesium--hidden' : ''}`} />
       {surfaceView === 'street' && streetDrop && (
         <>
-          <iframe className="street-frame" title="Rover street view" src={sandboxSrc} />
+          <iframe ref={streetFrame} className="street-frame" title="Rover street view" src={sandboxSrc} tabIndex={0} />
           <button type="button" className="map-back" onClick={leaveStreet}>Map</button>
         </>
       )}

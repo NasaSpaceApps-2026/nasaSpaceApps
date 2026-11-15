@@ -105,6 +105,12 @@ export default defineConfig(() => {
     plugins: [react(), cesium(), roverWorlds(), sandboxDev()],
     envDir: '..',
     publicDir: process.env.VITE_SITE_DIR ?? '../data/build',
-    server: { port: 5173, fs: { allow: [repo] } },
+    server: {
+      port: 5173,
+      fs: { allow: [repo] },
+      proxy: {
+        '/sandbox': { target: 'http://127.0.0.1:5174', changeOrigin: true, ws: true },
+      },
+    },
   }
 })
