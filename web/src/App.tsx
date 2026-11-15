@@ -5,12 +5,15 @@ import { R, Site, SPHERE, deg } from './site'
 import { siteImagery, siteTerrain } from './providers'
 import { CesiumRover } from './cesiumRover'
 import { PlacesLayer, type Place } from './places'
+import { BUBBLES } from './bubbles'
 import './App.css'
 
 const MARS_ION_ASSET = 3644333
-type Mode = 'orbit' | 'site' | 'ground' | 'rover'
+type Mode = 'orbit' | 'site' | 'ground' | 'rover' | 'planet'
 let roverCtl: CesiumRover | null = null // set once the viewer is up; used by fly()
 let placesCtl: PlacesLayer | null = null
+let marsTileset: Cesium.Cesium3DTileset | null = null
+let bubbleEntities: Cesium.Entity[] = []
 
 export default function App() {
   const box = useRef<HTMLDivElement>(null)
@@ -122,6 +125,7 @@ export default function App() {
           })
           v.scene.primitives.add(ts)
           tilesetRef = ts
+          marsTileset = ts
           setStatus('site + Cesium Mars globe')
         } catch (e) {
           setStatus('site only (Mars globe failed: ' + (e as Error).message + ')')
@@ -208,7 +212,7 @@ export default function App() {
       <div className="panel">
         <b>Ares Atlas — Jezero</b>
         <div className="row">
-          {(['orbit', 'site', 'ground', 'rover'] as Mode[]).map((m) => (
+          {(['orbit', 'site', 'ground', 'rover', 'planet'] as Mode[]).map((m) => (
             <button key={m} disabled={!viewer} onClick={() => fly(viewer!, site!, m, 2)}>
               {m}
             </button>
@@ -270,10 +274,82 @@ function applyControls(v: Cesium.Viewer, mode: Mode) {
   }
 }
 
+function siteClippingRing(s: Site): Cesium.Cartesian3[] {
+  const INSET = s.ctx ? 800 : 200
+  const dLon = INSET / (R * Math.cos(Cesium.Math.toRadians(s.manifest.lat0))), dLat = INSET / R
+  return Cesium.Cartesian3.fromRadiansArray(
+    [s.extent.west + dLon, s.extent.south + dLat, s.extent.east - dLon, s.extent.south + dLat,
+     s.extent.east - dLon, s.extent.north - dLat, s.extent.west + dLon, s.extent.north - dLat], SPHERE)
+}
+
+function applySiteGlobeClip(scene: Cesium.Scene, s: Site) {
+  if (new URLSearchParams(location.search).has('noglobeclip')) return
+  const zS = (R + s.relief.max) * Math.sin(s.extent.south), zN = (R + s.relief.min) * Math.sin(s.extent.north)
+  const w = s.extent.west, e = s.extent.east
+  scene.globe.clippingPlanes = new Cesium.ClippingPlaneCollection({
+    unionClippingRegions: true,
+    planes: [
+      new Cesium.ClippingPlane(new Cesium.Cartesian3(-Math.sin(w), Math.cos(w), 0), 0),
+      new Cesium.ClippingPlane(new Cesium.Cartesian3(Math.sin(e), -Math.cos(e), 0), 0),
+      new Cesium.ClippingPlane(new Cesium.Cartesian3(0, 0, 1), -zS),
+      new Cesium.ClippingPlane(new Cesium.Cartesian3(0, 0, -1), zN),
+    ],
+  })
+}
+
+function applySiteTilesetClip(ts: Cesium.Cesium3DTileset, s: Site) {
+  ts.clippingPolygons = new Cesium.ClippingPolygonCollection({
+    polygons: [new Cesium.ClippingPolygon({ positions: siteClippingRing(s) })],
+  })
+}
+
+function clearPlanetBubbles(v: Cesium.Viewer) {
+  for (const e of bubbleEntities) v.entities.remove(e)
+  bubbleEntities = []
+}
+
+function showPlanetBubbles(v: Cesium.Viewer) {
+  clearPlanetBubbles(v)
+  for (const bubble of BUBBLES) {
+    const halfDegLat = (bubble.sizeM / 2) / R * 180 / Math.PI
+    const halfDegLon = halfDegLat / Math.cos(bubble.lat * Math.PI / 180)
+    let lon = bubble.lon
+    if (lon > 180) lon -= 360
+    if (lon < -180) lon += 360
+    bubbleEntities.push(v.entities.add({
+      name: bubble.title,
+      rectangle: {
+        coordinates: Cesium.Rectangle.fromDegrees(
+          lon - halfDegLon, bubble.lat - halfDegLat,
+          lon + halfDegLon, bubble.lat + halfDegLat,
+        ),
+        material: new Cesium.ImageMaterialProperty({
+          image: `/worlds/${bubble.id}/tiles/ortho/0/0/0.webp`,
+        }),
+        height: 0,
+      },
+    }))
+  }
+}
+
 function fly(v: Cesium.Viewer, s: Site, mode: Mode, duration: number) {
   const lat0 = s.manifest.lat0, lon0 = s.manifest.lon0
   applyControls(v, String(mode).startsWith('alt:') ? 'site' : mode)
   if (mode === 'rover') return // chase camera is driven by the rover each frame
+  if (mode === 'planet') {
+    v.scene.globe.clippingPlanes = undefined as unknown as Cesium.ClippingPlaneCollection
+    if (marsTileset) marsTileset.clippingPolygons = undefined as unknown as Cesium.ClippingPolygonCollection
+    showPlanetBubbles(v)
+    v.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(150, 18.65, 4_000_000, SPHERE),
+      orientation: { heading: 0, pitch: Cesium.Math.toRadians(-90), roll: 0 },
+      duration,
+    })
+    return
+  }
+  clearPlanetBubbles(v)
+  applySiteGlobeClip(v.scene, s)
+  if (marsTileset) applySiteTilesetClip(marsTileset, s)
   if (String(mode).startsWith('alt:')) {
     // test hook: straight-down view from a given altitude in metres, e.g. ?view=alt:40000
     v.camera.setView({
