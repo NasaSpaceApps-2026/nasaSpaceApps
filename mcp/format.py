@@ -713,6 +713,6 @@ def fmt_sites(d: dict) -> str:
         out.append(src)
     out += registration_lines(d)
     out.append(("Orbital tiers are detections from orbit, not abundance; region extents follow pixel/polygon boundaries and are "
-                "uncertain by the stated distance. " if d["kind"] != "abundance_index" else "") + "Hint: " + d["hint"])
+                "uncertain by the stated distance. " if d["kind"] != "score_index" else "") + "Hint: " + d["hint"])
     out.append("Next: set_view(highlights=[ids]) to show them, plan_route(goal=\"<id>\") to get there.")
     return "\n".join(out)

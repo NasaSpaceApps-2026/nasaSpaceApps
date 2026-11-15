@@ -489,7 +489,7 @@ def adapt_sites(d: dict, kind: str | None, near: dict, notes: list[str]) -> dict
         hint += " " + d["caveat"]
     if notes:
         hint += " " + " ".join(notes)
-    return {**d, "kind": "abundance_index" if kind in (None, "abundance") else kind, "layer": None,
+    return {**d, "kind": "score_index" if kind in (None, "abundance") else kind, "layer": None,
             "layers": [], "resolved": None, "set_id": None, "sites": sites, "near": near,
             "ranked_by": "score (0-1 index) with unreachable sites last", "hint": hint,
             "count": d.get("count", len(sites)), "registration_notes": []}

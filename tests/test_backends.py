@@ -302,7 +302,7 @@ def test_sites_adapt_and_format_never_claims_tiers():
                     "mean_slope_deg": 4.9, "distance_m": 888, "reachable": True, "travel_min": 120.0,
                     "evidence": [{"layer": "min_carbonate", "mission": "MRO", "instrument": "CRISM", "mean_value": 0.7}]}]},
         "abundance", {"id": "Base", "x": 1844.0, "y": -433.0}, ["min_tier was not applied"])
-    assert d["kind"] == "abundance_index" and d["set_id"] is None and d["sites"][0]["best_tier"] is None
+    assert d["kind"] == "score_index" and d["set_id"] is None and d["sites"][0]["best_tier"] is None
     text = fmt.fmt_sites(d)
     assert "score 0.71 (0-1 index, not abundance)" in text and "Not stored as a set" in text
     assert "min_tier was not applied" in text and "Orbital tiers are detections" not in text
