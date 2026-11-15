@@ -81,6 +81,7 @@ def data_dir(tmp_path_factory):
 def client(data_dir, tmp_path):
     from fastapi.testclient import TestClient
     from ares_api.main import create_app
-    app = create_app(data_dir, extra_layer_dir=tmp_path / "none")
+    app = create_app(data_dir, extra_layer_dir=tmp_path / "none", state_file=None)
     with TestClient(app) as c:
+        c.post("/rover/vehicle", json={"profile": "rover_scout"})  # existing tests drive the scout
         yield c

@@ -1,0 +1,37 @@
+{
+ "request": {
+  "method": "GET",
+  "path": "/rover/vehicles",
+  "body": null
+ },
+ "status": 200,
+ "response": {
+  "current": "crew_buggy",
+  "vehicles": {
+   "astronaut_walk": {
+    "title": "Astronaut on foot",
+    "flat_speed_mps": 0.9,
+    "nogo_slope_deg": 25,
+    "source": "assumed"
+   },
+   "rover_scout": {
+    "title": "Scout rover (Perseverance-like)",
+    "flat_speed_mps": 0.04,
+    "nogo_slope_deg": 20,
+    "source": "flat speed close to Perseverance top speed (~4.2 cm/s); slopes assumed"
+   },
+   "crew_buggy": {
+    "title": "Crewed performance buggy (concept; LRV-derived geometry, unpressurised)",
+    "flat_speed_mps": 24,
+    "nogo_slope_deg": 25,
+    "source": "assumed performance-buggy concept; geometry, 25 deg slope rating and ~3 m turn radius from Apollo LRV (NASA)"
+   },
+   "crew_rover": {
+    "title": "Pressurised crew rover (concept)",
+    "flat_speed_mps": 2.5,
+    "nogo_slope_deg": 15,
+    "source": "assumed"
+   }
+  }
+ }
+}

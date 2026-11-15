@@ -27,7 +27,7 @@ def save(name: str, req: dict | None, resp):
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
-    app = create_app()
+    app = create_app(state_file=None)
     (REPO / "contracts" / "api.openapi.yaml").write_text(yaml.safe_dump(app.openapi(), sort_keys=False))
     with TestClient(app) as c:
         calls = [
@@ -49,6 +49,8 @@ def main():
             ("search_targets", "GET", "/search/targets", None),
             ("search_sites", "POST", "/search/sites", {"target": "carbonate", "near": "poi:base", "top_k": 3}),
             ("search_unknown", "POST", "/search/sites", {"target": "gold"}),
+            ("rover_vehicles", "GET", "/rover/vehicles", None),
+            ("rover_vehicle_scout", "POST", "/rover/vehicle", {"profile": "rover_scout"}),
             ("rover_state", "GET", "/rover/state", None),
             ("rover_goto", "POST", "/rover/command", {"cmd": "goto", "target": "poi:sample1", "speed_factor": 3000}),
             ("rover_drive_blocked", "POST", "/rover/command", {"cmd": "drive", "distance_m": 300, "heading_deg": 90,

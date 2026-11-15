@@ -44,7 +44,9 @@ class SiteSearch:
         raise SearchError(f"Unknown target '{name}'. Available targets: {', '.join(avail) or 'none'}.")
 
     def find(self, target: str, near: tuple = None, near_label: str = None, radius_m: float = None,
-             max_slope_deg: float = None, top_k: int = 5, profile: str = None) -> dict:
+             max_slope_deg: float = None, top_k: int = 5, profile: str = None, with_travel: bool = True) -> dict:
+        """Regions of the target layer, ranked. With `near` (and with_travel), each site also gets
+        reachable / travel_min from a least-cost search that stops once every site is reached."""
         key, tg = self.resolve_target(target)
         prof = self.planner.profile(profile)
         max_slope = max_slope_deg or prof["nogo_slope_deg"]
@@ -52,45 +54,60 @@ class SiteSearch:
         slope = self.t.grids["slope"]
         if tg["kind"] == "class":
             mask = np.isclose(layer, tg["value"])
-            strength = mask.astype(np.float32)
         else:
-            mask = layer >= tg.get("threshold", 0.5)
-            strength = np.nan_to_num(layer)
+            mask = layer >= tg.get("threshold", 0.5)  # NaN compares False: no-data never matches
         if near and radius_m:
-            rows = np.arange(self.t.shape[0], dtype=np.float32)[:, None]
-            cols = np.arange(self.t.shape[1], dtype=np.float32)[None, :]
-            xs, ys = self.t.cell_xy(rows, cols)
-            mask &= (xs - near[0]) ** 2 + (ys - near[1]) ** 2 <= radius_m ** 2
+            # Only the rows/cols inside the radius box can match; build distances there, not on the whole grid.
+            r0, c0 = (int(np.floor(v)) for v in self.t.to_cell(near[0] - radius_m, near[1] + radius_m))
+            r1, c1 = (int(np.ceil(v)) + 1 for v in self.t.to_cell(near[0] + radius_m, near[1] - radius_m))
+            h, w = self.t.shape
+            r0, c0, r1, c1 = max(r0, 0), max(c0, 0), min(r1, h), min(c1, w)
+            keep = np.zeros(self.t.shape, bool)
+            if r0 < r1 and c0 < c1:
+                xs, ys = self.t.cell_xy(np.arange(r0, r1)[:, None], np.arange(c0, c1)[None, :])
+                keep[r0:r1, c0:c1] = (xs - near[0]) ** 2 + (ys - near[1]) ** 2 <= radius_m ** 2
+            mask &= keep
 
         labels, n = ndimage.label(mask)
         if n == 0:
             return {"target": key, "sites": [], "count": 0,
                     "message": f"No cells match '{key}'" + (f" within {radius_m:.0f} m." if radius_m else ".")}
-        idx = np.arange(1, n + 1)
-        cell_area = self.t.res ** 2
-        areas = ndimage.sum_labels(np.ones_like(strength), labels, idx) * cell_area
-        means = ndimage.mean(strength, labels, idx)
-        slope_means = ndimage.mean(np.nan_to_num(slope, nan=90.0), labels, idx)
+        # Per-region statistics over the matching cells only (the grid is 16 M cells; regions are tiny).
+        flat = np.flatnonzero(labels)
+        lab = labels.ravel()[flat] - 1
+        strength = (np.ones(flat.size, np.float32) if tg["kind"] == "class"
+                    else np.nan_to_num(layer.ravel()[flat]))
+        sl = np.nan_to_num(slope.ravel()[flat], nan=90.0)
+        counts = np.bincount(lab, minlength=n)
+        areas = counts * self.t.res ** 2
+        means = np.bincount(lab, strength, n) / counts
+        slope_means = np.bincount(lab, sl, n) / counts
+        peaks = np.full(n, -np.inf)
+        np.maximum.at(peaks, lab, strength)
         # Site anchor: the strongest cell that is under the slope limit (where a person could stand).
-        accessible = np.where(np.nan_to_num(slope, nan=90.0) <= max_slope, strength, -1.0)
-        anchors = ndimage.maximum_position(accessible, labels, idx)
-        peaks = ndimage.maximum(strength, labels, idx)
+        accessible = np.where(sl <= max_slope, strength, -1.0)
+        order = np.lexsort((-accessible, lab))           # by region, strongest first
+        first = order[np.r_[0, np.flatnonzero(np.diff(lab[order])) + 1]]
+        anchor_flat = np.full(n, -1, np.int64)
+        anchor_ok = np.zeros(n, bool)
+        anchor_flat[lab[first]] = flat[first]
+        anchor_ok[lab[first]] = accessible[first] >= 0
+
+        keep_idx = [i for i in range(n) if areas[i] >= MIN_AREA_M2 and anchor_ok[i]]
+        anchors = {i: np.unravel_index(anchor_flat[i], self.t.shape) for i in keep_idx}
+        anchor_xy = {i: tuple(float(v) for v in self.t.cell_xy(*anchors[i])) for i in keep_idx}
 
         cum = None
-        if near:
+        if near and with_travel and keep_idx:
             try:
-                cum = self.planner.cost_from(near[0], near[1], self.planner.profile(profile), max_slope_deg)
+                cum = self.planner.cost_from(near[0], near[1], prof, max_slope_deg,
+                                             ends=[anchor_xy[i] for i in keep_idx])
             except RouteError:
                 cum = None
 
         sites = []
-        for i in range(n):
-            if areas[i] < MIN_AREA_M2:
-                continue
-            r, c = anchors[i]
-            if accessible[r, c] < 0:
-                continue  # whole region is too steep to stand on
-            x, y = (float(v) for v in self.t.cell_xy(r, c))
+        for i in keep_idx:
+            x, y = anchor_xy[i]
             area_term = 1 - math.exp(-areas[i] / 2000.0)
             slope_pen = min(1.0, slope_means[i] / max_slope)
             score = (0.6 * float(means[i]) + 0.4 * area_term) * (1 - 0.3 * slope_pen)

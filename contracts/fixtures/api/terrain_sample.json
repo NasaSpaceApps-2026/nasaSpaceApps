@@ -23,7 +23,8 @@
   },
   "sources": {
    "elevation": "synthetic fixture",
-   "slope": "synthetic fixture"
+   "slope": "synthetic fixture",
+   "roughness": "synthetic fixture"
   }
  }
 }

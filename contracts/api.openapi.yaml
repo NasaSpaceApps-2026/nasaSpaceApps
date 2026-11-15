@@ -351,6 +351,38 @@ paths:
           content:
             application/json:
               schema: {}
+  /rover/vehicles:
+    get:
+      summary: Rover Vehicles
+      operationId: rover_vehicles_rover_vehicles_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /rover/vehicle:
+    post:
+      summary: Rover Vehicle
+      operationId: rover_vehicle_rover_vehicle_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VehicleReq'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /rover/command:
     post:
       summary: Rover Command
@@ -769,6 +801,15 @@ components:
       - msg
       - type
       title: ValidationError
+    VehicleReq:
+      properties:
+        profile:
+          type: string
+          title: Profile
+      type: object
+      required:
+      - profile
+      title: VehicleReq
     ViewReq:
       properties:
         mode:
