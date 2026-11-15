@@ -4,6 +4,7 @@ import 'cesium/Build/Cesium/Widgets/widgets.css'
 import { R, Site, SPHERE, deg } from './site'
 import { siteImagery, siteTerrain } from './providers'
 import { CesiumRover } from './cesiumRover'
+import type { DriverPose } from './rover/driver'
 import { PlacesLayer, type Place } from './places'
 import { BUBBLES } from './bubbles'
 import { dropOnBubbles, type StreetDrop } from './pegman'
@@ -17,11 +18,15 @@ type Mode = 'orbit' | 'site' | 'ground' | 'rover' | 'planet'
 let roverCtl: CesiumRover | null = null // set once the viewer is up; used by fly()
 let placesCtl: PlacesLayer | null = null
 let marsTileset: Cesium.Cesium3DTileset | null = null
-let bubbleEntities: Cesium.Entity[] = []
+let bubblePrimitives: Cesium.GroundPrimitive[] = []
+let roverPoseHud: ((p: DriverPose) => void) | null = null
 
 function ensureRover(v: Cesium.Viewer, s: Site): CesiumRover {
   if (roverCtl) return roverCtl
   roverCtl = new CesiumRover(v, s)
+  if (roverPoseHud) roverCtl.onPose = roverPoseHud
+  const w = placesCtl?.first()
+  if (w) roverCtl.driver.teleport(w.x, w.y, w.heading ?? 0)
   ;(window as unknown as { __rover?: CesiumRover }).__rover = roverCtl
   return roverCtl
 }
@@ -195,17 +200,15 @@ export default function App() {
       })
       ;(window as unknown as { __viewer?: Cesium.Viewer }).__viewer = v
       const bootMode = (new URLSearchParams(location.search).get('view') as Mode) || 'site'
-      if (bootMode !== 'planet') {
-        const rover = ensureRover(v, s)
-        let lastHud = 0
-        rover.onPose = (p) => {
-          const now = performance.now()
-          if (now - lastHud < 250) return
-          lastHud = now
-          setDrive(`rover ${p.status}${p.stop_reason ? ' (' + p.stop_reason + ')' : ''} · slope ${p.slope_deg.toFixed(1)}° · ` +
-            `ahead ${p.ahead_slope_deg.toFixed(1)}° · ${p.display_speed_mps.toFixed(1)} m/s shown (${p.speed_mps.toFixed(2)} real) · x ${p.x.toFixed(0)} y ${p.y.toFixed(0)}`)
-        }
+      let lastHud = 0
+      roverPoseHud = (p) => {
+        const now = performance.now()
+        if (now - lastHud < 250) return
+        lastHud = now
+        setDrive(`rover ${p.status}${p.stop_reason ? ' (' + p.stop_reason + ')' : ''} · slope ${p.slope_deg.toFixed(1)}° · ` +
+          `ahead ${p.ahead_slope_deg.toFixed(1)}° · ${p.display_speed_mps.toFixed(1)} m/s shown (${p.speed_mps.toFixed(2)} real) · x ${p.x.toFixed(0)} y ${p.y.toFixed(0)}`)
       }
+      if (bootMode !== 'planet') ensureRover(v, s)
       // Real Perseverance traverse/waypoints and IAU names; start the rover at the first real waypoint.
       placesCtl = new PlacesLayer(v, s)
       placesCtl.load().then(() => {
@@ -240,6 +243,7 @@ export default function App() {
     setHits([])
     setQuery(p.name)
     if (p.kind === 'waypoint') {
+      if (surfaceView === 'street') leaveStreet()
       ensureRover(viewer, site).driver.teleport(p.x, p.y, p.heading ?? 0)
       fly(viewer, site, 'rover', 0)
       setCameraMode('rover')
@@ -432,31 +436,39 @@ function applySiteTilesetClip(ts: Cesium.Cesium3DTileset, s: Site) {
 }
 
 function clearPlanetBubbles(v: Cesium.Viewer) {
-  for (const e of bubbleEntities) v.entities.remove(e)
-  bubbleEntities = []
+  for (const prim of bubblePrimitives) {
+    v.scene.primitives.remove(prim)
+    if (!prim.isDestroyed()) prim.destroy()
+  }
+  bubblePrimitives = []
 }
 
 function showPlanetBubbles(v: Cesium.Viewer) {
   clearPlanetBubbles(v)
+  const vertexFormat = Cesium.MaterialAppearance.MaterialSupport.TEXTURED.vertexFormat
   for (const bubble of BUBBLES) {
     const halfDegLat = (bubble.sizeM / 2) / R * 180 / Math.PI
     const halfDegLon = halfDegLat / Math.cos(bubble.lat * Math.PI / 180)
     let lon = bubble.lon
     if (lon > 180) lon -= 360
     if (lon < -180) lon += 360
-    bubbleEntities.push(v.entities.add({
-      name: bubble.title,
-      rectangle: {
-        coordinates: Cesium.Rectangle.fromDegrees(
-          lon - halfDegLon, bubble.lat - halfDegLat,
-          lon + halfDegLon, bubble.lat + halfDegLat,
-        ),
-        material: new Cesium.ImageMaterialProperty({
+    const rect = Cesium.Rectangle.fromDegrees(
+      lon - halfDegLon, bubble.lat - halfDegLat,
+      lon + halfDegLon, bubble.lat + halfDegLat,
+    )
+    const prim = new Cesium.GroundPrimitive({
+      geometryInstances: new Cesium.GeometryInstance({
+        geometry: new Cesium.RectangleGeometry({ rectangle: rect, vertexFormat }),
+      }),
+      appearance: new Cesium.MaterialAppearance({
+        material: Cesium.Material.fromType('Image', {
           image: `/worlds/${bubble.id}/tiles/ortho/0/0/0.webp`,
         }),
-        height: 0,
-      },
-    }))
+      }),
+      classificationType: Cesium.ClassificationType.BOTH,
+    })
+    v.scene.primitives.add(prim)
+    bubblePrimitives.push(prim)
   }
 }
 
@@ -467,6 +479,7 @@ function fly(v: Cesium.Viewer, s: Site, mode: Mode, duration: number) {
   if (mode === 'planet') {
     v.scene.globe.clippingPlanes = undefined as unknown as Cesium.ClippingPlaneCollection
     if (marsTileset) marsTileset.clippingPolygons = undefined as unknown as Cesium.ClippingPolygonCollection
+    v.scene.globe.show = !marsTileset
     showPlanetBubbles(v)
     v.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(150, 18.65, 4_000_000, SPHERE),
@@ -476,6 +489,7 @@ function fly(v: Cesium.Viewer, s: Site, mode: Mode, duration: number) {
     return
   }
   clearPlanetBubbles(v)
+  v.scene.globe.show = true
   applySiteGlobeClip(v.scene, s)
   if (marsTileset) applySiteTilesetClip(marsTileset, s)
   if (String(mode).startsWith('alt:')) {

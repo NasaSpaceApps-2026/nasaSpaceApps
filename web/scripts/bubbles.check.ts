@@ -10,6 +10,7 @@ const atCenter = localMeters(jezero, jezero.lat, jezero.lon)
 assert.ok(Math.abs(atCenter.x) < 1 && Math.abs(atCenter.y) < 1)
 
 const olympus = BUBBLES.find((b) => b.id === 'olympus')!
+assert.equal(olympus.sizeM, 2236)
 assert.equal(covers(olympus, olympus.lat, olympus.lon), true)
 assert.equal(covers(olympus, jezero.lat, jezero.lon), false)
 
@@ -20,6 +21,11 @@ assert.equal(hit?.heading, 0)
 
 const mons = dropOnBubbles(21.5548278127083, 222.31978845442714)
 assert.equal(mons?.world, 'olympus')
+
+const monsCesiumLon = dropOnBubbles(21.5548278127083, -137.68021154557286)
+assert.equal(monsCesiumLon?.world, 'olympus')
+assert.ok(monsCesiumLon && Math.abs(monsCesiumLon.x) < 1 && Math.abs(monsCesiumLon.y) < 1)
+assert.equal(monsCesiumLon?.heading, 0)
 
 assert.equal(dropOnBubbles(0, 0), null)
 
