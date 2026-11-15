@@ -79,6 +79,16 @@ def test_unit_conversion_hours_minutes():
     assert ungrounded_numbers("a 3 hour walk", ["walk_time_min 120"]) == ["3 hour"]
 
 
+def test_exact_unit_conversions_grounded():
+    src = ["region area 430708 m2; 2700 m away; walk 95.2 min; route 3.4 km; area 0.36 km2; 3 h limit; position +-43 m"]
+    for ok in ["0.43 km2", "0.431 km²", "2.7 km", "2,700 m", "1.59 hours", "95 min", "3,400 m", "360,000 m2",
+               "180 min", "43 m", "about 3.4 km"]:
+        assert ungrounded_numbers(f"it is {ok}", src) == [], ok
+    # conversions never excuse numbers that did not appear in any unit
+    for bad in ["0.5 km2", "3.7 km", "3,700 m", "5 hours", "50 m", "600,000 m2"]:
+        assert ungrounded_numbers(f"it is {bad}", src) == [bad], bad
+
+
 def test_round_numbers_not_treated_as_loose():
     # 100 is not a sig-fig rounding of 130 (only >= 1000 round integers get slack)
     assert ungrounded_numbers("100 m", ["130 m"]) == ["100 m"]
@@ -291,3 +301,32 @@ def test_anthropic_model_env_model_and_no_key(monkeypatch):
 def test_fallbacks_off_by_default():
     """The fallback beta is unverified without a key, so it must be opt-in."""
     assert Settings().fallbacks is False
+
+
+def test_q04_accepts_reported_absence_but_not_a_made_up_pad():
+    from agent.evals.run_evals import load_cases
+    cases, _ = load_cases()
+    checks = next(c for c in cases if c["id"] == "q04_zero_slope_pad")["checks"]
+    ok = ("A literal zero-slope pad doesn't exist in this dataset. The slope_2m layer bottoms out at 0.00124 deg, "
+          "so the 0% pass rate is the bottleneck.")
+    assert check_reply(ok, checks) == []
+    assert check_reply("Pad 3.1 at (10, 20) is perfectly flat.", checks) != []
+
+
+def test_setup_cases_declared():
+    from agent.evals.run_evals import load_cases
+    cases = {c["id"]: c for c in load_cases()[0]}
+    assert cases["los_radio_base_from_marker"]["setup"]["markers"]
+    assert cases["demo_scout"]["setup"]["route"]["goal"]
+
+
+def test_negative_source_magnitude_grounded_but_not_other_numbers():
+    src = ["Profile: B is -4.4 m relative to A."]
+    assert ungrounded_numbers("B is 4.4 m below A", src) == []
+    assert ungrounded_numbers("B is 5.4 m below A", src) == ["5.4 m"]
+
+
+def test_check_reply_ignores_markdown_emphasis():
+    checks = {"reply_contains_any": ["today's topography"]}
+    assert check_reply("It floods **today's** topography.", checks) == []
+    assert check_reply("It floods the ancient floor.", checks) != []

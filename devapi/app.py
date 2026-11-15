@@ -426,6 +426,8 @@ def create_app(site: Site | None = None, synthetic: bool | None = None, traverse
             await hub.broadcast("view.highlight", {"ids": [h["id"] for h in highlights], "points": highlights})
         res = {"ok": True, "mode": mode, "target": target, "layers": layer_changes, "highlights": highlights,
                "viewers": hub.count}
+        if b.get("distance_m") is not None:
+            res["distance_m"] = b["distance_m"]
         if capped:
             res["note"] = (f"Only the first {MAX_HIGHLIGHTS} of {capped} highlights (best-ranked first) were shown; "
                            "pass fewer or specific members such as \"2.1\" to choose which.")

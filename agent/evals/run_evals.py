@@ -68,6 +68,30 @@ def score_replays(cases: list[dict], always_allowed: list[str], files: list[Path
     return scores, unmatched
 
 
+async def _rest(settings: Settings, method: str, path: str, body: dict | None = None):
+    import httpx
+    base = (settings.rover_api_url or settings.api_url).rstrip("/")
+    async with httpx.AsyncClient(timeout=10) as http:
+        r = await http.request(method, base + path, json=body)
+        r.raise_for_status()
+        return r.json()
+
+
+async def apply_setup(settings: Settings, setup: dict | None) -> None:
+    """Case `setup`: {markers: [{x, y, label}], route: {start, goal, profile}} created through the REST API before the
+    case, for prompts that presuppose app state ("my marker", "that route")."""
+    for m in (setup or {}).get("markers", []):
+        await _rest(settings, "POST", "/markers", {"created_by": "user", **m})
+    if (setup or {}).get("route"):
+        await _rest(settings, "POST", "/route", setup["route"])
+
+
+async def teardown_setup(settings: Settings, setup: dict | None) -> None:
+    if (setup or {}).get("markers"):
+        for m in (await _rest(settings, "GET", "/markers")).get("markers", []):
+            await _rest(settings, "DELETE", f"/markers/{m['id']}")
+
+
 async def run_live(cases: list[dict], always_allowed: list[str], settings: Settings) -> list[Score]:
     from ..mcp_bridge import McpBridge
     from ..model import make_model
@@ -81,11 +105,13 @@ async def run_live(cases: list[dict], always_allowed: list[str], settings: Setti
         for c in cases:
             events: list[dict] = []
             info: dict = {}
+            await apply_setup(settings, c.get("setup"))
             async for ev in run_session(model=model, bridge=bridge, settings=settings,
                                         messages=[{"role": "user", "content": c["prompt"]}],
                                         client_context=c.get("client_context"), record_dir=out_dir,
                                         record=True, info=info):
                 events.append(ev)
+            await teardown_setup(settings, c.get("setup"))
             meta = info or {"user_prompt": c["prompt"], "tools": bridge.tool_names}
             scores.append(score_session(c, session_from_events(meta, events), always_allowed))
             print_row(scores[-1], file=sys.stderr)

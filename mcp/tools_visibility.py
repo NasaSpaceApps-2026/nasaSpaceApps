@@ -20,7 +20,7 @@ def _assumed(d: dict) -> str | None:
 def _thing(t: dict) -> str:
     name = t.get("name") or t.get("id")
     extra = f" ({t['id']})" if t.get("name") and t.get("id") and t["id"] != t["name"] else ""
-    return f"{name}{extra} {fmt.num(t['distance_m'], 0)} m"
+    return f"{name}{extra} {fmt.dist_text(t['distance_m'])}"
 
 
 def fmt_viewshed(d: dict) -> str:
@@ -28,7 +28,7 @@ def fmt_viewshed(d: dict) -> str:
     out = [f"From {fmt.xy(o['x'], o['y'])} (eye {fmt.num(o['eye_elevation_m'] - o['elevation_m'])} m above terrain, "
            f"ground elevation {fmt.num(o['elevation_m'])} m): sees {fmt.num(d['visible_fraction'] * 100)}% of the known "
            f"terrain within {fmt.num(d['max_radius_m'], 0)} m = {fmt.area_text(d['visible_area_m2'])}; "
-           f"farthest visible ground {fmt.num(d['farthest_visible_m'], 0)} m away"
+           f"farthest visible ground {fmt.dist_text(d['farthest_visible_m'])} away"
            + (f" at {fmt.xy(d['farthest_visible_point']['x'], d['farthest_visible_point']['y'])}"
               if d.get("farthest_visible_point") else "") + ".",
            f"Visible region stored as {d['set_id']} (kind regions): usable as a location in nearest / find_* / describe_location."]
@@ -53,12 +53,12 @@ def fmt_los(d: dict) -> str:
     a, b = d["a"], d["b"]
     if d["clear"]:
         mc = d.get("min_clearance_m")
-        head = (f"CLEAR line of sight over {fmt.num(d['distance_m'], 0)} m between {a.get('id') or fmt.xy(a['x'], a['y'])} "
+        head = (f"CLEAR line of sight over {fmt.dist_text(d['distance_m'])} between {a.get('id') or fmt.xy(a['x'], a['y'])} "
                 f"and {b.get('id') or fmt.xy(b['x'], b['y'])}"
                 + (f"; tightest clearance {fmt.num(mc, 2)} m at {fmt.num(d['tightest_point']['distance_from_a_m'], 0)} m from A." if mc is not None else "."))
     else:
         bp = d["blocking_point"]
-        head = (f"BLOCKED over {fmt.num(d['distance_m'], 0)} m: terrain at {fmt.xy(bp['x'], bp['y'])}, "
+        head = (f"BLOCKED over {fmt.dist_text(d['distance_m'])}: terrain at {fmt.xy(bp['x'], bp['y'])}, "
                 f"{fmt.num(bp['distance_from_a_m'], 0)} m from A, is {fmt.num(bp['deficit_m'], 2)} m above the sight line "
                 f"(terrain {fmt.num(bp['terrain_elevation_m'])} m vs line {fmt.num(bp['sight_line_elevation_m'])} m). "
                 f"Terrain is in the way from {fmt.num(d['blocked_span_m'][0], 0)} to {fmt.num(d['blocked_span_m'][1], 0)} m.")
@@ -89,7 +89,7 @@ def fmt_vantage(d: dict) -> str:
             above = at.get("elevation_above_target_m")
             sl = at.get("slope_2m")
             out.append(f"{i}. {m['id']} at {fmt.xy(m['x'], m['y'])}: sees {fmt.num(m['score'] * 100, 0)}% of the target "
-                       f"from {fmt.num(at['distance_m'], 0)} m"
+                       f"from {fmt.dist_text(at['distance_m'])}"
                        + (f", {fmt.num(abs(above))} m {'above' if above >= 0 else 'below'} it" if above is not None else "")
                        + (f", slope {fmt.num(sl)} deg" if sl is not None else ""))
     a = _assumed(d)

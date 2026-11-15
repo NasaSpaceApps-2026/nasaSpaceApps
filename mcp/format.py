@@ -79,9 +79,34 @@ TIER_GLOSS = {
 
 
 def area_text(m2) -> str:
+    """Area in both units so whichever one a reader quotes is grounded: '430708 m2 (0.431 km2)'."""
     if m2 is None:
         return "n/a"
-    return f"{m2 / 1e6:.2f} km2" if m2 >= 1e5 else f"{num(m2, 0)} m2"
+    if m2 < 1000:
+        return f"{num(m2, 0)} m2"
+    km2 = f"{m2 / 1e6:.2f}" if m2 >= 1e6 else f"{m2 / 1e6:.3f}"
+    return f"{num(m2, 0)} m2 ({km2.rstrip('0').rstrip('.')} km2)"
+
+
+def dist_text(m, nd: int = 0) -> str:
+    """Distance in both units: '2700 m (2.7 km)'; plain metres below 100 m."""
+    if m is None:
+        return "n/a"
+    if abs(m) < 100:
+        return f"{num(m, nd)} m"
+    km = f"{m / 1000:.2f}".rstrip("0").rstrip(".")
+    return f"{num(m, nd)} m ({km} km)"
+
+
+def dur_text(minutes) -> str:
+    """Duration in both units: '95.2 min (1.59 h)'; plain minutes below 30 min."""
+    if minutes is None:
+        return "n/a"
+    t = _min(minutes)
+    if abs(minutes) < 30:
+        return t
+    h = f"{minutes / 60:.2f}".rstrip("0").rstrip(".")
+    return f"{t} ({h} h)"
 
 
 def _samples_text(e: dict) -> str:
@@ -332,7 +357,7 @@ def _member_line(m: dict, kind: str) -> str:
         if m.get("clear_radius_m") is not None:
             base += f", clear radius {num(m['clear_radius_m'], 0)} m"
     elif kind == "regions" or m.get("area_m2") is not None:
-        base += f", area {num(m.get('area_m2'), 0)} m2"
+        base += f", area {area_text(m.get('area_m2'))}"
     if m.get("score") is not None:
         base += f", score {num(m['score'], 2)}"
     at = _attrs(m)
@@ -389,6 +414,7 @@ def fmt_nearest(d: dict) -> str:
            + (" Walk times/distances are approximate." if d.get("approximate") else "")]
     for i, p in enumerate(res, 1):
         unit = {"walk_time_min": "min", "walk_m": "m walk", "straight_m": "m straight"}.get(p.get("cost_metric"), "")
+        cost_txt = dur_text(p["cost"]) if unit == "min" else (dist_text(p["cost"]) + (" walk" if unit == "m walk" else " straight") if unit else num(p["cost"]))
         to_at = f" at {xy(p['to_x'], p['to_y'])}" if p.get("to_x") is not None else ""
         edge = ""
         if p.get("from_entry_x") is not None:
@@ -400,7 +426,7 @@ def fmt_nearest(d: dict) -> str:
             for k, e in (p.get(f"{side}_evidence") or {}).items():
                 evtxt += (f"; {side} {k}: " + ("no_coverage" if e.get("best_tier") is None else
                                                f"best tier {e['best_tier_name']} (area by tier: {ev_breakdown(e)})"))
-        out.append(f"{i}. {p['from_id']} -> {p['to_id']}{to_at}: {num(p['cost'])} {unit}, straight {num(p['straight_m'], 0)} m, "
+        out.append(f"{i}. {p['from_id']} -> {p['to_id']}{to_at}: {cost_txt}, straight {dist_text(p['straight_m'])}, "
                    f"from {xy(p['x'], p['y'])} m" + edge + evtxt)
     src = insitu_sources_line([e for p in res for side in ("from", "to") for e in (p.get(f"{side}_evidence") or {}).values()])
     if src:
@@ -455,9 +481,9 @@ def _consumables_line(c: dict | None) -> str | None:
         return None
     u, m = c["used"], c["margin"]
     stops = f" including {num(c['stops_min'], 0)} min at stops" if c.get("stops_min") else ""
-    return (f"Consumables (time only; EVA limit {num(c['eva_limit_min'], 0)} min, reserve "
-            f"{num(c['reserve_fraction'] * 100, 0)}%): used {num(u['minutes'])} min{stops} ({num(u['fraction'] * 100, 0)}%), "
-            f"margin above reserve {num(m['minutes'])} min ({num(m['fraction'] * 100, 0)}%).")
+    return (f"Consumables (time only; EVA limit {dur_text(c['eva_limit_min'])}, reserve "
+            f"{num(c['reserve_fraction'] * 100, 0)}%): used {dur_text(u['minutes'])}{stops} ({num(u['fraction'] * 100, 0)}%), "
+            f"margin above reserve {dur_text(m['minutes'])} ({num(m['fraction'] * 100, 0)}%).")
 
 
 def _go_line(a: dict | None) -> str | None:
@@ -474,10 +500,10 @@ def fmt_route(d: dict) -> str:
         near = (f"Nearest reachable point: {xy(nr['x'], nr['y'])} m, {num(nr['distance_to_goal_m'], 0)} m from the "
                 f"goal, {num(nr['travel_min'])} min travel." if nr else "No reachable point found.")
         return _lines(f"NO ROUTE (feasible: false). {d['reason']}", near, "Hint: " + d["hint"] if d.get("hint") else None)
-    stops = "; ".join(f"{s['kind']} {xy(s['x'], s['y'])} at {num(s['distance_m'], 0)} m, {num(s['eta_min'])} min"
+    stops = "; ".join(f"{s['kind']} {xy(s['x'], s['y'])} at {dist_text(s['distance_m'])}, {dur_text(s['eta_min'])}"
                       for s in d.get("stops", []))
     head = (f"Route {d['route_id']} ({d['profile']}, slope limit {num(d['max_slope_limit_deg'])} deg): "
-            f"{num(d['distance_m'], 0)} m, {num(d['duration_min'])} min, ascent {num(d['ascent_m'], 0)} m, "
+            f"{dist_text(d['distance_m'])}, {dur_text(d['duration_min'])}, ascent {num(d['ascent_m'], 0)} m, "
             f"max slope {num(d['max_slope_deg'])} deg ({_limits(d)}), {d['hazard_cells']} cell(s) steeper "
             f"than {num(d['caution_slope_deg'])} deg.")
     warn = [w for w in d.get("warnings", []) if w not in (d.get("assessment") or {}).get("reasons", [])
@@ -503,8 +529,8 @@ def fmt_assess(d: dict) -> str:
     a = d["assessment"]
     verdict = "GO" if a["go"] else "NO-GO"
     return _lines(
-        f"{verdict} for {d['route_id']} ({d['profile']}): {num(d['distance_m'], 0)} m, "
-        f"{'travel ' if (d.get('consumables') or {}).get('stops_min') else ''}{num(d['duration_min'])} min, "
+        f"{verdict} for {d['route_id']} ({d['profile']}): {dist_text(d['distance_m'])}, "
+        f"{'travel ' if (d.get('consumables') or {}).get('stops_min') else ''}{dur_text(d['duration_min'])}, "
         f"max slope {num(d['max_slope_deg'])} deg ({_limits(d)}), ascent {num(d['ascent_m'], 0)} m.",
         _consumables_line(d.get("consumables")),
         ("Reasons: " + " ".join(a["reasons"])) if a["reasons"] else None,
@@ -525,8 +551,8 @@ def fmt_science(d: dict) -> str:
               else "no science value reported: none recorded, stops ordered by travel time only")
     lines = [f"Considered {d['candidates_considered']} candidate stop(s); selected {len(d['stops'])}. "
              f"Traverse with {len(d['stops'])} stop(s), {sv_txt}; "
-             f"{num(t['total_min'], 0)} of {num(t['budget_min'], 0)} min ({num(t['travel_min'], 0)} travel + "
-             f"{num(t['stops_min'], 0)} at stops{', returns to start' if t['return_to_start'] else ''})."]
+             f"{dur_text(t['total_min'])} of {dur_text(t['budget_min'])} ({dur_text(t['travel_min'])} travel + "
+             f"{dur_text(t['stops_min'])} at stops{', returns to start' if t['return_to_start'] else ''})."]
     for i, s in enumerate(d["stops"], 1):
         v = f"{num(s['science_value'], 2)}{' (assumed, no value recorded)' if s['value_assumed'] else ''}"
         lines.append(f"{i}. {s['id']} {s.get('name') or ''} {xy(s['x'], s['y'])} m, arrive {num(s['arrive_min'], 0)} min, "
@@ -534,7 +560,7 @@ def fmt_science(d: dict) -> str:
     if d.get("science_weighting_note"):
         lines.append("Note: " + d["science_weighting_note"])
     if r:
-        lines.append(f"Route {r['route_id']}: {num(r['distance_m'], 0)} m, max slope {num(r['max_slope_deg'])} deg, "
+        lines.append(f"Route {r['route_id']}: {dist_text(r['distance_m'])}, max slope {num(r['max_slope_deg'])} deg, "
                      f"{_go_line(r.get('assessment')) or ''}")
         c = _consumables_line(r.get("consumables"))
         if c:
@@ -578,7 +604,7 @@ def fmt_pois(d: dict) -> str:
                      f"{', '.join(mins) if mins else 'none read'}; position approximate"
                      + (f" +-{num(p['position_uncertainty_m'], 0)} m" if p.get("position_uncertainty_m") is not None else "") + ")")
         rows.append(f"- {p['ref']} {p.get('name') or ''} [{p.get('type')}] {xy(p['x'], p['y'])} m"
-                    + (f", {num(p['distance_m'], 0)} m away" if p.get("distance_m") is not None else "")
+                    + (f", {dist_text(p['distance_m'])} away" if p.get("distance_m") is not None else "")
                     + (f", science value {num(sv, 2)}" if sv is not None else ", science value not recorded") + extra)
         if p.get("description") and len(ps) <= 3:
             rows.append("  description: " + p["description"][:900] + ("..." if len(p["description"]) > 900 else ""))
@@ -640,6 +666,8 @@ def fmt_fsd(d: dict) -> str:
     return _lines(
         f"FSD {'ARMED' if d['armed'] else 'off'}; mode {d['mode']}; policy {pol}; replans used {d['replans_used']} of "
         f"{d['replans_allowed']}; route {d.get('route_id') or 'none'}, {num(d['remaining_route_m'], 0)} m remaining.",
+        (f"Latest planned route {d['latest_planned_route']} (the default for follow_route / fsd_enable)."
+         if d.get("latest_planned_route") and not d.get("route_id") else None),
         ("Last hazard: " + h["detail"] + f" at {xy(h['x'], h['y'])} m.") if h else "No hazard recorded.",
         ("Blockers: " + "; ".join(d["blockers"]) + ".") if d["blockers"] else "No blockers.",
         "Next: follow_route to continue, or plan_route from the rover to re-plan." if d["blockers"] else
@@ -657,6 +685,8 @@ def fmt_view(d: dict) -> str:
     if d.get("target"):
         t = d["target"]
         parts.append(f"target {t.get('id') or ''} {xy(t['x'], t['y'])} m".replace("  ", " "))
+    if d.get("distance_m") is not None:
+        parts.append(f"camera distance {dist_text(d['distance_m'])}")
     if d.get("layers"):
         parts.append("layers " + ", ".join(f"{l['layer']} {'on' if l['visible'] else 'off'}" for l in d["layers"]))
     if d.get("highlights"):
@@ -697,7 +727,7 @@ def fmt_sites(d: dict) -> str:
         reach = ("reachability unknown" if s["reachable"] is None else "reachable" if s["reachable"] else "NOT reachable")
         if s.get("score") is not None:
             tier = f"score {num(s['score'], 2)} (0-1 index, not abundance), " + tier
-        walk = f" ({num(s['walk_distance_m'], 0)} m walk)" if s.get("walk_distance_m") is not None else ""
+        walk = f" ({dist_text(s['walk_distance_m'])} walk)" if s.get("walk_distance_m") is not None else ""
         if s.get("area_by_tier_m2"):
             e = {"area_by_tier_m2": s["area_by_tier_m2"], "in_situ": ev.get("in_situ"),
                  "orbital_source": ev.get("orbital_source") or f"{ev.get('mission') or '?'}/{ev.get('instrument') or '?'}"}
@@ -705,9 +735,9 @@ def fmt_sites(d: dict) -> str:
                     f"by tier: {ev_breakdown(e)}; ")
             tier = f"best tier {s['best_tier']} {s['best_tier_name']}, "
         else:
-            area = f"area {num(s['area_m2'], 0)} m2, "
+            area = f"area {area_text(s['area_m2'])}, "
         out.append(f"{i}. {s['id']} {xy(s['x'], s['y'])} m, {tier}{area}mean slope "
-                   f"{num(s['mean_slope_deg'])} deg, {num(s['distance_m'], 0)} m away, {reach}{walk}; layer {ev['layer']}")
+                   f"{num(s['mean_slope_deg'])} deg, {dist_text(s['distance_m'])} away, {reach}{walk}; layer {ev['layer']}")
     src = insitu_sources_line([{"in_situ": s["evidence"][0].get("in_situ")} for s in ss if s["evidence"][0].get("in_situ")])
     if src:
         out.append(src)

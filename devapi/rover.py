@@ -99,7 +99,8 @@ class Rover:
             "replans_used": self.replans_used,
             "replans_allowed": 1 if self.policy.get("replan_on_block") else 0,
             "last_hazard": self.last_hazard, "remaining_route_m": round(self.remaining_m, 1),
-            "route_id": self.route_id, "rover_profile": self.profile, "blockers": blockers,
+            "route_id": self.route_id, "latest_planned_route": self.w.last_planned,
+            "rover_profile": self.profile, "blockers": blockers,
         }
 
     # ---- viewer-driven pose --------------------------------------------------------------------

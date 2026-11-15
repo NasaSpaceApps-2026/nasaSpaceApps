@@ -705,7 +705,8 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
     @tool("set_view", (
         "Control the viewer: camera mode (globe, orbit, chase, ground), the camera target (any location), layer "
         "visibility ({layer_id: true|false}, ids from list_layers) and highlights (POIs, markers, set members or "
-        "whole sets such as a find_sites result). Use after searches to show results ('highlights=[\"set:2\"]'). "
+        "whole sets such as a find_sites result). Use it to show results when the user asks where something is or to see it ('highlights=[\"set:2\"]'), "
+        "not after every search. "
         "Use set_view when you need layers or highlights or several things at once; use fly_camera instead for a "
         "plain 'show me X' (camera only). Highlighting a whole set shows at most the first 50 members. The reply says whether a viewer is connected. "
         "Example: set_view(mode=\"orbit\", target=\"poi:landing\", layers={\"carbonate\": true}, highlights=[\"set:2\"])"), act)

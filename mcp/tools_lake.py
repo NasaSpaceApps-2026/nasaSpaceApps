@@ -136,7 +136,8 @@ def register(tool, call, coerce, location_refs: str, schema_patch: dict, loc) ->
         "plan_science_traverse, or points that are routed on foot), compares elapsed time plus the walk back to the "
         "nearest haven (default: the route start) with the budget minus reserve, and flags the first point where the "
         "margin goes below the reserve (the point of no return) and the last safe point. Call it BEFORE telling the "
-        "user an EVA route is safe. " + _EVA_MODEL + " " + location_refs +
+        "user an EVA route is safe. It checks the point of no return only; it does not replace assess_route (slope and "
+        "feasibility GO/NO-GO). " + _EVA_MODEL + " " + location_refs +
         ' Example: check_eva_return(route_id="route-3", budget_min=480) or check_eva_return(points=["base", "poi:sample_10_swift_run"])'))
     async def check_eva_return(route_id: str | None = None, points: Any = None, profile: str = "eva_walkable",
                                budget_min: float | None = None, reserve_fraction: float | None = None,

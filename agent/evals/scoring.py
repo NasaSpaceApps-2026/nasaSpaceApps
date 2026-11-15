@@ -11,7 +11,7 @@ from typing import Any, Iterable
 
 NUM_RE = re.compile(r"(?P<sign>[-−+]?)(?P<int>\d{1,3}(?:,\d{3})+|\d+)(?P<frac>\.\d+)?(?P<exp>[eE][-+]?\d+)?")
 DATE_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}:\d{2}(?::\d{2})?\b")
-UNIT_RE = re.compile(r"\s?(?P<u>%|°|deg(?:rees?)?\b|km\b|m2\b|m²|m\b|metres?\b|meters?\b|min(?:utes?)?\b|"
+UNIT_RE = re.compile(r"\s?(?P<u>%|°|deg(?:rees?)?\b|km2\b|km²|km\b|m2\b|m²|m\b|metres?\b|meters?\b|min(?:utes?)?\b|"
                      r"h\b|hrs?\b|hours?\b|sols?\b|s\b|ha\b|mps\b|m/s\b)", re.I)
 SMALL_BARE_MAX = 12  # bare integers at or below this with no unit are counts/ordinals, not measurements
 MAX_TRAILING_ZERO_TOL_FROM = 1000
@@ -27,7 +27,7 @@ class Mention:
 
 
 _UNIT_CANON = {"°": "deg", "degree": "deg", "degrees": "deg", "deg": "deg", "metre": "m", "metres": "m",
-               "meter": "m", "meters": "m", "m²": "m2", "minute": "min", "minutes": "min", "hour": "h",
+               "meter": "m", "meters": "m", "m²": "m2", "km²": "km2", "minute": "min", "minutes": "min", "hour": "h",
                "hours": "h", "hr": "h", "hrs": "h", "sol": "sol", "sols": "sol", "m/s": "mps"}
 
 
@@ -61,6 +61,8 @@ def extract_numbers(text: str, *, skip_small_bare: bool = True, skip_identifiers
             start += 1
             sign = ""
             prev = text[start - 1]
+        if sign == "-" and prev == "+":
+            sign = ""  # "+-43 m" is a plus/minus uncertainty, not a negative number
         if sign == "+":
             sign = ""
         if skip_identifiers:
@@ -87,8 +89,8 @@ def extract_numbers(text: str, *, skip_small_bare: bool = True, skip_identifiers
     return out
 
 
-_FACTORS = {"": (1.0,), "%": (1.0, 0.01), "km": (1.0, 1000.0), "m": (1.0,), "h": (1.0, 60.0, 3600.0),
-            "min": (1.0, 1 / 60.0, 60.0), "deg": (1.0,), "s": (1.0, 1 / 60.0), "m2": (1.0,), "ha": (1.0, 10000.0)}
+_FACTORS = {"": (1.0,), "%": (1.0, 0.01), "km": (1.0, 1000.0), "m": (1.0, 0.001), "km2": (1.0, 1e6), "h": (1.0, 60.0, 3600.0),
+            "min": (1.0, 1 / 60.0, 60.0), "deg": (1.0,), "s": (1.0, 1 / 60.0), "m2": (1.0, 1e-6), "ha": (1.0, 10000.0)}
 
 
 def is_grounded(mention: Mention, source_values: Iterable[float]) -> bool:
@@ -105,7 +107,8 @@ def source_value_set(texts: Iterable[str]) -> list[float]:
     vals: list[float] = []
     for t in texts:
         vals.extend(m.value for m in extract_numbers(t, skip_small_bare=False, skip_identifiers=False))
-    return vals
+    # "B is -4.4 m relative to A" is legitimately restated as "4.4 m below": the magnitude appeared
+    return vals + [-v for v in vals if v < 0]
 
 
 def ungrounded_numbers(reply: str, sources: Iterable[str]) -> list[str]:
@@ -214,7 +217,7 @@ def score_tool_path(names: list[str], spec: dict, always_allowed: Iterable[str] 
 
 def check_reply(reply: str, checks: dict) -> list[str]:
     fails: list[str] = []
-    low = reply.lower()
+    low = reply.lower().replace("*", "").replace("`", "")  # markdown emphasis must not split a phrase ("today's** topography")
     for group in checks.get("reply_contains_all", []):
         if not any(a.lower() in low for a in _alts(group)):
             fails.append(f"reply lacks: {' | '.join(_alts(group))}")

@@ -14,6 +14,8 @@
 #   max_tool_calls: N
 #   numbers_grounded: true (default)  every measurement-like number in the reply must appear in a tool
 #                                     result of the same session (or in the prompt / app-state block)
+# setup (live runs only): {markers: [{x, y, label}], route: {start, goal, profile}} created through the REST API
+# before the case (markers are removed afterwards) for prompts that presuppose app state ("my marker", "that route").
 # A case whose required tools the MCP server does not (yet) offer is reported SKIP, not FAIL
 # (use --strict to make skips fail).
 
@@ -63,6 +65,9 @@ cases:
   - id: demo_scout
     source: scope-doc demo 5
     prompt: "Scout that route; stop if unsafe and tell me why."
+    # The prompt presupposes an existing route: the live runner plans one through the REST API first (`setup`).
+    setup:
+      route: {start: rover, goal: "poi:sample_16_kukaklek", profile: rover_scout}
     tool_path:
       required: [fsd_enable, follow_route]
       order: [fsd_enable, follow_route]
@@ -111,7 +116,8 @@ cases:
     tool_path:
       required: [find_locations]
     checks:
-      reply_contains_any: ["no spot", "no location", "none", "nothing", "relax", "no place", "not find", "could not", "couldn't"]
+      reply_contains_any: ["no spot", "no location", "none", "nothing", "relax", "no place", "not find", "could not", "couldn't",
+                           "doesn't exist", "doesn’t exist", "does not exist", "no cell", "bottleneck"]
 
   - id: q05_crater_rim_walk
     source: mcp-tools q5
@@ -194,9 +200,11 @@ cases:
   - id: los_radio_base_from_marker
     source: visibility tools
     prompt: "Is the base in radio line of sight from my marker, with a 3 m mast on the base?"
+    # "my marker" presupposes one marker exists: the live runner places it through the REST API (`setup`) and removes it after.
+    setup:
+      markers: [{x: 1500, y: -300, label: "my marker"}]
     tool_path:
-      required: [list_markers, line_of_sight]
-      order: [list_markers, line_of_sight]
+      required: [line_of_sight]
     checks:
       reply_contains_any: ["clear", "blocked", "no marker", "place", "marker"]
       reply_contains_all: [["Fresnel", "not modelled", "not modeled", "optical", "geometric"]]

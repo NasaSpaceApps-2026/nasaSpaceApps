@@ -45,3 +45,53 @@ before tool calls; calls viewer tools unprompted (q03); mentions assumed values 
 (+-43 m) is not in an easily quotable form; no tool states distances between arbitrary POIs, so the model computes them.
 (c) Data: none observed (real data answered all queries; q04 correctly reports no zero-slope pad).
 Also scorer/eval-set issues: q04 phrase list misses "No ... exists"; unit conversions m2->km2 unsupported by the grounding check.
+
+## Run 3 (after fixes)
+
+Recordings: `agent/replays/run3-failing/`, `run3-failing-b/`, `run3-failing-c/` (targeted reruns of the Run 1/2 failures while iterating),
+`run3-full/` (the one full run), `run3-rerun/` (4 cases rerun after a last prompt tweak). Same model, same site.
+
+**Score: 19/24** on the full run, rescored with the final scorer (18/24 as scored live; `lake_landing_underwater` failed only because the
+reply wrote `today's** topography` with markdown bold, fixed in the scorer, see below). Run 1 was 15/24. For reference, re-scoring the unchanged
+Run 1 recordings with the final scorer and eval set gives 19/24, so part of the gain is scorer/eval correction, not the agent.
+
+### What changed
+
+1. Number provenance (tool results, `mcp/format.py`, `mcp/tools_visibility.py`): areas print as `430708 m2 (0.431 km2)`, distances as
+   `2700 m (2.7 km)` (plain metres under 100 m), durations as `95.2 min (1.59 h)` (plain minutes under 30), in routes, assessments, consumables,
+   traverses, sites, POIs, nearest, regions/spots, LOS, viewshed and vantage lines. Route consumables show the EVA limit in hours too.
+   `fly_camera`/`set_view` results now echo `camera distance N m` (the model quoted its own argument). `fsd_status` reports the latest planned
+   route (the `follow_route` default). Scoring: exact m<->km, m2<->km2, min<->h conversions count as grounded; `+-43 m` no longer parses as -43;
+   a negative source value (`B is -4.4 m relative to A`) grounds its magnitude. Numbers that never appeared in any unit are still flagged (tests).
+2. Prompt (`agent/system_prompt.md`, about 8 lines net): act instead of asking when ids are available; "scout" always means fsd_enable then
+   follow_route; "take me to X" starts with search_pois; plan then assess_route before recommending a route (check_eva_return is point-of-no-return
+   only); viewer tools only for "where/show me/take me", not after plain searches; offer only the relaxations a hint names. Tool descriptions:
+   `set_view` no longer says "use after searches"; `check_eva_return` says it does not replace assess_route.
+3. Eval changes (each is a case or scorer defect, not an agent defect):
+   - `q04_zero_slope_pad`: reply keywords now also accept "doesn't/does not exist", "no cell", "bottleneck" (the correct answer "A literal
+     zero-slope pad doesn't exist" failed the old phrase list). Test added; a reply that invents a pad still fails.
+   - `los_radio_base_from_marker`: `list_markers` no longer required. The marker is in the app-state block, so acting directly is correct.
+     The case now has `setup` (a marker is placed through the REST API, removed afterwards) because "my marker" presupposes one exists; with 0
+     markers, asking is right and the old case demanded a `line_of_sight` call anyway.
+   - `demo_scout`: new `setup` plans a route first (the prompt presupposes "that route"). `run_evals.py` gained `setup` support (live runs only).
+   - `check_reply` ignores markdown `*` and backticks so emphasis cannot split a required phrase (lake_landing_underwater).
+
+### Per-case results (full run)
+
+PASS (19): demo_route_two_markers, demo_marswalk (assess_route now called), demo_scout (fsd_enable + follow_route), demo_sample_near_me, q02,
+q03, q04, q05, q06, q07, q08, q09, q10, sun_local_time_now, sun_pad_shadow_1600, los_radio_base_from_marker, lake_shoreline_level,
+eva_envelope_8h, lake_landing_underwater (after the markdown fix).
+FAIL (5):
+- demo_take_me_to_delta (systematic, number): searches correctly now, but the reply invents "~200-400 m" for nearby samples (model-made number).
+- q01_terrain_at_landing_site (flaky, number): "1,460 m2" is a model-rounded/summed area; not in any result.
+- eva_route_point_of_no_return (systematic, number): model writes "2 x 62 min = 124 min"; the tool only says out-and-back is twice one-way.
+- vantage_overlook_outcrop (flaky, tool budget): 11 calls > 8 (passed in the targeted runs).
+- demo_carbonates (flaky, tool path): skipped set_view after the prompt restricted viewer use; a follow-up prompt tweak fixed it in a rerun
+  (passed), but the same tweak made q03 call set_view again in that rerun (q03 flipped between runs: viewer-call behaviour is flaky on DeepSeek).
+
+Flaky: q03, demo_carbonates, vantage_overlook_outcrop, q01. Systematic: demo_take_me_to_delta and eva_route numbers (model arithmetic / invented
+ranges). Fixed systematically: marswalk, scout, sample_near_me (43 m), q04, los, q08/vantage unit conversions.
+
+### Number-provenance results
+Unit-conversion violations (km2 from m2, km from m) from Runs 1/2: none in Run 3. Remaining ungrounded numbers are model arithmetic or invented
+ranges (124 min, 200-400 m, 1,460 m2), 3 of 24 sessions. No unit-conversion or assumed-eye-height violations.
