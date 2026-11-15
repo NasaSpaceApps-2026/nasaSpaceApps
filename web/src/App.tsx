@@ -6,7 +6,11 @@ import { siteImagery, siteTerrain } from './providers'
 import { CesiumRover } from './cesiumRover'
 import { PlacesLayer, type Place } from './places'
 import { BUBBLES } from './bubbles'
+import { dropOnBubbles, type StreetDrop } from './pegman'
 import './App.css'
+
+const SANDBOX_DEV = 'http://localhost:5174'
+type SurfaceView = 'planet' | 'street'
 
 const MARS_ION_ASSET = 3644333
 type Mode = 'orbit' | 'site' | 'ground' | 'rover' | 'planet'
@@ -14,6 +18,31 @@ let roverCtl: CesiumRover | null = null // set once the viewer is up; used by fl
 let placesCtl: PlacesLayer | null = null
 let marsTileset: Cesium.Cesium3DTileset | null = null
 let bubbleEntities: Cesium.Entity[] = []
+
+function ensureRover(v: Cesium.Viewer, s: Site): CesiumRover {
+  if (roverCtl) return roverCtl
+  roverCtl = new CesiumRover(v, s)
+  ;(window as unknown as { __rover?: CesiumRover }).__rover = roverCtl
+  return roverCtl
+}
+
+function pickMarsLatLon(viewer: Cesium.Viewer, clientX: number, clientY: number): { latDeg: number; lonDeg: number } | null {
+  const rect = viewer.canvas.getBoundingClientRect()
+  const win = new Cesium.Cartesian2(clientX - rect.left, clientY - rect.top)
+  let cartesian: Cesium.Cartesian3 | undefined = viewer.scene.pickPosition(win)
+  if (!Cesium.defined(cartesian)) cartesian = viewer.camera.pickEllipsoid(win, SPHERE) ?? undefined
+  if (!Cesium.defined(cartesian)) return null
+  const carto = Cesium.Cartographic.fromCartesian(cartesian, SPHERE)
+  return { latDeg: Cesium.Math.toDegrees(carto.latitude), lonDeg: Cesium.Math.toDegrees(carto.longitude) }
+}
+
+function resetPegman(el: HTMLDivElement | null) {
+  if (!el) return
+  el.style.left = ''
+  el.style.top = ''
+  el.style.right = ''
+  el.style.bottom = ''
+}
 
 export default function App() {
   const box = useRef<HTMLDivElement>(null)
@@ -26,6 +55,12 @@ export default function App() {
   const [vec, setVec] = useState({ traverse: true, names: true })
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<Place[]>([])
+  const initialMode = ((new URLSearchParams(location.search).get('view') as Mode) || 'site')
+  const [cameraMode, setCameraMode] = useState<Mode>(initialMode)
+  const [surfaceView, setSurfaceView] = useState<SurfaceView>('planet')
+  const [streetDrop, setStreetDrop] = useState<StreetDrop | null>(null)
+  const pegRef = useRef<HTMLDivElement>(null)
+  const pegDrag = useRef(false)
 
   useEffect(() => {
     let dead = false
@@ -152,15 +187,17 @@ export default function App() {
         }
       })
       ;(window as unknown as { __viewer?: Cesium.Viewer }).__viewer = v
-      roverCtl = new CesiumRover(v, s)
-      ;(window as unknown as { __rover?: CesiumRover }).__rover = roverCtl
-      let lastHud = 0
-      roverCtl.onPose = (p) => {
-        const now = performance.now()
-        if (now - lastHud < 250) return
-        lastHud = now
-        setDrive(`rover ${p.status}${p.stop_reason ? ' (' + p.stop_reason + ')' : ''} · slope ${p.slope_deg.toFixed(1)}° · ` +
-          `ahead ${p.ahead_slope_deg.toFixed(1)}° · ${p.display_speed_mps.toFixed(1)} m/s shown (${p.speed_mps.toFixed(2)} real) · x ${p.x.toFixed(0)} y ${p.y.toFixed(0)}`)
+      const bootMode = (new URLSearchParams(location.search).get('view') as Mode) || 'site'
+      if (bootMode !== 'planet') {
+        const rover = ensureRover(v, s)
+        let lastHud = 0
+        rover.onPose = (p) => {
+          const now = performance.now()
+          if (now - lastHud < 250) return
+          lastHud = now
+          setDrive(`rover ${p.status}${p.stop_reason ? ' (' + p.stop_reason + ')' : ''} · slope ${p.slope_deg.toFixed(1)}° · ` +
+            `ahead ${p.ahead_slope_deg.toFixed(1)}° · ${p.display_speed_mps.toFixed(1)} m/s shown (${p.speed_mps.toFixed(2)} real) · x ${p.x.toFixed(0)} y ${p.y.toFixed(0)}`)
+        }
       }
       // Real Perseverance traverse/waypoints and IAU names; start the rover at the first real waypoint.
       placesCtl = new PlacesLayer(v, s)
@@ -170,7 +207,8 @@ export default function App() {
       }).catch((e) => console.error('places', e))
       setSite(s)
       setViewer(v)
-      fly(v, s, (new URLSearchParams(location.search).get('view') as Mode) || 'site', 0)
+      fly(v, s, bootMode, 0)
+      setCameraMode(bootMode)
     })().catch((e) => setStatus('error: ' + e))
     return () => {
       dead = true
@@ -195,8 +233,9 @@ export default function App() {
     setHits([])
     setQuery(p.name)
     if (p.kind === 'waypoint') {
-      roverCtl?.driver.teleport(p.x, p.y, p.heading ?? 0)
+      ensureRover(viewer, site).driver.teleport(p.x, p.y, p.heading ?? 0)
       fly(viewer, site, 'rover', 0)
+      setCameraMode('rover')
     } else {
       roverCtl?.setChase(false)
       viewer.camera.flyTo({
@@ -206,14 +245,93 @@ export default function App() {
     }
   }
 
+  const showPegman = cameraMode === 'planet' && surfaceView === 'planet' && viewer
+
+  const onPegPointerDown = (e: React.PointerEvent) => {
+    if (!showPegman) return
+    e.preventDefault()
+    pegDrag.current = true
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const el = pegRef.current
+    if (el) {
+      el.style.right = 'auto'
+      el.style.bottom = 'auto'
+      el.style.left = `${e.clientX - 14}px`
+      el.style.top = `${e.clientY - 14}px`
+    }
+  }
+
+  const onPegPointerMove = (e: React.PointerEvent) => {
+    if (!pegDrag.current || !pegRef.current) return
+    pegRef.current.style.left = `${e.clientX - 14}px`
+    pegRef.current.style.top = `${e.clientY - 14}px`
+  }
+
+  const onPegPointerUp = (e: React.PointerEvent) => {
+    if (!pegDrag.current) return
+    pegDrag.current = false
+    e.currentTarget.releasePointerCapture(e.pointerId)
+    if (!viewer) {
+      resetPegman(pegRef.current)
+      return
+    }
+    const ll = pickMarsLatLon(viewer, e.clientX, e.clientY)
+    if (!ll) {
+      resetPegman(pegRef.current)
+      setStatus('No street view here')
+      return
+    }
+    const drop = dropOnBubbles(ll.latDeg, ll.lonDeg)
+    if (!drop) {
+      resetPegman(pegRef.current)
+      setStatus('No street view here')
+      return
+    }
+    setStreetDrop(drop)
+    setSurfaceView('street')
+    resetPegman(pegRef.current)
+  }
+
+  const leaveStreet = () => {
+    setStreetDrop(null)
+    setSurfaceView('planet')
+    resetPegman(pegRef.current)
+  }
+
+  const sandboxSrc = streetDrop
+    ? `${SANDBOX_DEV}/?world=${streetDrop.world}&x=${streetDrop.x}&y=${streetDrop.y}&heading=0`
+    : ''
+
   return (
     <div className="app">
-      <div ref={box} className="cesium" />
+      <div ref={box} className={`cesium${surfaceView === 'street' ? ' cesium--hidden' : ''}`} />
+      {surfaceView === 'street' && streetDrop && (
+        <>
+          <iframe className="street-frame" title="Rover street view" src={sandboxSrc} />
+          <button type="button" className="map-back" onClick={leaveStreet}>Map</button>
+        </>
+      )}
+      {showPegman && (
+        <div
+          ref={pegRef}
+          className="pegman"
+          role="img"
+          aria-label="Drag to street view"
+          onPointerDown={onPegPointerDown}
+          onPointerMove={onPegPointerMove}
+          onPointerUp={onPegPointerUp}
+          onPointerCancel={onPegPointerUp}
+        />
+      )}
       <div className="panel">
         <b>Ares Atlas — Jezero</b>
         <div className="row">
           {(['orbit', 'site', 'ground', 'rover', 'planet'] as Mode[]).map((m) => (
-            <button key={m} disabled={!viewer} onClick={() => fly(viewer!, site!, m, 2)}>
+            <button key={m} disabled={!viewer} onClick={() => {
+              if (surfaceView === 'street') leaveStreet()
+              fly(viewer!, site!, m, 2)
+              setCameraMode(m)
+            }}>
               {m}
             </button>
           ))}
@@ -256,7 +374,8 @@ export default function App() {
 }
 
 /** Mouse controls per camera mode. Ground = first-person look; orbit/site = rotate planet + tilt. */
-function applyControls(v: Cesium.Viewer, mode: Mode) {
+function applyControls(v: Cesium.Viewer, mode: Mode, s?: Site) {
+  if (mode === 'rover' && s) ensureRover(v, s)
   roverCtl?.setChase(mode === 'rover')
   const c = v.scene.screenSpaceCameraController
   const T = Cesium.CameraEventType, K = Cesium.KeyboardEventModifier
@@ -334,7 +453,7 @@ function showPlanetBubbles(v: Cesium.Viewer) {
 
 function fly(v: Cesium.Viewer, s: Site, mode: Mode, duration: number) {
   const lat0 = s.manifest.lat0, lon0 = s.manifest.lon0
-  applyControls(v, String(mode).startsWith('alt:') ? 'site' : mode)
+  applyControls(v, String(mode).startsWith('alt:') ? 'site' : mode, s)
   if (mode === 'rover') return // chase camera is driven by the rover each frame
   if (mode === 'planet') {
     v.scene.globe.clippingPlanes = undefined as unknown as Cesium.ClippingPlaneCollection
