@@ -496,12 +496,12 @@ export function Interactions(p: Props) {
       content = (
         <Card title={c.title} badge={b ? 'Street-view patch' : 'Copilot target'} sub={fmtLatLon(c.lat, c.lon)} onClose={close} cardRef={setCardEl}
           actions={[
-            ...(b ? [{ label: b.id === 'crater' ? 'Explore Jezero' : 'Explore Mons', primary: true, onClick: () => { close(); p.onDriveBubble(b) } }] : []),
-            ...(b?.id === 'crater' ? [{ label: 'Site analysis', onClick: () => { close(); p.onJezero() } }] : []),
+            ...(b?.id === 'crater' ? [{ label: 'Explore Jezero', primary: true, onClick: () => { close(); p.onJezero() } }] : []),
+            ...(b ? [{ label: 'Drive here', primary: b.id !== 'crater', onClick: () => { close(); p.onDriveBubble(b) } }] : []),
             { label: 'Fly in', onClick: () => { flyIn(viewer!, c.lat, c.lon, b ? 60_000 : 400_000); close() } },
             { label: 'Ask the copilot', onClick: () => ask(`Tell me about ${c.title} (${fmtLatLon(c.lat, c.lon)}).`) },
           ]}>
-          <p className="icard__p">{b ? `A ${(b.sizeM / 1000).toFixed(1)} km square of high-resolution terrain you can walk or drive through. "Explore" opens that patch in street view with the buggy.` : 'Where the copilot pointed the globe.'}</p>
+          <p className="icard__p">{b ? `A ${(b.sizeM / 1000).toFixed(1)} km square of high-resolution terrain you can walk or drive through. "Explore" opens the site analysis; "Drive here" opens street view.` : 'Where the copilot pointed the globe.'}</p>
         </Card>
       )
     } else if (c.k === 'measure' && meas) {

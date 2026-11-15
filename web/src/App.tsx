@@ -385,10 +385,7 @@ export default function App() {
 
   useEffect(() => { modeNow.current = cameraMode }, [cameraMode])
   useEffect(() => { flyPlanetRef.current = flyPlanet })
-  // Street-view on Jezero highlights Jezero; Olympus street view highlights Mons (mode id "drive").
-  const uiMode: UiMode = surfaceView === 'street'
-    ? (streetDrop?.world === 'olympus' ? 'drive' : 'jezero')
-    : cameraMode === 'planet' ? 'mars' : 'jezero'
+  const uiMode: UiMode = surfaceView === 'street' ? 'drive' : cameraMode === 'planet' ? 'mars' : 'jezero'
 
   const goMars = () => {
     if (!viewer || !site) return
@@ -402,12 +399,12 @@ export default function App() {
     fly(viewer, site, 'site', duration)
     setCameraMode('site')
   }
-  const goMons = () => {
-    if (surfaceView === 'street' && streetDrop?.world === 'olympus') return
-    const b = BUBBLES.find((x) => x.id === 'olympus') ?? BUBBLES[1]
+  const goDrive = () => {
+    if (surfaceView === 'street') return
+    const b: Bubble = BUBBLES[0]
     driveAt(b.lat, b.lon, b.title)
   }
-  const setMode = (m: UiMode) => { if (m === 'mars') goMars(); else if (m === 'jezero') goJezero(); else goMons() }
+  const setMode = (m: UiMode) => { if (m === 'mars') goMars(); else if (m === 'jezero') goJezero(); else goDrive() }
   const modeRef = useRef(setMode)
   useEffect(() => { modeRef.current = setMode })
 
@@ -625,12 +622,9 @@ export default function App() {
       #worlds { top: 12px !important; right: 12px !important; } #hud { top: 12px !important; left: 12px !important; }
       #help { bottom: 12px !important; right: 12px !important; }`
     doc.head.appendChild(st)
-    // Keep only Jezero/Mons street worlds; rename the switcher labels for the globe UI.
-    const trim = () => doc.querySelectorAll<HTMLAnchorElement>('#worlds a').forEach((a) => {
-      const t = (a.textContent ?? '').trim().toLowerCase()
-      if (t === 'crater') a.textContent = 'jezero'
-      else if (t === 'olympus') a.textContent = 'mons'
-      else if (t !== 'jezero' && t !== 'mons') a.style.display = 'none'
+    // Keep only the world links (crater / olympus) in the street-view switcher.
+    const trim = () => doc.querySelectorAll<HTMLElement>('#worlds a').forEach((a) => {
+      if (!/^(crater|olympus)$/i.test((a.textContent ?? '').trim())) a.style.display = 'none'
     })
     trim()
     const worlds = doc.getElementById('worlds')
