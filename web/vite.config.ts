@@ -129,6 +129,7 @@ export default defineConfig(() => {
         '/sandbox': { target: `http://127.0.0.1:${SANDBOX_PORT}`, changeOrigin: true, ws: true },
       },
     },
-    preview: { proxy: backendProxy },
+    // allowedHosts: the Hugging Face Space serves this preview server under *.hf.space (deploy/hf/).
+    preview: { proxy: backendProxy, allowedHosts: true as const },
   }
 })

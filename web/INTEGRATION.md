@@ -209,3 +209,9 @@ The user's browser never made the `/pois` request, so POI labels were missing. `
 | `src/interact/Interactions.tsx` | set static POIs first, API refresh after |
 
 Also in `Interactions.tsx` (same fix): the IAU-polling `build()` timers were never cancelled, so a stale timer (closure with `pois = []`) overwrote `places` with IAU names only. Now the effect sets POI places immediately, cancels the timer on cleanup, and merges IAU names when they load.
+
+## Hugging Face Space deploy (deploy/hf/)
+
+| File | Owner | Change | Why | Revert |
+|---|---|---|---|---|
+| `web/vite.config.ts` | Rithvik | `preview.allowedHosts: true` | the Space serves `vite preview` under `*.hf.space`; without it Vite 8 rejects the Host header. Dev server and local behaviour unchanged | remove the option |
