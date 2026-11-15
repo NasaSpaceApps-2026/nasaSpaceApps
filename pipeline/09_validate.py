@@ -156,6 +156,7 @@ computed from NASA/JPL Mars 2020 rover data against our site model (USGS HiRISE 
 |---|---|---|
 | Rover slope limits: caution 15 deg, no-go 20 deg | api/profiles.yaml, web rover physics | **Assumed.** Perseverance's real limits are not public here; check #2 shows the rover's max measured tilt was {res['tilt']['max_rover_tilt_deg']:.1f} deg. |
 | Astronaut walking limits 15/25 deg, speed curve | api/profiles.yaml | **Assumed**, Earth-derived hiking function used as a placeholder. |
+| Rover grip limit about 27 deg (mu 0.6, rolling 0.08) | api/profiles.yaml, web rover physics | **Assumed** (see SCIENCE_VALIDITY.md). More permissive than anything Perseverance has driven: its max measured tilt in this site is {res['tilt']['max_rover_tilt_deg']:.1f} deg. The planner's 20 deg scout limit is the realistic one. |
 | Display speed factor x200 | rover physics | Display choice only, not science. |
 | Overall surface hue of the colourised imagery | pipeline/colorize.py ANCHOR | **Assumed** typical Mars tone. Brightness/detail are real HiRISE; only relative colour variation comes from Viking. Marked false colour in the manifest. |
 | Imagery below 1 m outside the 25 cm core | pipeline/00_fetch.py | Real HiRISE averaged to 1 m (not 25 cm) outside the core block. |

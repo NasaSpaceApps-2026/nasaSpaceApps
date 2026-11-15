@@ -41,7 +41,11 @@ await run(0, 0, 1)
 await run(1, 0, 60)
 const p4 = await pose()
 const stopReason = await page.evaluate(() => window.__rover.driver.pose.stop_reason)
-check('refuses a no-go slope on real terrain', p4.status === 'blocked_slope' && p4.y < 3539 && p4.slope < 25,
+// Force-based physics (teammate, 2026-11-14): no hard slope block; the rover stops when wheel grip runs out
+// (mu 0.6 -> about atan(mu - Crr) = 27 deg). So: it must stop short of the 48 deg cell, on a slope at or below
+// the grip limit, reporting blocked or slipping. Perseverance's real maximum measured tilt is 20.3 deg
+// (docs/science-validation.md), so the planner's 20 deg limit, not this grip limit, is the realistic one.
+check('cannot climb past its grip limit on real terrain', ['blocked_slope', 'slipping'].includes(p4.status) && p4.y < 3539 && p4.slope < 31,
   `status ${p4.status} (${stopReason}), y ${p4.y.toFixed(0)} (steep cell at 3539), slope under rover ${p4.slope.toFixed(1)} deg`)
 await page.screenshot({ path: `${process.env.SHOT_DIR ?? '.'}/rover_chase.png` })
 console.log('final', JSON.stringify(await pose()))
