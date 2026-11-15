@@ -27,12 +27,16 @@ async def _get(http: httpx.AsyncClient, base: str, path: str, timeout: float) ->
 
 
 async def fetch_context(api_url: str, client_context: dict | None = None, timeout: float = 1.5,
-                        http: httpx.AsyncClient | None = None) -> dict:
+                        http: httpx.AsyncClient | None = None, rover_url: str | None = None) -> dict:
+    """Rover state and markers come from `rover_url` (Yousef's API, env ATLAS_ROVER_API_URL) when set, else api_url.
+    His /rover/state and /markers are read as-is: they already carry x, y, z, heading_deg, mode, route_id, lat, lon,
+    and {"markers": [...]} with id, x, y, label, created_by (the same marker ids work as marker:<id>)."""
+    rover_base = (rover_url or api_url)
     own = http is None
     http = http or httpx.AsyncClient()
     try:
         (rover, rover_err), (markers, markers_err) = await asyncio.gather(
-            _get(http, api_url, "/rover/state", timeout), _get(http, api_url, "/markers", timeout))
+            _get(http, rover_base, "/rover/state", timeout), _get(http, rover_base, "/markers", timeout))
     finally:
         if own:
             await http.aclose()

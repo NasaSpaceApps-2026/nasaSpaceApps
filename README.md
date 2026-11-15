@@ -31,6 +31,9 @@ ATLAS_SITE_DIR=data/build/site/jezero .venv/bin/python -m devapi --port 8000
 export ANTHROPIC_API_KEY=...
 .venv/bin/python -m agent
 
+# 3b. Optional: drive Yousef's real rover API (api/) instead of the stand-in; recipe and frame check in mcp/README.md
+#     ATLAS_ROVER_API_URL=http://localhost:8000 ATLAS_API_URL=http://localhost:8001 (his API on :8000, devapi on :8001)
+
 # 4. Chat panel dev page on http://localhost:5199
 cd chat-dev && npm install && npm run dev
 # no key? `npm run mock` starts a scripted fake agent on :8766 instead of step 3

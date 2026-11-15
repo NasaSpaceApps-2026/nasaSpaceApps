@@ -6,7 +6,9 @@ show what the agent is doing.
 
 Run:  python mcp/server.py            (stdio)
       python mcp/server.py --http     (streamable HTTP on 127.0.0.1:8765, path /mcp)
-Env:  ATLAS_API_URL=http://localhost:8000
+Env:  ATLAS_API_URL=http://localhost:8000        query engine (layers, describe, search, sets, sun, lake...)
+      ATLAS_ROVER_API_URL=http://localhost:8000  optional: Yousef's rover API; when set, rover state/commands, routes,
+                                                 markers, view, find_sites, pois and terrain go there (mcp/backends.py)
 """
 from __future__ import annotations
 
@@ -33,6 +35,7 @@ from mcp.server.mcpserver import MCPServer  # noqa: E402
 from mcp.server.mcpserver.exceptions import ToolError  # noqa: E402
 
 import format as fmt  # noqa: E402  (mcp/format.py)
+import backends  # noqa: E402  (mcp/backends.py: rover API / query engine split)
 
 DEFAULT_API_URL = "http://localhost:8000"
 
@@ -185,42 +188,38 @@ def _short(o: Any, n: int = 140) -> str:
     return s if len(s) <= n else s[: n - 1] + "…"
 
 
-def fetch_targets(api_url: str | None = None) -> list[str] | None:
-    """Search targets from the running API (for the find_sites description). None if unreachable."""
+def fetch_targets(api_url: str | None = None, rover_url: str | None = None) -> list[str] | None:
+    """Search targets from the running API (for the find_sites description). None if unreachable.
+    find_sites runs on the rover backend when one is configured, so its targets are the valid ones."""
+    base = rover_url or os.environ.get("ATLAS_ROVER_API_URL") or api_url or os.environ.get("ATLAS_API_URL", DEFAULT_API_URL)
     try:
-        r = httpx.get((api_url or os.environ.get("ATLAS_API_URL", DEFAULT_API_URL)).rstrip("/") + "/search/targets",
-                      timeout=2.0)
-        return [t["target"] for t in r.json()["targets"]]
+        r = httpx.get(base.rstrip("/") + "/search/targets", timeout=2.0)
+        return [t["target"] for t in r.json()["targets"] if t.get("available", True)]
     except Exception:
         return None
 
 
 def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = None,
-                 targets: list[str] | None = None, name: str = "ares-atlas") -> MCPServer:
-    """`client` may be a pre-built httpx.AsyncClient (tests pass one bound to the app via ASGITransport)."""
+                 targets: list[str] | None = None, name: str = "ares-atlas",
+                 rover_client: httpx.AsyncClient | None = None, rover_url: str | None = None) -> MCPServer:
+    """`client` may be a pre-built httpx.AsyncClient (tests pass one bound to the app via ASGITransport).
+    rover_url / rover_client (env ATLAS_ROVER_API_URL) select Yousef's API for the rover side (mcp/backends.py)."""
     api_url = (api_url or os.environ.get("ATLAS_API_URL", DEFAULT_API_URL)).rstrip("/")
     if client is None:
         client = httpx.AsyncClient(base_url=api_url, timeout=httpx.Timeout(300.0, connect=3.0))
+    rover_url = (rover_url or os.environ.get("ATLAS_ROVER_API_URL") or "").rstrip("/")
+    if rover_client is None and rover_url:
+        rover_client = httpx.AsyncClient(base_url=rover_url, timeout=httpx.Timeout(340.0, connect=3.0))
+    bk = backends.Backends(client, rover_client, api_url, rover_url)
     state: dict[str, Any] = {"synthetic": None}
     pending: set[asyncio.Task] = set()
 
-    class Unreachable(Exception):
-        pass
+    Unreachable = backends.Unreachable
 
     async def request(method: str, path: str, *, json_body=None, params=None, timeout=None):
-        """-> (status, data). Raises Unreachable when the API cannot be contacted."""
-        try:
-            kw = {"timeout": timeout} if timeout is not None else {}
-            r = await client.request(method, path, json=json_body, params=params, **kw)
-        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout, httpx.RemoteProtocolError,
-                httpx.NetworkError) as e:
-            raise Unreachable(str(e)) from e
-        try:
-            data = r.json()
-        except ValueError:
-            data = {"error": f"The API returned a non-JSON response (HTTP {r.status_code}): {r.text[:150]}",
-                    "hint": "Check the API logs."}
-        return r.status_code, data
+        """-> (status, data). Raises Unreachable when a backend cannot be contacted. Routing and shape
+        translation between Yousef's rover API and the query engine live in mcp/backends.py."""
+        return await bk.request(method, path, json_body=json_body, params=params, timeout=timeout)
 
     async def is_synthetic() -> bool:
         if state["synthetic"] is None:
@@ -228,16 +227,32 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
                 st, d = await request("GET", "/health", timeout=3.0)
                 if st == 200:
                     state["synthetic"] = bool(d.get("synthetic"))
+                    if bk.split:    # his /health says "fixture": true for a synthetic data dir
+                        rst, rd = await bk._raw("rover", "GET", "/health", timeout=3.0)
+                        if rst == 200 and rd.get("fixture"):
+                            state["synthetic"] = True
             except Unreachable:
                 return False
         return bool(state["synthetic"])
+
+    async def frame_banner() -> str | None:
+        """Loud warning on every result while the two backends disagree about the site frame."""
+        if not bk.split:
+            return None
+        fr = await bk.check_frame()
+        return f"[{fr['message']}]" if fr and fr.get("message") else None
+
+    state["frame_banner"] = frame_banner
 
     async def ok(text: str, data: dict) -> CallToolResult:
         data = _clean(data)
         synthetic = await is_synthetic()
         if synthetic:
             data["synthetic"] = True
-        return CallToolResult(content=[TextContent(type="text", text=fmt.with_banner(text, synthetic))],
+        fb = await frame_banner()
+        if fb:
+            data["frame_warning"] = fb
+        return CallToolResult(content=[TextContent(type="text", text=(fb + "\n" if fb else "") + fmt.with_banner(text, synthetic))],
                               structured_content=data)
 
     async def err(message: str, hint: str | None = None) -> CallToolResult:
@@ -245,14 +260,22 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
         synthetic = await is_synthetic()
         if synthetic:
             data["synthetic"] = True
-        return CallToolResult(content=[TextContent(type="text", text=fmt.with_banner(fmt.fmt_error(message, hint), synthetic))],
+        fb = await frame_banner()
+        if fb:
+            data["frame_warning"] = fb
+        return CallToolResult(content=[TextContent(type="text", text=(fb + "\n" if fb else "") + fmt.with_banner(fmt.fmt_error(message, hint), synthetic))],
                               structured_content=data, is_error=True)
 
     async def call(method: str, path: str, formatter, *, body=None, params=None, adapt=None) -> CallToolResult:
         """One API call -> formatted tool result. API errors become readable error results."""
         try:
             st, data = await request(method, path, json_body=body, params=params)
-        except Unreachable:
+        except Unreachable as u:
+            if bk.split:
+                return await err(f"The {u.which} backend is not reachable at {u.url}; "
+                                 + ("start Yousef's API (see mcp/README.md) or fix ATLAS_ROVER_API_URL."
+                                    if u.which == "rover" else "start `python -m devapi` or fix ATLAS_API_URL."),
+                                 "Start that backend, then retry the same call.")
             return await err(f"API not reachable at {api_url}; start it with `python -m devapi` "
                              "(or set ATLAS_API_URL to the running API).",
                              "Start the API, then retry the same call.")
@@ -304,7 +327,7 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
                     res = await err(f"Unexpected tool error ({type(e).__name__}): {str(e)[:200]}",
                                     "Retry with simpler arguments; if it persists, report this message.")
                 first = res.content[0].text.splitlines()
-                summary = next((l for l in first if l and not l.startswith("[SYNTHETIC")), "")
+                summary = next((l for l in first if l and not l.startswith(("[SYNTHETIC", "[FRAME MISMATCH", "[EXTENT DIFFERS"))), "")
                 emit(name, kw, "error" if res.is_error else "done", _short(summary, 200), bool(res.is_error))
                 if pending:
                     await asyncio.wait(list(pending), timeout=1.0)
@@ -792,14 +815,37 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
     return mcp
 
 
+def _startup_frame_check(atlas_url: str, rover_url: str) -> dict | None:
+    """GET /site on both backends and warn loudly on stderr if they are not the same coordinate frame."""
+    try:
+        a = httpx.get(atlas_url.rstrip("/") + "/site", timeout=3.0).json()
+        r = httpx.get(rover_url.rstrip("/") + "/site", timeout=3.0).json()
+        res = backends.compare_sites(a, r)
+    except Exception as e:  # noqa: BLE001  (a backend not up yet is not fatal; tools re-check lazily)
+        print(f"[ares-atlas] frame check skipped ({type(e).__name__}: {str(e)[:100]}); it re-runs on the first tool call.",
+              file=sys.stderr)
+        return None
+    if res:
+        bar = "!" * 100
+        print(f"{bar}\n[ares-atlas] {res['message']}\n{bar}", file=sys.stderr)
+    else:
+        print("[ares-atlas] frame check OK: both backends load the same site frame.", file=sys.stderr)
+    return res
+
+
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description="Ares Atlas MCP server (wrapper over the REST API)")
     ap.add_argument("--http", action="store_true", help="serve streamable HTTP instead of stdio")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8765)
-    ap.add_argument("--api-url", default=None, help=f"REST API base URL (default $ATLAS_API_URL or {DEFAULT_API_URL})")
+    ap.add_argument("--api-url", default=None, help=f"query-engine API base URL (default $ATLAS_API_URL or {DEFAULT_API_URL})")
+    ap.add_argument("--rover-api-url", default=None,
+                    help="Yousef's rover API base URL (default $ATLAS_ROVER_API_URL; unset = everything uses --api-url)")
     args = ap.parse_args(argv)
-    server = build_server(api_url=args.api_url, targets=fetch_targets(args.api_url))
+    rover_url = args.rover_api_url or os.environ.get("ATLAS_ROVER_API_URL") or None
+    if rover_url:
+        _startup_frame_check(args.api_url or os.environ.get("ATLAS_API_URL", DEFAULT_API_URL), rover_url)
+    server = build_server(api_url=args.api_url, rover_url=rover_url, targets=fetch_targets(args.api_url, rover_url))
     if args.http:
         server.run("streamable-http", host=args.host, port=args.port)
     else:

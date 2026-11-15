@@ -606,6 +606,7 @@ def fmt_rover_state(s: dict) -> str:
 _REASON_TEXT = {
     "arrived": "ARRIVED", "blocked_slope": "STOPPED: blocked_slope", "blocked_hazard": "STOPPED: blocked_hazard",
     "replanned": "STOPPED: replanned", "stopped_by_user": "STOPPED: stopped_by_user", "timeout": "STOPPED: timeout",
+    "out_of_bounds": "STOPPED: out_of_bounds", "no_route": "STOPPED: no_route",
 }
 
 
@@ -684,8 +685,8 @@ def fmt_sites(d: dict) -> str:
         return _lines(f"No sites found for {d['target']}.",
                       f"Resolved: {d['resolved']}." if d.get("resolved") else None, "Hint: " + d["hint"])
     out = [f"{n} site(s) for {d['target']} ({d['kind']}); top {len(ss)}, ranked by "
-           f"{'best evidence tier then area' if d['kind'] == 'evidence' else 'area'}, from {d['near']['id']} "
-           f"{xy(d['near']['x'], d['near']['y'])}. Stored as {d['set_id']}."]
+           f"{d.get('ranked_by') or ('best evidence tier then area' if d['kind'] == 'evidence' else 'area')}, from {d['near']['id']} "
+           f"{xy(d['near']['x'], d['near']['y'])}." + (f" Stored as {d['set_id']}." if d.get("set_id") else " Not stored as a set; use the site ids as locations.")]
     if d.get("resolved"):
         layers = d.get("layers") or []
         out.append(f"Resolved: {d['resolved']}" + (f" (sites are where any of these {len(layers)} layers is present; "
@@ -693,7 +694,9 @@ def fmt_sites(d: dict) -> str:
     for i, s in enumerate(ss, 1):
         ev = s["evidence"][0]
         tier = f"best tier {s['best_tier']} {s['best_tier_name']}, " if s.get("best_tier") is not None else ""
-        reach = "reachable" if s["reachable"] else "NOT reachable"
+        reach = ("reachability unknown" if s["reachable"] is None else "reachable" if s["reachable"] else "NOT reachable")
+        if s.get("score") is not None:
+            tier = f"score {num(s['score'], 2)} (0-1 index, not abundance), " + tier
         walk = f" ({num(s['walk_distance_m'], 0)} m walk)" if s.get("walk_distance_m") is not None else ""
         if s.get("area_by_tier_m2"):
             e = {"area_by_tier_m2": s["area_by_tier_m2"], "in_situ": ev.get("in_situ"),
@@ -709,7 +712,7 @@ def fmt_sites(d: dict) -> str:
     if src:
         out.append(src)
     out += registration_lines(d)
-    out.append("Orbital tiers are detections from orbit, not abundance; region extents follow pixel/polygon boundaries and are "
-               "uncertain by the stated distance. Hint: " + d["hint"])
+    out.append(("Orbital tiers are detections from orbit, not abundance; region extents follow pixel/polygon boundaries and are "
+                "uncertain by the stated distance. " if d["kind"] != "abundance_index" else "") + "Hint: " + d["hint"])
     out.append("Next: set_view(highlights=[ids]) to show them, plan_route(goal=\"<id>\") to get there.")
     return "\n".join(out)

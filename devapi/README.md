@@ -8,6 +8,9 @@ it over HTTP only, so swapping in the real API is `ATLAS_API_URL=...`. Adopt, co
 .venv/bin/python -m devapi --port 8000 [--host 127.0.0.1]
 ```
 
+To run next to Yousef's `api/` (same site, same frame): `.venv/bin/python -m devapi.export_ares_dir <site dir> <out dir>`
+writes his `ARES_DATA_DIR` layout from one of our site dirs; see `mcp/README.md` and `docs/api-compat.md`.
+
 Site: `ATLAS_SITE_DIR=<site dir>` (real site, optional `traverse.geojson` for `/validation`), otherwise the
 synthetic test site (`atlas_core.testing.make_site`; `/health` and `/site` say `synthetic: true`).
 Interactive docs: `http://localhost:8000/docs`. State is in memory (markers, routes, location sets, rover).

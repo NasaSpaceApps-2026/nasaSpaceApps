@@ -55,7 +55,7 @@ def create_app(*, model: ModelClient | None = None, bridge: McpBridge | None = N
         return {"ok": True, "model": settings.model, "api_key_present": key,
                 "mcp_connected": bridge.connected, "tools": bridge.tool_names,
                 "mcp_target": "stdio" if settings.mcp_stdio else settings.mcp_url,
-                "rest_api": settings.api_url, "replay": settings.replay_file,
+                "rest_api": settings.api_url, "rover_api": settings.rover_api_url, "replay": settings.replay_file,
                 "max_tool_calls": settings.max_tool_calls}
 
     def sse(ev: dict) -> dict:

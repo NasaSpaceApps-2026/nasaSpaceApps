@@ -44,7 +44,8 @@ async def run_session(*, model: ModelClient, bridge: McpBridge, settings: Settin
     except McpUnavailable as e:
         yield {"event": "error", "data": {"message": f"Tool server unavailable: {e}"}}
         return
-    ctx = await fetch_context(settings.api_url, client_context, settings.context_timeout_s, http)
+    ctx = await fetch_context(settings.api_url, client_context, settings.context_timeout_s, http,
+                              rover_url=getattr(settings, "rover_api_url", None))
     block = render_context_block(ctx)
     meta = {"user_prompt": msgs[-1]["content"], "messages": msgs, "context_block": block,
             "model": getattr(model, "name", "?"), "tools": [t["name"] for t in tools],

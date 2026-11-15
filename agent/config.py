@@ -25,6 +25,7 @@ class Settings:
     mcp_url: str = "http://localhost:8765/mcp"
     mcp_stdio: bool = False
     api_url: str = "http://localhost:8000"
+    rover_api_url: str | None = None      # Yousef's API (ATLAS_ROVER_API_URL): rover state and markers for the context block
     max_tool_calls: int = 12
     tool_timeout_s: float = 180.0
     context_timeout_s: float = 1.5
@@ -46,6 +47,7 @@ class Settings:
             mcp_url=e("ATLAS_MCP_URL") or "http://localhost:8765/mcp",
             mcp_stdio=_flag("ATLAS_MCP_STDIO", False),
             api_url=(e("ATLAS_API_URL") or "http://localhost:8000").rstrip("/"),
+            rover_api_url=(e("ATLAS_ROVER_API_URL") or "").rstrip("/") or None,
             max_tool_calls=int(e("ATLAS_MAX_TOOL_CALLS", "12")),
             tool_timeout_s=float(e("ATLAS_TOOL_TIMEOUT", "180")),
             context_timeout_s=float(e("ATLAS_CONTEXT_TIMEOUT", "1.5")),
