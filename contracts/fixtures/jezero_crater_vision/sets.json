@@ -6,10 +6,37 @@
     {
       "id": "set_01",
       "cameras": [
-        "satellite"
+        "01_whoops"
       ],
       "focus_order": [
-        "satellite"
+        "01_whoops"
+      ]
+    },
+    {
+      "id": "set_02",
+      "cameras": [
+        "02_scarp"
+      ],
+      "focus_order": [
+        "02_scarp"
+      ]
+    },
+    {
+      "id": "set_03",
+      "cameras": [
+        "03_crater"
+      ],
+      "focus_order": [
+        "03_crater"
+      ]
+    },
+    {
+      "id": "set_04",
+      "cameras": [
+        "04_overview"
+      ],
+      "focus_order": [
+        "04_overview"
       ]
     }
   ]
