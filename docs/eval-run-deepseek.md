@@ -95,3 +95,20 @@ ranges). Fixed systematically: marswalk, scout, sample_near_me (43 m), q04, los,
 ### Number-provenance results
 Unit-conversion violations (km2 from m2, km from m) from Runs 1/2: none in Run 3. Remaining ungrounded numbers are model arithmetic or invented
 ranges (124 min, 200-400 m, 1,460 m2), 3 of 24 sessions. No unit-conversion or assumed-eye-height violations.
+
+## Run 4: deepseek-v4-pro (same tools, prompt and evals as run 3)
+
+Full run, all 24 cases, real Jezero site. **19/24 pass**, the same score as `deepseek-chat`, but different failures:
+
+| Case | v4-pro | Note |
+|---|---|---|
+| demo_take_me_to_delta | PASS | flash invented "~200-400 m"; v4-pro did not |
+| vantage_overlook_outcrop | PASS | 3 calls (flash used 11) |
+| eva_route_point_of_no_return | FAIL | Same as flash: reply computes "124 min" (2 x 62) itself. **Tool gap**: check_eva_return never states the round-trip total |
+| demo_carbonates | FAIL | No set_view/fly_camera. **Eval vs prompt conflict**: the prompt says use viewer tools only when asked |
+| demo_scout | FAIL | 1 call, no fsd_enable/follow_route |
+| q01_terrain_at_landing_site | FAIL | Extra search_pois call (harmless lookup; eval strict) |
+| q05_crater_rim_walk | FAIL | Skipped describe_location; no max slope quoted |
+
+Conclusion: swapping in the larger model does not raise the score; it trades failures. The one failure both models
+share is a tool gap (no stated round-trip time). Recordings: `agent/replays/run4-v4pro/`.
