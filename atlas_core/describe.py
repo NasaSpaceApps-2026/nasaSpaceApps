@@ -16,7 +16,7 @@ from . import evidence as ev
 from .errors import AtlasError
 from .refs import resolve_ref
 from .sets import SetStore
-from .site import TIER_NAMES, Layer, Site
+from .site import TIER_NAMES, Layer, Site, tier_label
 from .terrain import bilinear
 
 MAX_LOCATIONS = 10
@@ -37,7 +37,7 @@ def _point_value(site: Site, layer: Layer, x: float, y: float) -> dict:
         return {"value": v, "units": layer.meta.get("units")}
     if layer.kind == "categorical":
         return {"class": (layer.classes or {}).get(int(raw), str(int(raw)))}
-    return {"tier": int(raw), "tier_name": TIER_NAMES[int(raw)]}
+    return {"tier": int(raw), "tier_name": TIER_NAMES[int(raw)], "tier_label": tier_label(int(raw))}
 
 
 def _footprint(site: Site, x: float, y: float, radius_m: float):
@@ -75,7 +75,7 @@ def _area_value(site: Site, layer: Layer, rows, cols) -> dict:
         return {"shares": shares, "unknown_fraction": unknown_fraction}
     shares = {TIER_NAMES[int(v)]: float(n) / total for v, n in zip(vals, counts)}
     best = int(known.max())
-    return {"best_tier": best, "best_tier_name": TIER_NAMES[best], "shares": shares,
+    return {"best_tier": best, "best_tier_name": TIER_NAMES[best], "best_tier_label": tier_label(best), "shares": shares,
             "unknown_fraction": unknown_fraction}
 
 

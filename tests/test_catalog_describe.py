@@ -63,7 +63,7 @@ def test_point_slope_plain_and_ridge(site, store):
 
 def test_evidence_tier4_and_unknown_hole(site, store):
     v = loc(site, store, -151, -151)["values"]["carbonate"]
-    assert v == {"tier": 4, "tier_name": "confirmed_in_situ"}
+    assert v == {"tier": 4, "tier_name": "confirmed_in_situ", "tier_label": "confirmed by a rover sample"}
     hole = loc(site, store, 0, -150)["values"]
     assert all(x == {"unknown": True} for x in hole.values())
 
@@ -129,3 +129,12 @@ def test_set_and_limit(site, store):
 def test_out_of_bounds(site, store):
     with pytest.raises(AtlasError):
         describe_location(site, store, {"x": 5000, "y": 0})
+
+
+def test_tier_labels_are_plain_language_for_every_tier():
+    from atlas_core.site import TIERS, tier_label
+    for name, i in TIERS.items():
+        assert tier_label(name) == tier_label(i)
+        assert "_" not in tier_label(name)
+    assert tier_label("strong_orbital") == "strong orbital evidence"
+    assert tier_label(None) == "no data here"

@@ -39,6 +39,22 @@ TIERS = {
     "confirmed_in_situ": 4,
 }
 TIER_NAMES = {v: k for k, v in TIERS.items()}
+# Plain-language labels for user-facing text (the ids above are internal; labels never imply a probability).
+TIER_LABELS = {
+    "not_detected": "not detected (covered, nothing seen)",
+    "inferred_from_unit": "inferred from the geologic unit",
+    "weak_orbital": "weak orbital evidence",
+    "strong_orbital": "strong orbital evidence",
+    "confirmed_in_situ": "confirmed by a rover sample",
+    "no_coverage": "no data here",
+}
+
+
+def tier_label(name):
+    """Human-readable label for a tier id (or tier int); unknown/None -> 'no data here'."""
+    if isinstance(name, int):
+        name = TIER_NAMES.get(name, "no_coverage")
+    return TIER_LABELS.get(name, TIER_LABELS["no_coverage"] if name is None else str(name).replace("_", " "))
 NO_COVERAGE = -1
 
 LAYER_KINDS = ("continuous", "categorical", "evidence")

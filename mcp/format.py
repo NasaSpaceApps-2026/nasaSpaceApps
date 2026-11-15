@@ -73,6 +73,8 @@ def _lines(*items) -> str:
 
 # ---- evidence provenance, per-tier areas, registration caveats --------------------------------
 
+from atlas_core.site import tier_label  # noqa: E402
+
 _TIER_ORDER = ("confirmed_in_situ", "strong_orbital", "weak_orbital", "inferred_from_unit", "not_detected", "no_coverage")
 TIER_GLOSS = {
     "not_detected": "covered, nothing detected (absence of evidence, not absence of the mineral)",
@@ -132,15 +134,15 @@ def ev_breakdown(e: dict) -> str:
             tag = f" [covered by {e.get('orbital_source', '?')}, nothing detected: absence of evidence]"
         elif n == "no_coverage":
             tag = " [no data, cannot answer]"
-        parts.append(f"{n} {area_text(by[n])}{tag}")
+        parts.append(f"{n} {area_text(by[n])}{tag} = {tier_label(n)}")
     return ", ".join(parts)
 
 
 def ev_headline(layer: str, e: dict) -> str:
     """Best tier with its basis, then the area split (never the region total next to the best tier)."""
     if e.get("best_tier") is None:
-        return f"{layer}: no_coverage (no data here, cannot answer)"
-    return f"{layer} best tier {e['best_tier']} {e['best_tier_name']}; area by tier: {ev_breakdown(e)}"
+        return f"{layer}: no_coverage ({tier_label(None)}, cannot answer)"
+    return f"{layer} best tier {e['best_tier']} {e['best_tier_name']} = {tier_label(e['best_tier'])}; area by tier: {ev_breakdown(e)}"
 
 
 def insitu_sources_line(evs) -> str | None:
@@ -270,11 +272,11 @@ def _value_text(v: dict, area: bool, evidence_layer: bool = False) -> str:
         return v["class"]
     if "tier" in v:
         gl = TIER_GLOSS.get(v["tier_name"])
-        return f"tier {v['tier']} {v['tier_name']}" + (f" = {gl}" if gl else "")
+        return f"tier {v['tier']} {v['tier_name']} = {tier_label(v['tier'])}" + (f" ({gl})" if gl else "")
     if "best_tier" in v:
         top = sorted(v["shares"].items(), key=lambda kv: -kv[1])[:3]
         s = ", ".join(f"{k} {num(f * 100, 0)}%" for k, f in top)
-        return f"best tier {v['best_tier']} {v['best_tier_name']} ({s}{_unk(v)})"
+        return f"best tier {v['best_tier']} {v['best_tier_name']} [{tier_label(v['best_tier'])}] ({s}{_unk(v)})"
     if "shares" in v:
         top = sorted(v["shares"].items(), key=lambda kv: -kv[1])[:4]
         return ", ".join(f"{k} {num(f * 100, 0)}%" for k, f in top) + _unk(v)
@@ -315,7 +317,7 @@ def fmt_describe(d: dict) -> str:
                 else:
                     t = v["tier_name"]
                     basis = (f"rover sample: {_samples_text(e)}" if t == "confirmed_in_situ" else f"orbital: {e.get('orbital_source', '?')}")
-                    out.append(f"  {lid}: tier {v['tier']} {t} ({basis})")
+                    out.append(f"  {lid}: tier {v['tier']} {t} ({basis}) = {tier_label(t)}")
             else:
                 out.append(f"  {lid}: {_value_text(v, r > 0, e is not None)}")
         for state, lids in grouped.items():
@@ -435,7 +437,7 @@ def fmt_nearest(d: dict) -> str:
         for side in ("from", "to"):
             for k, e in (p.get(f"{side}_evidence") or {}).items():
                 evtxt += (f"; {side} {k}: " + ("no_coverage" if e.get("best_tier") is None else
-                                               f"best tier {e['best_tier_name']} (area by tier: {ev_breakdown(e)})"))
+                                               f"best tier {e['best_tier_name']} [{tier_label(e['best_tier'])}] (area by tier: {ev_breakdown(e)})"))
         out.append(f"{i}. {p['from_id']} -> {p['to_id']}{to_at}: {cost_txt}, straight {dist_text(p['straight_m'])}, "
                    f"from {xy(p['x'], p['y'])} m" + edge + evtxt)
     src = insitu_sources_line([e for p in res for side in ("from", "to") for e in (p.get(f"{side}_evidence") or {}).values()])
@@ -760,7 +762,7 @@ def fmt_sites(d: dict) -> str:
                                                   "each site lists the evidence of every one)." if len(layers) > 1 else "."))
     for i, s in enumerate(ss, 1):
         ev = s["evidence"][0]
-        tier = f"best tier {s['best_tier']} {s['best_tier_name']}, " if s.get("best_tier") is not None else ""
+        tier = f"best tier {s['best_tier']} {s['best_tier_name']} [{tier_label(s['best_tier'])}], " if s.get("best_tier") is not None else ""
         reach = ("reachability unknown" if s["reachable"] is None else "reachable" if s["reachable"] else "NOT reachable")
         if s.get("score") is not None:
             tier = f"score {num(s['score'], 2)} (0-1 index, not abundance), " + tier
@@ -770,7 +772,7 @@ def fmt_sites(d: dict) -> str:
                  "orbital_source": ev.get("orbital_source") or f"{ev.get('mission') or '?'}/{ev.get('instrument') or '?'}"}
             area = (f"region area {area_text(s['area_m2'])} in total (whole region, not the area at the best tier); "
                     f"by tier: {ev_breakdown(e)}; ")
-            tier = f"best tier {s['best_tier']} {s['best_tier_name']}, "
+            tier = f"best tier {s['best_tier']} {s['best_tier_name']} [{tier_label(s['best_tier'])}], "
         else:
             area = f"area {area_text(s['area_m2'])}, "
         out.append(f"{i}. {s['id']} {xy(s['x'], s['y'])} m, {tier}{area}mean slope "

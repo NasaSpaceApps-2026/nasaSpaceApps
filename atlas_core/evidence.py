@@ -15,7 +15,7 @@ import math
 import numpy as np
 from scipy import ndimage
 
-from .site import TIER_NAMES, Layer, Site
+from .site import TIER_NAMES, Layer, Site, tier_label
 
 UNIT_CONTACT_M = 100.0
 TIER_CHANGE_M = 36.0
@@ -68,8 +68,10 @@ def summarize(site: Site, layer: Layer, rows, cols, with_samples: bool = True) -
     if known.size:
         b = int(known.max())
         out["best_tier"], out["best_tier_name"] = b, TIER_NAMES[b]
+        out["best_tier_label"] = tier_label(b)
     else:
         out["best_tier"], out["best_tier_name"] = None, "no_coverage"
+        out["best_tier_label"] = tier_label(None)
     if with_samples and (t == 4).any():
         sel = (t == 4)
         X, Y = site.rc_to_xy(rows[sel], cols[sel])

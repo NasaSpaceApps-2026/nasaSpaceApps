@@ -215,7 +215,7 @@ def fmt_comm(d: dict) -> str:
 
 def fmt_sample(d: dict) -> str:
     mins = [m for m in d["minerals"] if m["tier"] and m["tier"] >= 1]
-    ev = ", ".join(f"{m['mineral']}: {m['tier_name'].replace('_', ' ')}" for m in mins) or "nothing detected from orbit here"
+    ev = ", ".join(f"{m['mineral']}: {m.get('tier_label') or m['tier_name'].replace('_', ' ')}" for m in mins) or "nothing detected from orbit here"
     return (f"Logged sample {d['n']}: \"{d['note']}\" at ({d['x']:.0f}, {d['y']:.0f}), "
             + (f"{_m(d['elapsed_min'])} into the EVA, " if d.get("elapsed_min") is not None else "")
             + f"local solar time {d['ltst'][:5]}. Map unit: {d['unit'] or 'unknown'}; mineral evidence: {ev}. Marker {d['marker_id']} placed.\n"

@@ -25,7 +25,7 @@ from . import visibility as V
 from .errors import AtlasError
 from .refs import resolve_ref
 from .sets import SetStore
-from .site import Site
+from .site import Site, tier_label
 
 PROFILE = "eva_walkable"
 CAUTION_MARGIN_MIN = 30.0          # assumed: below this many spare minutes the status is CAUTION
@@ -558,9 +558,11 @@ def sample_evidence(site: Site, store: SetStore | None, x: float, y: float) -> d
         if lay.kind == "categorical" and "class" in v and unit is None and "unit" in lid:
             unit = v["class"]
         elif lay.kind == "evidence" and "tier" in v:
-            minerals.append({"mineral": lid, "tier": v["tier"], "tier_name": v["tier_name"]})
+            minerals.append({"mineral": lid, "tier": v["tier"], "tier_name": v["tier_name"],
+                             "tier_label": v.get("tier_label") or tier_label(v["tier_name"])})
         elif lay.kind == "evidence":
-            minerals.append({"mineral": lid, "tier": None, "tier_name": "no_coverage"})
+            minerals.append({"mineral": lid, "tier": None, "tier_name": "no_coverage",
+                             "tier_label": tier_label(None)})
     return {"unit": unit, "minerals": minerals, "quality": loc.get("quality"),
             "elevation_m": (loc["values"].get("elevation") or {}).get("value")}
 
