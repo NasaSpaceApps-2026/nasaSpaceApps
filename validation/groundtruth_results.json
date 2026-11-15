@@ -1,0 +1,721 @@
+{
+ "check1": {
+  "n_waypoints_in_site": 347,
+  "point": {
+   "n": 347,
+   "r": 0.8544583064082766,
+   "bias_deg": -0.004585449019188569,
+   "rmse_deg": 2.1584508907434734,
+   "fit_rover_on_dem": [
+    0.9117313826019018,
+    0.413050767735182
+   ],
+   "mean_dem": 4.627525962866113,
+   "mean_rover": 4.632111411885302,
+   "spearman": 0.7919385001348266
+  },
+  "3m_mean": {
+   "n": 347,
+   "r": 0.8694984360588459,
+   "bias_deg": -0.02337001215164333,
+   "rmse_deg": 2.0317850607769556,
+   "fit_rover_on_dem": [
+    0.9614913666929071,
+    0.20084634472120444
+   ],
+   "mean_dem": 4.608741399733659,
+   "mean_rover": 4.632111411885302,
+   "spearman": 0.8047243485025872
+  },
+  "3m_max": {
+   "n": 347,
+   "r": 0.835458017962989,
+   "bias_deg": 1.347144092097604,
+   "rmse_deg": 2.7850122961548025,
+   "fit_rover_on_dem": [
+    0.7873367604778382,
+    -0.07557624668988043
+   ],
+   "mean_dem": 5.979255503982906,
+   "mean_rover": 4.632111411885302,
+   "spearman": 0.7725712498479751
+  },
+  "5m_mean": {
+   "n": 347,
+   "r": 0.8812357487671282,
+   "bias_deg": -0.04652863146922876,
+   "rmse_deg": 1.9399684967723398,
+   "fit_rover_on_dem": [
+    0.9979005099177277,
+    0.05615601703815046
+   ],
+   "mean_dem": 4.585582780416074,
+   "mean_rover": 4.632111411885302,
+   "spearman": 0.818877404303101
+  },
+  "5m_max": {
+   "n": 347,
+   "r": 0.8370347348624518,
+   "bias_deg": 2.088965861260917,
+   "rmse_deg": 3.3106130744271542,
+   "fit_rover_on_dem": [
+    0.7335276492081413,
+    -0.2979846004319061
+   ],
+   "mean_dem": 6.72107727314622,
+   "mean_rover": 4.632111411885302,
+   "spearman": 0.7788409136676546
+  },
+  "5m_mean_tilt_lt_8deg": {
+   "n": 278,
+   "r": 0.7477732154930169,
+   "rmse_deg": 1.4949497829035265
+  },
+  "share_stops_tilt_ge_10deg": 0.11239193083573487,
+  "n_stops_tilt_ge_10deg": 39
+ },
+ "check2": [
+  {
+   "dist_to_contact_m": 106.07544708251953,
+   "units_in_unc_disc": 1,
+   "id": "sample_01_roubion",
+   "sample": "01",
+   "region": "Polygon Valley",
+   "rock_type": "n/a",
+   "unc_m": 26.3,
+   "after": "Jezero floor unit (Njf)",
+   "before": "Jezero floor unit (Njf)"
+  },
+  {
+   "dist_to_contact_m": 2.0,
+   "units_in_unc_disc": 2,
+   "id": "sample_02_montdenier",
+   "sample": "02",
+   "region": "Artuby Ridge",
+   "rock_type": "Igneous",
+   "unc_m": 65.4,
+   "after": "Lower etched unit (Nle)",
+   "before": "Lower etched unit (Nle)"
+  },
+  {
+   "dist_to_contact_m": 2.0,
+   "units_in_unc_disc": 2,
+   "id": "sample_03_montagnac",
+   "sample": "03",
+   "region": "Artuby Ridge",
+   "rock_type": "Igneous",
+   "unc_m": 65.4,
+   "after": "Lower etched unit (Nle)",
+   "before": "Lower etched unit (Nle)"
+  },
+  {
+   "dist_to_contact_m": 120.066650390625,
+   "units_in_unc_disc": 1,
+   "id": "sample_04_salette",
+   "sample": "04",
+   "region": "South S\u00e9\u00edtah",
+   "rock_type": "Igneous",
+   "unc_m": 10.0,
+   "after": "Lower etched unit (Nle)",
+   "before": "Lower etched unit (Nle)"
+  },
+  {
+   "dist_to_contact_m": 120.066650390625,
+   "units_in_unc_disc": 1,
+   "id": "sample_05_coulettes",
+   "sample": "05",
+   "region": "South S\u00e9\u00edtah",
+   "rock_type": "Igneous",
+   "unc_m": 10.0,
+   "after": "Lower etched unit (Nle)",
+   "before": "Lower etched unit (Nle)"
+  },
+  {
+   "dist_to_contact_m": 8.9442720413208,
+   "units_in_unc_disc": 1,
+   "id": "sample_06_robine",
+   "sample": "06",
+   "region": "South S\u00e9\u00edtah",
+   "rock_type": "Igneous",
+   "unc_m": 10.0,
+   "after": "Lower etched unit (Nle)",
+   "before": "Lower etched unit (Nle)"
+  },
+  {
+   "dist_to_contact_m": 5.656854152679443,
+   "units_in_unc_disc": 2,
+   "id": "sample_07_malay",
+   "sample": "07",
+   "region": "South S\u00e9\u00edtah",
+   "rock_type": "Igneous",
+   "unc_m": 18.3,
+   "after": "Lower etched unit (Nle)",
+   "before": "Lower etched unit (Nle)"
+  },
+  {
+   "dist_to_contact_m": 202.4845733642578,
+   "units_in_unc_disc": 1,
+   "id": "sample_08_ha_ahoni",
+   "sample": "08",
+   "region": "Octavia E. Butler Landing / Ch\u2019a\u0142 outcrop",
+   "rock_type": "Igneous",
+   "unc_m": 148.1,
+   "after": "Jezero floor unit (Njf)",
+   "before": "Jezero floor unit (Njf)"
+  },
+  {
+   "dist_to_contact_m": 202.4845733642578,
+   "units_in_unc_disc": 1,
+   "id": "sample_09_atsa",
+   "sample": "09",
+   "region": "Octavia E. Butler Landing / Ch\u2019a\u0142 outcrop",
+   "rock_type": "Igneous",
+   "unc_m": 148.1,
+   "after": "Jezero floor unit (Njf)",
+   "before": "Jezero floor unit (Njf)"
+  },
+  {
+   "dist_to_contact_m": 86.0,
+   "units_in_unc_disc": 1,
+   "id": "sample_10_swift_run",
+   "sample": "10",
+   "region": "Delta Front",
+   "rock_type": "Sedimentary",
+   "unc_m": 12.6,
+   "after": "Jezero fan 2 unit (NHjf2)",
+   "before": "Jezero fan 2 unit (NHjf2)"
+  },
+  {
+   "dist_to_contact_m": 86.0,
+   "units_in_unc_disc": 1,
+   "id": "sample_11_skyland",
+   "sample": "11",
+   "region": "Delta Front",
+   "rock_type": "Sedimentary",
+   "unc_m": 12.6,
+   "after": "Jezero fan 2 unit (NHjf2)",
+   "before": "Jezero fan 2 unit (NHjf2)"
+  },
+  {
+   "dist_to_contact_m": 72.0,
+   "units_in_unc_disc": 2,
+   "id": "sample_12_hazeltop",
+   "sample": "12",
+   "region": "Delta Front",
+   "rock_type": "Sedimentary",
+   "unc_m": 80.8,
+   "after": "Jezero fan 2 unit (NHjf2)",
+   "before": "Jezero fan 2 unit (NHjf2)"
+  },
+  {
+   "dist_to_contact_m": 72.0,
+   "units_in_unc_disc": 2,
+   "id": "sample_13_bearwallow",
+   "sample": "13",
+   "region": "Delta Front",
+   "rock_type": "Sedimentary",
+   "unc_m": 80.8,
+   "after": "Jezero fan 2 unit (NHjf2)",
+   "before": "Jezero fan 2 unit (NHjf2)"
+  },
+  {
+   "dist_to_contact_m": 0.0,
+   "units_in_unc_disc": 2,
+   "id": "sample_14_shuyak",
+   "sample": "14",
+   "region": "Delta Front",
+   "rock_type": "Sedimentary",
+   "unc_m": 17.8,
+   "after": "Jezero floor unit (Njf)",
+   "before": "Jezero fan 2 unit (NHjf2)"
+  },
+  {
+   "dist_to_contact_m": 131.04197692871094,
+   "units_in_unc_disc": 1,
+   "id": "sample_15_mageik",
+   "sample": "15",
+   "region": "Delta Front",
+   "rock_type": "Sedimentary",
+   "unc_m": 42.6,
+   "after": "Jezero fan 2 unit (NHjf2)",
+   "before": "Jezero fan 2 unit (NHjf2)"
+  },
+  {
+   "dist_to_contact_m": 44.18144226074219,
+   "units_in_unc_disc": 1,
+   "id": "sample_16_kukaklek",
+   "sample": "16",
+   "region": "Delta Front",
+   "rock_type": "Sedimentary",
+   "unc_m": 10.0,
+   "after": "Jezero fan 2 unit (NHjf2)",
+   "before": "Jezero fan 2 unit (NHjf2)"
+  },
+  {
+   "dist_to_contact_m": 26.305892944335938,
+   "units_in_unc_disc": 2,
+   "id": "sample_17_atmo_mountain",
+   "sample": "17",
+   "region": "Delta Front",
+   "rock_type": "Likely mixed sedimentary and igneous grains",
+   "unc_m": 79.9,
+   "after": "Jezero fan 2 unit (NHjf2)",
+   "before": "Jezero fan 2 unit (NHjf2)"
+  },
+  {
+   "dist_to_contact_m": 26.305892944335938,
+   "units_in_unc_disc": 2,
+   "id": "sample_18_crosswind_lake",
+   "sample": "18",
+   "region": "Delta Front",
+   "rock_type": "Likely mixed sedimentary and igneous grains",
+   "unc_m": 79.9,
+   "after": "Jezero fan 2 unit (NHjf2)",
+   "before": "Jezero fan 2 unit (NHjf2)"
+  },
+  {
+   "dist_to_contact_m": 206.73654174804688,
+   "units_in_unc_disc": 1,
+   "id": "sample_19_melyn",
+   "sample": "19",
+   "region": "Upper Fan",
+   "rock_type": "Sedimentary",
+   "unc_m": 263.1,
+   "after": "Jezero fan 2 unit (NHjf2)",
+   "before": "Jezero fan 2 unit (NHjf2)"
+  },
+  {
+   "dist_to_contact_m": 73.34848022460938,
+   "units_in_unc_disc": 2,
+   "id": "sample_20_otis_peak",
+   "sample": "20",
+   "region": "Upper Fan",
+   "rock_type": "Sedimentary",
+   "unc_m": 88.8,
+   "after": "Jezero fan 2 unit (NHjf2)",
+   "before": "Jezero fan 2 unit (NHjf2)"
+  },
+  {
+   "dist_to_contact_m": 72.2772445678711,
+   "units_in_unc_disc": 1,
+   "id": "sample_21_pilot_mountain",
+   "sample": "21",
+   "region": "Upper Fan",
+   "rock_type": "Sedimentary",
+   "unc_m": 10.0,
+   "after": "Upper etched unit (Nue)",
+   "before": "Upper etched unit (Nue)"
+  },
+  {
+   "dist_to_contact_m": 72.2772445678711,
+   "units_in_unc_disc": 1,
+   "id": "sample_22_pelican_point",
+   "sample": "22",
+   "region": "Margin Unit",
+   "rock_type": "Sedimentary",
+   "unc_m": 10.0,
+   "after": "Upper etched unit (Nue)",
+   "before": "Upper etched unit (Nue)"
+  },
+  {
+   "dist_to_contact_m": 184.173828125,
+   "units_in_unc_disc": 1,
+   "id": "sample_23_lefroy_bay",
+   "sample": "23",
+   "region": "Margin Unit",
+   "rock_type": "Sedimentary",
+   "unc_m": 56.3,
+   "after": "Upper etched unit (Nue)",
+   "before": "Upper etched unit (Nue)"
+  }
+ ],
+ "check3": [
+  {
+   "id": "sample_04_salette",
+   "mineral": "carbonate",
+   "in_situ_tier": "confirmed_in_situ (rover statement, unit/section level)",
+   "orbital_within_0m": [
+    "not_detected"
+   ],
+   "orbital_within_36m": [
+    "not_detected"
+   ],
+   "orbital_within_72m": [
+    "no_coverage",
+    "not_detected"
+   ],
+   "decoded_prototype_at_point": "olivine"
+  },
+  {
+   "id": "sample_04_salette",
+   "mineral": "olivine",
+   "in_situ_tier": "confirmed_in_situ (rover statement, unit/section level)",
+   "orbital_within_0m": [
+    "strong_orbital"
+   ],
+   "orbital_within_36m": [
+    "weak_orbital",
+    "strong_orbital"
+   ],
+   "orbital_within_72m": [
+    "no_coverage",
+    "weak_orbital",
+    "strong_orbital"
+   ],
+   "decoded_prototype_at_point": "olivine"
+  },
+  {
+   "id": "sample_05_coulettes",
+   "mineral": "carbonate",
+   "in_situ_tier": "confirmed_in_situ (rover statement, unit/section level)",
+   "orbital_within_0m": [
+    "not_detected"
+   ],
+   "orbital_within_36m": [
+    "not_detected"
+   ],
+   "orbital_within_72m": [
+    "no_coverage",
+    "not_detected"
+   ],
+   "decoded_prototype_at_point": "olivine"
+  },
+  {
+   "id": "sample_05_coulettes",
+   "mineral": "olivine",
+   "in_situ_tier": "confirmed_in_situ (rover statement, unit/section level)",
+   "orbital_within_0m": [
+    "strong_orbital"
+   ],
+   "orbital_within_36m": [
+    "weak_orbital",
+    "strong_orbital"
+   ],
+   "orbital_within_72m": [
+    "no_coverage",
+    "weak_orbital",
+    "strong_orbital"
+   ],
+   "decoded_prototype_at_point": "olivine"
+  },
+  {
+   "id": "sample_06_robine",
+   "mineral": "carbonate",
+   "in_situ_tier": "confirmed_in_situ (rover statement, unit/section level)",
+   "orbital_within_0m": [
+    "no_coverage"
+   ],
+   "orbital_within_36m": [
+    "no_coverage",
+    "not_detected"
+   ],
+   "orbital_within_72m": [
+    "no_coverage",
+    "not_detected"
+   ],
+   "decoded_prototype_at_point": null
+  },
+  {
+   "id": "sample_06_robine",
+   "mineral": "olivine",
+   "in_situ_tier": "confirmed_in_situ (rover statement, unit/section level)",
+   "orbital_within_0m": [
+    "no_coverage"
+   ],
+   "orbital_within_36m": [
+    "no_coverage",
+    "weak_orbital"
+   ],
+   "orbital_within_72m": [
+    "no_coverage",
+    "not_detected",
+    "weak_orbital"
+   ],
+   "decoded_prototype_at_point": null
+  },
+  {
+   "id": "sample_07_malay",
+   "mineral": "carbonate",
+   "in_situ_tier": "confirmed_in_situ (rover statement, unit/section level)",
+   "orbital_within_0m": [
+    "no_coverage"
+   ],
+   "orbital_within_36m": [
+    "no_coverage",
+    "not_detected"
+   ],
+   "orbital_within_72m": [
+    "no_coverage",
+    "not_detected"
+   ],
+   "decoded_prototype_at_point": null
+  },
+  {
+   "id": "sample_07_malay",
+   "mineral": "olivine",
+   "in_situ_tier": "confirmed_in_situ (rover statement, unit/section level)",
+   "orbital_within_0m": [
+    "no_coverage"
+   ],
+   "orbital_within_36m": [
+    "no_coverage",
+    "weak_orbital"
+   ],
+   "orbital_within_72m": [
+    "no_coverage",
+    "not_detected",
+    "weak_orbital"
+   ],
+   "decoded_prototype_at_point": null
+  },
+  {
+   "id": "sample_14_shuyak",
+   "mineral": "olivine",
+   "in_situ_tier": "confirmed_in_situ (rover statement, unit/section level)",
+   "orbital_within_0m": [
+    "no_coverage"
+   ],
+   "orbital_within_36m": [
+    "no_coverage",
+    "weak_orbital"
+   ],
+   "orbital_within_72m": [
+    "no_coverage",
+    "not_detected",
+    "weak_orbital"
+   ],
+   "decoded_prototype_at_point": null
+  },
+  {
+   "id": "sample_15_mageik",
+   "mineral": "olivine",
+   "in_situ_tier": "confirmed_in_situ (rover statement, unit/section level)",
+   "orbital_within_0m": [
+    "no_coverage"
+   ],
+   "orbital_within_36m": [
+    "no_coverage",
+    "not_detected",
+    "weak_orbital"
+   ],
+   "orbital_within_72m": [
+    "no_coverage",
+    "not_detected",
+    "weak_orbital"
+   ],
+   "decoded_prototype_at_point": null
+  }
+ ],
+ "check4": [
+  {
+   "id": "sample_01_roubion",
+   "region": "Polygon Valley",
+   "z_site": -2584.9342934570313,
+   "z_poi": -2584.93,
+   "unit": "Jezero floor unit (Njf)",
+   "rel_m": -174.93429345703134
+  },
+  {
+   "id": "sample_02_montdenier",
+   "region": "Artuby Ridge",
+   "z_site": -2574.52996875,
+   "z_poi": -2574.53,
+   "unit": "Lower etched unit (Nle)",
+   "rel_m": -164.52996875000008
+  },
+  {
+   "id": "sample_03_montagnac",
+   "region": "Artuby Ridge",
+   "z_site": -2574.52996875,
+   "z_poi": -2574.53,
+   "unit": "Lower etched unit (Nle)",
+   "rel_m": -164.52996875000008
+  },
+  {
+   "id": "sample_04_salette",
+   "region": "South S\u00e9\u00edtah",
+   "z_site": -2569.002472167969,
+   "z_poi": -2569.0,
+   "unit": "Lower etched unit (Nle)",
+   "rel_m": -159.0024721679688
+  },
+  {
+   "id": "sample_05_coulettes",
+   "region": "South S\u00e9\u00edtah",
+   "z_site": -2569.002472167969,
+   "z_poi": -2569.0,
+   "unit": "Lower etched unit (Nle)",
+   "rel_m": -159.0024721679688
+  },
+  {
+   "id": "sample_06_robine",
+   "region": "South S\u00e9\u00edtah",
+   "z_site": -2574.418768554687,
+   "z_poi": -2574.42,
+   "unit": "Lower etched unit (Nle)",
+   "rel_m": -164.41876855468718
+  },
+  {
+   "id": "sample_07_malay",
+   "region": "South S\u00e9\u00edtah",
+   "z_site": -2574.220584179687,
+   "z_poi": -2574.22,
+   "unit": "Lower etched unit (Nle)",
+   "rel_m": -164.2205841796872
+  },
+  {
+   "id": "sample_08_ha_ahoni",
+   "region": "Octavia E. Butler Landing / Ch\u2019a\u0142 outcrop",
+   "z_site": -2568.711119433594,
+   "z_poi": -2568.71,
+   "unit": "Jezero floor unit (Njf)",
+   "rel_m": -158.71111943359392
+  },
+  {
+   "id": "sample_09_atsa",
+   "region": "Octavia E. Butler Landing / Ch\u2019a\u0142 outcrop",
+   "z_site": -2568.711119433594,
+   "z_poi": -2568.71,
+   "unit": "Jezero floor unit (Njf)",
+   "rel_m": -158.71111943359392
+  },
+  {
+   "id": "sample_10_swift_run",
+   "region": "Delta Front",
+   "z_site": -2520.926606201172,
+   "z_poi": -2520.93,
+   "unit": "Jezero fan 2 unit (NHjf2)",
+   "rel_m": -110.92660620117204
+  },
+  {
+   "id": "sample_11_skyland",
+   "region": "Delta Front",
+   "z_site": -2520.926606201172,
+   "z_poi": -2520.93,
+   "unit": "Jezero fan 2 unit (NHjf2)",
+   "rel_m": -110.92660620117204
+  },
+  {
+   "id": "sample_12_hazeltop",
+   "region": "Delta Front",
+   "z_site": -2523.167704101563,
+   "z_poi": -2523.17,
+   "unit": "Jezero fan 2 unit (NHjf2)",
+   "rel_m": -113.16770410156278
+  },
+  {
+   "id": "sample_13_bearwallow",
+   "region": "Delta Front",
+   "z_site": -2523.167704101563,
+   "z_poi": -2523.17,
+   "unit": "Jezero fan 2 unit (NHjf2)",
+   "rel_m": -113.16770410156278
+  },
+  {
+   "id": "sample_14_shuyak",
+   "region": "Delta Front",
+   "z_site": -2526.5387841796874,
+   "z_poi": -2526.54,
+   "unit": "Jezero floor unit (Njf)",
+   "rel_m": -116.53878417968735
+  },
+  {
+   "id": "sample_15_mageik",
+   "region": "Delta Front",
+   "z_site": -2517.2421765136714,
+   "z_poi": -2517.24,
+   "unit": "Jezero fan 2 unit (NHjf2)",
+   "rel_m": -107.24217651367144
+  },
+  {
+   "id": "sample_16_kukaklek",
+   "region": "Delta Front",
+   "z_site": -2523.839090820313,
+   "z_poi": -2523.84,
+   "unit": "Jezero fan 2 unit (NHjf2)",
+   "rel_m": -113.83909082031278
+  },
+  {
+   "id": "sample_17_atmo_mountain",
+   "region": "Delta Front",
+   "z_site": -2525.216021191406,
+   "z_poi": -2525.22,
+   "unit": "Jezero fan 2 unit (NHjf2)",
+   "rel_m": -115.21602119140607
+  },
+  {
+   "id": "sample_18_crosswind_lake",
+   "region": "Delta Front",
+   "z_site": -2525.216021191406,
+   "z_poi": -2525.22,
+   "unit": "Jezero fan 2 unit (NHjf2)",
+   "rel_m": -115.21602119140607
+  },
+  {
+   "id": "sample_19_melyn",
+   "region": "Upper Fan",
+   "z_site": -2449.0472922302247,
+   "z_poi": -2449.05,
+   "unit": "Jezero fan 2 unit (NHjf2)",
+   "rel_m": -39.047292230224684
+  },
+  {
+   "id": "sample_20_otis_peak",
+   "region": "Upper Fan",
+   "z_site": -2420.77801171875,
+   "z_poi": -2420.78,
+   "unit": "Jezero fan 2 unit (NHjf2)",
+   "rel_m": -10.778011718749894
+  },
+  {
+   "id": "sample_21_pilot_mountain",
+   "region": "Upper Fan",
+   "z_site": -2423.2749193359377,
+   "z_poi": -2423.27,
+   "unit": "Upper etched unit (Nue)",
+   "rel_m": -13.274919335937739
+  },
+  {
+   "id": "sample_22_pelican_point",
+   "region": "Margin Unit",
+   "z_site": -2423.2749193359377,
+   "z_poi": -2423.27,
+   "unit": "Upper etched unit (Nue)",
+   "rel_m": -13.274919335937739
+  },
+  {
+   "id": "sample_23_lefroy_bay",
+   "region": "Margin Unit",
+   "z_site": -2407.6398345947264,
+   "z_poi": -2407.64,
+   "unit": "Upper etched unit (Nue)",
+   "rel_m": 2.3601654052736194
+  }
+ ],
+ "check6": {
+  "0 deg": {
+   "m_per_s": 0.9,
+   "km_per_h": 3.24
+  },
+  "4 deg": {
+   "m_per_s": 0.705,
+   "km_per_h": 2.54
+  },
+  "8 deg": {
+   "m_per_s": 0.55,
+   "km_per_h": 1.98
+  },
+  "15 deg": {
+   "m_per_s": 0.352,
+   "km_per_h": 1.27
+  },
+  "20 deg": {
+   "m_per_s": 0.252,
+   "km_per_h": 0.91
+  },
+  "25 deg": {
+   "m_per_s": 0.176,
+   "km_per_h": 0.63
+  }
+ }
+}
