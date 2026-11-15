@@ -196,6 +196,7 @@ export default function App() {
         const layer = new Cesium.ImageryLayer(siteImagery(s, L.id, L.max_level, L.core))
         layer.show = L.kind === 'base'
         if (L.kind === 'overlay') layer.alpha = 0.8
+        else { layer.saturation = 0.78; layer.contrast = 1.12 } // false-colour ortho: a touch less neon, more relief
         v.imageryLayers.add(layer)
         next[L.id] = { on: layer.show, layer }
       }
@@ -490,8 +491,9 @@ export default function App() {
           <input type="checkbox" checked={vec.names} onChange={() => toggleVec('names')} />
           Place names <small>(IAU/USGS)</small>
         </label>}
-        {cameraMode !== 'planet' && <small>Ground: drag = look · Orbit/site: drag = rotate, right-drag = tilt · wheel = zoom</small>}
-        {cameraMode !== 'planet' && <small>Rover: W/S drive, A/D turn (limits are assumed values)</small>}
+        {cameraMode !== 'planet' && <details className="help"><summary>Controls</summary>
+          <small>Ground: drag = look · Orbit/site: drag = rotate, right-drag = tilt · wheel = zoom<br />Rover: W/S drive, A/D turn (limits are assumed values)</small>
+        </details>}
         <small>{drive}</small>
         <small>{status}</small>
         <small>{hud}</small>
@@ -503,7 +505,7 @@ export default function App() {
         cameraMode={cameraMode}
         onEnterSite={() => {
           if (!viewer || !site) return
-          fly(viewer, site, 'site', 0)
+          fly(viewer, site, 'site', 2.5)
           setCameraMode('site')
         }}
         street={surfaceView === 'street' && streetDrop ? { world: streetDrop.world, frame: streetFrame } : null}
@@ -676,9 +678,10 @@ function fly(v: Cesium.Viewer, s: Site, mode: Mode, duration: number) {
     })
   } else if (mode === 'site') {
     // look at the site centre from the south at ~35 degrees, 6 km out
-    const target = s.position(0, 0, 0)
+    // framed on the traverse + landing area (centre shifted east/south of the site centre) so the panels do not hide it
+    const target = s.position(-250, -450, 0)
     v.camera.flyToBoundingSphere(new Cesium.BoundingSphere(target, 1500), {
-      offset: new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-35), 9000),
+      offset: new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-45), 9500),
       duration,
     })
   } else {

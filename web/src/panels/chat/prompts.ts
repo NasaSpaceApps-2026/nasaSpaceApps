@@ -1,10 +1,10 @@
 export const DEMO_PROMPTS: string[] = [
-  'Find landing pads within a 30 minute walk of base.',
-  'Where is the strongest carbonate evidence, and how confident is each site?',
+  // the 2-minute script beats (docs/demo-script.md)
+  'Find 3 flat landing pads within a 30 minute walk of base.',
+  'Where has carbonate been confirmed by the rover?',
+  'Plan a walk from base to the Swift Run sample site and tell me whether the crew can always get back within a 4 hour EVA with 20% reserve.',
   'Take me to the delta front.',
   'Drive the buggy to the highest point within 1 km.',
-  'Is there line of sight from base to the delta front?',
-  'When is the base lit between 07:00 and 17:00 local solar time?',
 ];
 
 /** Follow-up chips shown after an answer: the demo prompts minus the last one asked. */

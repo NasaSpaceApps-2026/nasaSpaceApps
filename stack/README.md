@@ -21,6 +21,8 @@ the port holder's pid and working directory if a port is taken by something else
 | chat page + minimap (`chat-dev`) | 5199 | standalone copilot UI, pointed at the real agent (`:8766`) | `GET /` |
 | viewer + dock, sandbox (`--with-viewer`) | 5173, 5174 (next free if held) | `web` Vite with `VITE_SITE_DIR=stack/cache/work/data/build` (real Jezero tiles from `stack/build_viewer_site.sh`); the viewer spawns the sandbox | `GET /` |
 
+The viewer base layer is real HiRISE orthoimagery (USGS 25 cm mosaic, windowed read, false-colour from Viking; `stack/fetch_ortho.py`, `stack/fetch_viking.py`, cached in `stack/cache/dl`); falls back to hillshade if the download fails.
+
 ## Which frame
 
 Default `jezero`: the query engine, Yousef's API **and the viewer** load the real Jezero frame (lat0/lon0 18.452 / 77.418,

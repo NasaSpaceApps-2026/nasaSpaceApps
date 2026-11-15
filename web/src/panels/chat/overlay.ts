@@ -6,9 +6,9 @@ import type { CesiumRover } from '../../cesiumRover';
 import type { Feature, FeatureKind, RouteLine } from './features';
 
 const COLORS: Record<FeatureKind, string> = {
-  spot: '#6fe39a', region: '#ffcf5a', poi: '#5cd6ff', marker: '#ff7ad9', stop: '#c9a0ff', target: '#ffffff',
+  spot: '#5dffa0', region: '#ffcf5a', poi: '#5cd6ff', marker: '#ff7ad9', stop: '#c9a0ff', target: '#ffffff',
 };
-const ROUTE_COLOR = '#ff5fa2';
+const ROUTE_COLOR = '#35e0ff';
 const LABEL_BG = Cesium.Color.fromCssColorString('#14100e').withAlpha(0.85);
 const FONT = '600 12px system-ui, sans-serif';
 const MAX_LABELS = 4; // labels shown at once besides the hovered / selected one
@@ -119,7 +119,8 @@ export class CopilotOverlay {
       const a = (2 * Math.PI * i) / n;
       pos.push(this.at(f.x + r * Math.cos(a), f.y + r * Math.sin(a), 1.5));
     }
-    this.ds.entities.add({ id: `ring:${f.id}`, polyline: { positions: pos, width: 3, arcType: Cesium.ArcType.NONE, material: color.withAlpha(0.9) } });
+    this.ds.entities.add({ id: `ring:${f.id}`, polyline: { positions: pos, width: 5, arcType: Cesium.ArcType.NONE,
+      material: new Cesium.PolylineOutlineMaterialProperty({ color, outlineWidth: 2, outlineColor: Cesium.Color.BLACK.withAlpha(0.85) }) } });
   }
 
   show(fs: Feature[]) {
@@ -128,11 +129,17 @@ export class CopilotOverlay {
       if (this.shown.has(f.id)) this.hide(f.id);
       const color = Cesium.Color.fromCssColorString(COLORS[f.kind]);
       const position = this.at(f.x, f.y, 3);
+      // soft halo under the marker so it pops against bright imagery
+      this.ds.entities.add({
+        id: `halo:${f.id}`,
+        position,
+        point: { pixelSize: 34, color: color.withAlpha(0.28), outlineColor: color.withAlpha(0.7), outlineWidth: 2, disableDepthTestDistance: Number.POSITIVE_INFINITY },
+      });
       this.ds.entities.add({
         id: `feat:${f.id}`,
         name: f.label,
         position,
-        point: { pixelSize: 13, color, outlineColor: Cesium.Color.BLACK, outlineWidth: 2, disableDepthTestDistance: Number.POSITIVE_INFINITY },
+        point: { pixelSize: 14, color, outlineColor: Cesium.Color.WHITE, outlineWidth: 3, disableDepthTestDistance: Number.POSITIVE_INFINITY },
       });
       this.addLabel(`feat:${f.id}`, f.label, position, true, 10 + i);
       this.ring(f, color);
@@ -274,6 +281,7 @@ export class CopilotOverlay {
   hide(id: string) {
     this.ds.entities.removeById(`feat:${id}`);
     this.ds.entities.removeById(`ring:${id}`);
+    this.ds.entities.removeById(`halo:${id}`);
     this.removeLabel(`feat:${id}`);
     this.shown.delete(id);
   }

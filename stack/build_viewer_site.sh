@@ -27,6 +27,19 @@ for f in traverse waypoints; do
   fi
   ln -sf "$src" "$W/data/raw/m20_$f.json"
 done
+# HiRISE orthoimagery (USGS 25 cm, windowed read, 1 m) + Viking colour source -> pipeline/build_tiles.py colourises it (FALSE COLOUR).
+# Both are cached in stack/cache/dl; on failure the build falls back to the DTM hillshade (build_tiles.py does that when no ortho exists).
+ORTHO="$CACHE/dl/ortho_window_1m.tif"
+if [ ! -s "$ORTHO" ]; then
+  say "fetching HiRISE orthoimage window (USGS, a few minutes) ..."
+  "$PY" -I "$ROOT/stack/fetch_ortho.py" "$ORTHO.part" >"$LOGS/fetch_ortho.log" 2>&1 && mv "$ORTHO.part" "$ORTHO" \
+    || { rm -f "$ORTHO.part"; say "(orthoimage fetch failed, see $LOGS/fetch_ortho.log: using hillshade base layer)"; }
+fi
+[ -s "$ORTHO" ] && ln -sf "$ORTHO" "$W/data/raw/ortho_window.tif"
+if [ -s "$ORTHO" ] && [ ! -s "$CACHE/dl/viking_color.png" ]; then
+  "$PY" "$ROOT/stack/fetch_viking.py" "$CACHE/dl" >>"$LOGS/fetch_ortho.log" 2>&1 || say "(Viking colour fetch failed: orthoimage stays greyscale)"
+fi
+for f in viking_color.png viking_color.json; do [ -s "$CACHE/dl/$f" ] && ln -sf "$CACHE/dl/$f" "$W/data/raw/$f"; done
 cd "$W"
 say "building viewer tiles from $DTM (about 1-2 min)..."
 { "$PY" pipeline/build_tiles.py && "$PY" pipeline/09_export_web.py && "$PY" pipeline/05_vectors.py \

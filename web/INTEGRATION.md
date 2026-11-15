@@ -50,3 +50,18 @@ By hand: `cd web && VIEWER_PORT=5175 SANDBOX_PORT=5176 VITE_SITE_DIR=../stack/ca
 ## Build
 
 `cd web && npm run build` and `npm run lint` pass (lint: 5 pre-existing warnings, no errors). Tests: `cd chat-dev && npx vitest run`.
+
+## Visual polish pass (demo-ready, final)
+
+Teammates' files touched, all surgical:
+
+| File | Owner | Change | Why | Revert |
+|---|---|---|---|---|
+| `web/src/rover/heightTiles.ts` | Yousef | new `decodePngExact` (pure JS PNG inflate + unfilter via `DecompressionStream`), used first by `decodeHeightPng`; the canvas path stays as fallback | **Street-view artifact cause.** Height tiles encode metres in RGB; the canvas readback is not bit-exact in Brave (fingerprint "farbling" flips low bits). One bit in the RED byte is 655.36 m, so ~0.3% of posts became spikes (the orange cones) and pits (the black/orange striped walls are the stretched ortho on their vertical sides). Not a patch-edge skirt: the tile data is clean (checked with PIL) | restore the old body of `decodeHeightPng` |
+| `web/src/rover/sandbox/main.ts` | Yousef | sky/fog colour `0xc8946c` (dusty butterscotch) instead of dark `0x2a2522`; fog 0.12-0.85 x patch size | the patch edge now dissolves into haze instead of a dark band | restore the two colour literals |
+| `web/src/places.ts` | Rithvik | waypoints: 3.5 px translucent, every 6th visible from afar, rest within 1.2 km, labels within 220 m; traverse line pale yellow with dark outline | clutter, and the old orange line vanished on Mars-coloured imagery | restore previous values |
+| `web/src/App.tsx`, `App.css` | Rithvik | controls help folded into `<details>`; site camera framing (target -250,-450, pitch -45, 9.5 km); `onEnterSite` flies 2.5 s instead of jumping; ortho layer saturation 0.78 / contrast 1.12 | demo path | revert hunks |
+
+Ours: `panels/chat/overlay.ts` (halo under highlights, outlined rings, cyan routes), `prompts.ts` (chips = docs/demo-script.md beats).
+
+Imagery: `stack/fetch_ortho.py` reads the USGS `JEZ_hirise_soc_007_orthoMosaic_25cm_Ortho_blend120.tif` (tiled LZW, orthographic) over the 8 km site via range requests, 4x4 mean to 1 m (about 1 min) into `stack/cache/dl/`; `stack/fetch_viking.py` (copy of `pipeline/00b_fetch_color.py` with urllib) fetches the Viking colour source; `stack/build_viewer_site.sh` links both into the work dir and Caden's `build_tiles.py` colourises. Layer title/credit: "HiRISE orthomosaic, colourised (false colour)", "NASA/JPL/UArizona/USGS. HiRISE is greyscale: colour from Viking MDIM 2.1 ... Not true colour." If the fetch fails the build falls back to the DTM hillshade. Rebuild: `stack/build_viewer_site.sh --rebuild`.

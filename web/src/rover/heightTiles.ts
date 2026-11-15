@@ -136,8 +136,68 @@ export class TileHeightSampler implements HeightSampler {
   }
 }
 
-/** Decode a PNG Blob into elevations in the browser (no colour management). */
+/**
+ * Pure-JS PNG decode (8-bit RGB/RGBA, non-interlaced) via DecompressionStream. Returns null when the file is something
+ * else or the API is missing, and the caller falls back to the canvas path.
+ * Why: canvas readback is not bit-exact in every browser (Brave "farbling" randomises low bits). A one-bit change in the
+ * RED byte of a height pixel is 655.36 m, which showed up in street view as random spikes and pits with striped walls.
+ */
+async function decodePngExact(blob: Blob): Promise<{ data: Float32Array; px: number } | null> {
+  if (typeof DecompressionStream === 'undefined') return null;
+  const b = new Uint8Array(await blob.arrayBuffer());
+  const sig = [137, 80, 78, 71, 13, 10, 26, 10];
+  if (b.length < 33 || sig.some((v, i) => b[i] !== v)) return null;
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  let w = 0, h = 0, depth = 0, ctype = 0, interlace = 1;
+  const parts: Uint8Array[] = [];
+  for (let o = 8; o + 8 <= b.length;) {
+    const len = dv.getUint32(o);
+    const type = String.fromCharCode(b[o + 4], b[o + 5], b[o + 6], b[o + 7]);
+    const body = b.subarray(o + 8, o + 8 + len);
+    if (type === 'IHDR') {
+      w = dv.getUint32(o + 8); h = dv.getUint32(o + 12); depth = b[o + 16]; ctype = b[o + 17]; interlace = b[o + 20];
+    } else if (type === 'IDAT') parts.push(body);
+    else if (type === 'IEND') break;
+    o += 12 + len;
+  }
+  const bpp = ctype === 2 ? 3 : ctype === 6 ? 4 : 0;
+  if (!bpp || depth !== 8 || interlace !== 0 || !w || !h || !parts.length) return null;
+  const zbytes = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let zo = 0;
+  for (const p of parts) { zbytes.set(p, zo); zo += p.length; }
+  const raw = new Uint8Array(await new Response(new Blob([zbytes]).stream().pipeThrough(new DecompressionStream('deflate'))).arrayBuffer());
+  const rowLen = w * bpp;
+  if (raw.length < (rowLen + 1) * h) return null;
+  const px = new Uint8Array(rowLen * h);
+  for (let y = 0; y < h; y++) {
+    const f = raw[y * (rowLen + 1)];
+    const src = y * (rowLen + 1) + 1, dst = y * rowLen, up = dst - rowLen;
+    for (let i = 0; i < rowLen; i++) {
+      const x = raw[src + i];
+      const a = i >= bpp ? px[dst + i - bpp] : 0;
+      const c = y > 0 ? px[up + i] : 0;
+      const d = y > 0 && i >= bpp ? px[up + i - bpp] : 0;
+      let v: number;
+      if (f === 0) v = x;
+      else if (f === 1) v = x + a;
+      else if (f === 2) v = x + c;
+      else if (f === 3) v = x + ((a + c) >> 1);
+      else if (f === 4) {
+        const pp = a + c - d, pa = Math.abs(pp - a), pb = Math.abs(pp - c), pc = Math.abs(pp - d);
+        v = x + (pa <= pb && pa <= pc ? a : pb <= pc ? c : d);
+      } else return null;
+      px[dst + i] = v & 255;
+    }
+  }
+  return { data: decodeHeightRGBA(px, w, h, bpp), px: w };
+}
+
+/** Decode a PNG Blob into elevations in the browser (bit-exact when possible, else canvas without colour management). */
 export async function decodeHeightPng(blob: Blob): Promise<{ data: Float32Array; px: number }> {
+  try {
+    const exact = await decodePngExact(blob);
+    if (exact) return exact;
+  } catch { /* fall through to the canvas path */ }
   const bmp = await createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
   const w = bmp.width;
   const h = bmp.height;

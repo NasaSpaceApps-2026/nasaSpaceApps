@@ -288,7 +288,8 @@ async function main() {
   $('view').appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x2a2522);
+  const HAZE = 0xc8946c; // dusty butterscotch Mars sky; the patch edge dissolves into it instead of ending at a dark band
+  scene.background = new THREE.Color(HAZE);
   const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.3, 6000);
   // Lights: butterscotch sky / rust ground fill + a low warm sun with soft shadows.
   scene.add(new THREE.HemisphereLight(0xf3dcc2, 0x5a3424, 1.1));
@@ -310,7 +311,7 @@ async function main() {
   }
   const { manifest, sampler, level } = loaded;
   scene.add(buildTerrain(manifest, sampler, level));
-  scene.fog = new THREE.Fog(0x2a2522, manifest.size_m * 0.6, manifest.size_m * 1.6);
+  scene.fog = new THREE.Fog(HAZE, manifest.size_m * 0.12, manifest.size_m * 0.85);
 
   const ortho = manifest.layers.find((l) => l.id === 'ortho');
   $('data').innerHTML =
