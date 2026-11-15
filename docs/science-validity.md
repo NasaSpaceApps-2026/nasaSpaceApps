@@ -57,6 +57,15 @@ at 2 m spacing). Reproduce: `GET /validation` on `devapi`.
 The rover spent 12 to 20 times less of its drive on ground our map marks as steep than a random
 path would. Our slope map identifies terrain the rover's planners avoided.
 
+**Independent check from the team pipeline** (`docs/science-validation.md`, `pipeline/09_validate.py`):
+Perseverance's own tilt sensor at 347 drive stops correlates with slope from the same HiRISE terrain
+at r = 0.84 (RMSE 2.27°, bias +0.02°; max rover tilt 20.3°). This is the strongest evidence we have,
+because the rover's inclinometer does not depend on the orbital terrain model. (The pipeline's
+elevation comparison, 0.05 m spread, is not independent: rover elevations are tied to that same
+model.) The pipeline's traverse statistics differ slightly from ours (23.9 km and 0.3% over 15°
+against our 24.9 km and 0.41%), most likely because it uses a two-point slope formula and different
+clipping at the site edge; both show the same pattern.
+
 **Read this honestly:**
 - The headline "99.9% of the traverse is on safe or caution ground" is weak on its own, because
   98% of the site is safe or caution. The enrichment ratios above are the meaningful result.
@@ -128,4 +137,5 @@ Each tool is checked against a known answer, not just "it runs".
 ## Change log
 
 - **Nov 14:** first version.
+- **Nov 14 (evening):** cited the team pipeline's independent rover-tilt check (r = 0.84) and noted the small traverse-statistics difference.
 - **Nov 14 (later):** added sun/shadow, line of sight, landform layers, ancient lake and EVA safety tools with their validation; suite at 386 tests.
