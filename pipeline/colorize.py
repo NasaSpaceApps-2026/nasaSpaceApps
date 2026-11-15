@@ -54,14 +54,21 @@ def viking_chroma(raw: Path, lat0, lon0, size_m, n, R=3396190.0, ref_size_m=None
     return 1.0 + (VARIATION * z)[..., None] * AXIS
 
 
+def _luminance_rolloff(y: np.ndarray) -> np.ndarray:
+    """Compress highlight luminance before tinting so anchor chroma survives bright HiRISE DN."""
+    return y * (1.0 + ROLLOFF) / (1.0 + ROLLOFF * np.clip(y, 0.0, None))
+
+
 def colorize(gray: np.ndarray, chroma: np.ndarray) -> np.ndarray:
     """gray: (n,n) HiRISE DN 0..255 -> (n,n,3) uint8."""
-    y = np.clip(gray.astype(np.float32) / 255.0 * BRIGHTEN, 0, 1.2)[..., None]
-    rgb = y * chroma * ANCHOR
+    y = np.clip(gray.astype(np.float32) / 255.0 * BRIGHTEN, 0, 1.2)
+    y = _luminance_rolloff(y)
+    rgb = y[..., None] * chroma * ANCHOR
     # keep luminance roughly equal to the HiRISE value after tinting
     norm = (ANCHOR * np.array([0.30, 0.59, 0.11])).sum()
     rgb = rgb / norm * 0.92
-    rgb = rgb * (1 + ROLLOFF) / (1 + ROLLOFF * np.clip(rgb, 0, None))  # 1 -> 1, compresses highlights
+    mx = np.max(rgb, axis=-1, keepdims=True)
+    rgb = np.where(mx > 1.0, rgb / np.maximum(mx, 1e-6), rgb)
     return (np.clip(rgb, 0, 1) * 255).astype(np.uint8)
 
 
