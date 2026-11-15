@@ -37,12 +37,17 @@ const WORLD_BASE: Record<string, string> = {
   vision: '/worlds/vision',
   llm: '/worlds/vision',
   crater: '/worlds/crater',
+  olympus: '/worlds/olympus',
 };
 const rawWorld = (q.get('world') ?? '').trim().toLowerCase();
 const worldBase = rawWorld ? WORLD_BASE[rawWorld] : undefined;
-const worldName: 'projection' | 'vision' | 'crater' | null =
-  worldBase === '/worlds/vision' ? 'vision' : worldBase === '/worlds/projection' ? 'projection' : worldBase === '/worlds/crater' ? 'crater' : null;
-const worldError = rawWorld && !worldBase ? `Unknown world "${q.get('world')}". Use projection, vision, or crater.` : '';
+const worldName: 'projection' | 'vision' | 'crater' | 'olympus' | null =
+  worldBase === '/worlds/vision' ? 'vision'
+  : worldBase === '/worlds/projection' ? 'projection'
+  : worldBase === '/worlds/crater' ? 'crater'
+  : worldBase === '/worlds/olympus' ? 'olympus'
+  : null;
+const worldError = rawWorld && !worldBase ? `Unknown world "${q.get('world')}". Use projection, vision, crater, or olympus.` : '';
 const BASE = worldBase ?? q.get('base') ?? '';
 const API = (q.get('api') ?? 'http://localhost:8000').replace(/\/$/, '');
 const WS = API.replace(/^http/, 'ws') + '/ws';
@@ -52,7 +57,7 @@ const START = {
   heading_deg: Number(q.get('heading') ?? (worldName ? 0 : 90)),
 };
 
-function worldHref(name: 'projection' | 'vision' | 'crater' | null): string {
+function worldHref(name: 'projection' | 'vision' | 'crater' | 'olympus' | null): string {
   const next = new URLSearchParams(location.search);
   next.delete('base');
   next.delete('x');
@@ -65,11 +70,12 @@ function worldHref(name: 'projection' | 'vision' | 'crater' | null): string {
 }
 
 function renderWorldSwitch() {
-  const items: Array<['default' | 'photo projection' | 'vision loop' | 'crater', 'projection' | 'vision' | 'crater' | null]> = [
+  const items: Array<['default' | 'photo projection' | 'vision loop' | 'crater' | 'olympus', 'projection' | 'vision' | 'crater' | 'olympus' | null]> = [
     ['default', null],
     ['photo projection', 'projection'],
     ['vision loop', 'vision'],
     ['crater', 'crater'],
+    ['olympus', 'olympus'],
   ];
   $('worlds').innerHTML = items.map(([label, name]) => {
     const on = name === worldName;

@@ -255,11 +255,33 @@ def export_crater(repo: Path, out_root: Path) -> None:
     )
 
 
+def export_olympus(repo: Path, out_root: Path) -> None:
+    bundle = repo / "contracts" / "fixtures" / "olympus_scarp"
+    if not (bundle / "dem.npy").exists():
+        return
+    grid = json.loads((bundle / "grid.json").read_text())
+    dem = np.load(bundle / "dem.npy")
+    hires = bundle / "texture.png"
+    texture = Image.open(hires if hires.exists() else bundle / "ortho.png").convert("RGB")
+    size_m = (dem.shape[1] - 1) * float(grid["res_m"])
+    write_pyramid(
+        out_root / "olympus",
+        "olympus_scarp",
+        "Olympus Mons scarp",
+        "HiRISE of the layered scarp, Mars orange from the Viking tint, Mastcam grain for close-up dirt",
+        dem,
+        texture,
+        grid,
+        size_m,
+    )
+
+
 def main() -> None:
     repo = Path(__file__).resolve().parents[1]
     out = repo / "contracts" / "fixtures" / "rover_worlds"
     export_worlds(repo, out)
     export_crater(repo, out)
+    export_olympus(repo, out)
     print(out)
 
 
