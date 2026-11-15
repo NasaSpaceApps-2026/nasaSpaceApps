@@ -1,4 +1,6 @@
+import { spawn, type ChildProcess } from 'node:child_process'
 import { createReadStream, existsSync, statSync } from 'node:fs'
+import { createConnection } from 'node:net'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { defineConfig, type Plugin, type ViteDevServer } from 'vite'
@@ -50,15 +52,65 @@ function roverWorlds(): Plugin {
   return { name: 'rover-worlds', configureServer: attach, configurePreviewServer: attach }
 }
 
+function portOpen(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = createConnection({ host: '127.0.0.1', port }, () => {
+      socket.end()
+      resolve(true)
+    })
+    socket.on('error', () => resolve(false))
+  })
+}
+
+async function waitForPort(port: number, ms: number): Promise<boolean> {
+  const start = Date.now()
+  while (Date.now() - start < ms) {
+    if (await portOpen(port)) return true
+    await new Promise((r) => setTimeout(r, 200))
+  }
+  return false
+}
+
+/** Street view is the sandbox on 5174. Start it with the planet server so one command is enough. */
+function sandboxDev(): Plugin {
+  let child: ChildProcess | undefined
+  return {
+    name: 'sandbox-dev',
+    async configureServer(server) {
+      if (await portOpen(5174)) return
+      const sandboxDir = path.resolve(here, 'src/rover/sandbox')
+      const viteBin = path.join(sandboxDir, 'node_modules/vite/bin/vite.js')
+      child = spawn(process.execPath, [viteBin, '--host', '127.0.0.1', '--port', '5174', '--strictPort'], {
+        cwd: sandboxDir,
+        stdio: 'inherit',
+        env: { ...process.env, BROWSER: 'none' },
+      })
+      const stop = () => {
+        if (child && !child.killed) child.kill()
+      }
+      server.httpServer?.once('close', stop)
+      if (!(await waitForPort(5174, 20000))) {
+        server.config.logger.warn('Rover sandbox did not start on port 5174')
+      }
+    },
+  }
+}
+
 // Serve the built site (tiles, manifest, data) from the repo's data/build at the web root,
 // matching the contract paths (/tiles, /data). Use VITE_SITE_DIR to point at the fixtures
 // instead: VITE_SITE_DIR=../contracts/fixtures npm run dev
 // envDir '..' reads VITE_CESIUM_ION_TOKEN from the repo-root .env.local (gitignored).
 export default defineConfig(() => {
   return {
-    plugins: [react(), cesium(), roverWorlds()],
+    plugins: [react(), cesium(), roverWorlds(), sandboxDev()],
     envDir: '..',
     publicDir: process.env.VITE_SITE_DIR ?? '../data/build',
-    server: { port: 5173, fs: { allow: [repo] } },
+    server: {
+      port: 5173,
+      fs: { allow: [repo] },
+      proxy: {
+        '/sandbox': { target: 'http://127.0.0.1:5174', changeOrigin: true, ws: true },
+      },
+    },
   }
 })

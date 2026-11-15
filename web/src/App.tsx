@@ -10,7 +10,6 @@ import { BUBBLES } from './bubbles'
 import { dropOnBubbles, type StreetDrop } from './pegman'
 import './App.css'
 
-const SANDBOX_DEV = 'http://localhost:5174'
 type SurfaceView = 'planet' | 'street'
 
 const MARS_ION_ASSET = 3644333
@@ -19,8 +18,41 @@ let roverCtl: CesiumRover | null = null // set once the viewer is up; used by fl
 let placesCtl: PlacesLayer | null = null
 let marsTileset: Cesium.Cesium3DTileset | null = null
 let bubblePrimitives: Cesium.GroundPrimitive[] = []
-let bubbleLabels: Cesium.Entity[] = []
+let bubbleMarkers: Cesium.Entity[] = []
 let siteImageryShown: boolean[] | null = null
+const marsBasemapLayers = new Set<Cesium.ImageryLayer>()
+
+const MARS_MOSAIC =
+  'https://trek.nasa.gov/tiles/Mars/EQ/Mars_Viking_MDIM21_ClrMosaic_global_232m/1.0.0/default/default028mm/{z}/{y}/{x}.jpg'
+
+function addMarsBasemap(v: Cesium.Viewer) {
+  const layer = new Cesium.ImageryLayer(new Cesium.UrlTemplateImageryProvider({
+    url: MARS_MOSAIC,
+    tilingScheme: new Cesium.GeographicTilingScheme({
+      ellipsoid: SPHERE,
+      numberOfLevelZeroTilesX: 2,
+      numberOfLevelZeroTilesY: 1,
+    }),
+    maximumLevel: 6,
+    credit: 'NASA / USGS Viking MDIM 2.1 color mosaic, served by Mars Trek',
+  }))
+  v.imageryLayers.add(layer, 0)
+  marsBasemapLayers.add(layer)
+}
+
+function eastLon(lon: number): number {
+  let wrapped = lon
+  while (wrapped > 180) wrapped -= 360
+  while (wrapped < -180) wrapped += 360
+  return wrapped
+}
+
+function lookAtBubble(v: Cesium.Viewer, lat: number, lon: number, height: number) {
+  v.camera.setView({
+    destination: Cesium.Cartesian3.fromDegrees(eastLon(lon), lat, height, SPHERE),
+    orientation: { heading: 0, pitch: Cesium.Math.toRadians(-90), roll: 0 },
+  })
+}
 let roverPoseHud: ((p: DriverPose) => void) | null = null
 
 function ensureRover(v: Cesium.Viewer, s: Site): CesiumRover {
@@ -75,6 +107,7 @@ export default function App() {
   const [streetDrop, setStreetDrop] = useState<StreetDrop | null>(null)
   const pegRef = useRef<HTMLDivElement>(null)
   const pegDrag = useRef(false)
+  const streetFrame = useRef<HTMLIFrameElement>(null)
 
   useEffect(() => {
     let dead = false
@@ -101,7 +134,8 @@ export default function App() {
         selectionIndicator: false,
       })
       const scene = v.scene
-      // Rust, not transparent: with no ion token this is the whole planet. The tileset hides the globe.
+      addMarsBasemap(v)
+      // Visible while the mosaic tiles are still arriving. The ion tileset hides this globe.
       scene.globe.baseColor = Cesium.Color.fromCssColorString('#8c3d28')
       scene.globe.showGroundAtmosphere = false
       // Sky: Cesium's atmosphere shader doesn't draw below the sphere surface (the Jezero floor is
@@ -180,7 +214,7 @@ export default function App() {
         } catch (e) {
           setStatus('site only (Mars globe failed: ' + (e as Error).message + ')')
         }
-      } else setStatus('site only (no Cesium token)')
+      } else setStatus('Drag the pegman onto a patch, or press Drive.')
 
       v.camera.moveEnd.addEventListener(() => {
         const c = v!.camera.positionCartographic
@@ -314,16 +348,70 @@ export default function App() {
     resetPegman(pegRef.current)
   }
 
+  const driveAt = (lat: number, lon: number, title: string) => {
+    if (!viewer) return
+    const drop = dropOnBubbles(lat, lon)
+    if (!drop) {
+      setStatus('No street view here')
+      return
+    }
+    lookAtBubble(viewer, lat, lon, 15000)
+    releaseRover()
+    setStreetDrop(drop)
+    setSurfaceView('street')
+    setCameraMode('planet')
+    setStatus(`Street view · ${title}`)
+  }
+
   const sandboxSrc = streetDrop
-    ? `${SANDBOX_DEV}/?world=${streetDrop.world}&x=${streetDrop.x}&y=${streetDrop.y}&heading=0`
+    ? `/sandbox/?world=${encodeURIComponent(streetDrop.world)}&x=${streetDrop.x}&y=${streetDrop.y}&heading=0&link=0`
     : ''
+
+  useEffect(() => {
+    if (!viewer) return
+    const driving = surfaceView === 'street'
+    viewer.useDefaultRenderLoop = !driving
+    if (!driving) {
+      viewer.resize()
+      viewer.scene.requestRender()
+    }
+  }, [viewer, surfaceView])
+
+  useEffect(() => {
+    if (surfaceView !== 'street') return
+    const frame = streetFrame.current
+    const focusFrame = () => {
+      frame?.focus()
+      try { frame?.contentWindow?.focus() } catch { /* focus is allowed cross-origin */ }
+    }
+    focusFrame()
+    const later = window.setTimeout(focusFrame, 500)
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null
+      if (el && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) return
+      frame?.contentWindow?.postMessage({
+        type: 'ares-drive-key',
+        code: e.code,
+        down: e.type === 'keydown',
+        repeat: e.repeat,
+      }, window.location.origin)
+      if (e.type === 'keydown' && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault()
+    }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('keyup', onKey)
+    return () => {
+      window.clearTimeout(later)
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('keyup', onKey)
+    }
+  }, [surfaceView, sandboxSrc])
 
   return (
     <div className="app">
       <div ref={box} className={`cesium${surfaceView === 'street' ? ' cesium--hidden' : ''}`} />
       {surfaceView === 'street' && streetDrop && (
         <>
-          <iframe className="street-frame" title="Rover street view" src={sandboxSrc} />
+          <iframe ref={streetFrame} className="street-frame" title="Rover street view" src={sandboxSrc} tabIndex={0} />
           <button type="button" className="map-back" onClick={leaveStreet}>Map</button>
         </>
       )}
@@ -339,9 +427,24 @@ export default function App() {
           onPointerCancel={onPegPointerUp}
         />
       )}
-      <div className="panel">
-        <b>Ares Atlas — Jezero</b>
-        <div className="row">
+      {surfaceView !== 'street' && <div className="panel">
+        <b>{cameraMode === 'planet' ? 'Ares Atlas — Mars' : 'Ares Atlas — Jezero'}</b>
+        {cameraMode === 'planet' && (
+          <>
+            <small>One window. Drive enters the rover on that patch. Drag the yellow pegman onto a patch to do the same.</small>
+            {BUBBLES.map((bubble) => (
+              <div className="row" key={bubble.id}>
+                <button type="button" disabled={!viewer} onClick={() => viewer && lookAtBubble(viewer, bubble.lat, bubble.lon, 20000)}>
+                  {bubble.title}
+                </button>
+                <button type="button" disabled={!viewer} onClick={() => driveAt(bubble.lat, bubble.lon, bubble.title)}>
+                  Drive
+                </button>
+              </div>
+            ))}
+          </>
+        )}
+        {cameraMode !== 'planet' && <div className="row">
           {(['orbit', 'site', 'ground', 'rover', 'planet'] as Mode[]).map((m) => (
             <button key={m} disabled={!viewer} onClick={() => {
               if (surfaceView === 'street') leaveStreet()
@@ -351,7 +454,14 @@ export default function App() {
               {m}
             </button>
           ))}
-        </div>
+        </div>}
+        {cameraMode === 'planet' && (
+          <button type="button" disabled={!viewer || !site} onClick={() => {
+            fly(viewer!, site!, 'site', 2)
+            setCameraMode('site')
+          }}>Site tools</button>
+        )}
+        {cameraMode !== 'planet' && <>
         <input className="search" placeholder="Search: sol 120, Jezero, Belva…" value={query}
           onChange={(e) => search(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && hits[0]) goTo(hits[0]) }} />
         {hits.map((h) => (
@@ -375,16 +485,17 @@ export default function App() {
           <input type="checkbox" checked={vec.traverse} onChange={() => toggleVec('traverse')} />
           Perseverance traverse + waypoints <small>(Mars 2020, NASA/JPL)</small>
         </label>
-        <label title="USGS Gazetteer of Planetary Nomenclature (IAU-approved names)">
+        </>}
+        {cameraMode !== 'planet' && <label title="USGS Gazetteer of Planetary Nomenclature (IAU-approved names)">
           <input type="checkbox" checked={vec.names} onChange={() => toggleVec('names')} />
           Place names <small>(IAU/USGS)</small>
-        </label>
-        <small>Ground: drag = look · Orbit/site: drag = rotate, right-drag = tilt · wheel = zoom</small>
-        <small>Rover: W/S drive, A/D turn (limits are assumed values)</small>
+        </label>}
+        {cameraMode !== 'planet' && <small>Ground: drag = look · Orbit/site: drag = rotate, right-drag = tilt · wheel = zoom</small>}
+        {cameraMode !== 'planet' && <small>Rover: W/S drive, A/D turn (limits are assumed values)</small>}
         <small>{drive}</small>
         <small>{status}</small>
         <small>{hud}</small>
-      </div>
+      </div>}
     </div>
   )
 }
@@ -446,7 +557,7 @@ function hideSiteImagery(v: Cesium.Viewer) {
   for (let i = 0; i < layers.length; i++) {
     const layer = layers.get(i)
     siteImageryShown.push(layer.show)
-    layer.show = false
+    if (!marsBasemapLayers.has(layer)) layer.show = false
   }
 }
 
@@ -463,8 +574,8 @@ function clearPlanetBubbles(v: Cesium.Viewer) {
     if (!prim.isDestroyed()) prim.destroy()
   }
   bubblePrimitives = []
-  for (const label of bubbleLabels) v.entities.remove(label)
-  bubbleLabels = []
+  for (const marker of bubbleMarkers) v.entities.remove(marker)
+  bubbleMarkers = []
 }
 
 function showPlanetBubbles(v: Cesium.Viewer) {
@@ -473,9 +584,7 @@ function showPlanetBubbles(v: Cesium.Viewer) {
   for (const bubble of BUBBLES) {
     const halfDegLat = (bubble.sizeM / 2) / R * 180 / Math.PI
     const halfDegLon = halfDegLat / Math.cos(bubble.lat * Math.PI / 180)
-    let lon = bubble.lon
-    if (lon > 180) lon -= 360
-    if (lon < -180) lon += 360
+    const lon = eastLon(bubble.lon)
     const rect = Cesium.Rectangle.fromDegrees(
       lon - halfDegLon, bubble.lat - halfDegLat,
       lon + halfDegLon, bubble.lat + halfDegLat,
@@ -494,8 +603,14 @@ function showPlanetBubbles(v: Cesium.Viewer) {
     v.scene.primitives.add(prim)
     bubblePrimitives.push(prim)
     // Ortho patches are ~2 km; at planet distance they are sub-pixel. Labels mark the drops.
-    bubbleLabels.push(v.entities.add({
+    bubbleMarkers.push(v.entities.add({
       position: Cesium.Cartesian3.fromDegrees(lon, bubble.lat, 0, SPHERE),
+      point: {
+        pixelSize: 10,
+        color: Cesium.Color.fromCssColorString('#ffcc00'),
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 2,
+      },
       label: {
         text: bubble.title,
         font: 'bold 16px sans-serif',
@@ -505,7 +620,6 @@ function showPlanetBubbles(v: Cesium.Viewer) {
         style: Cesium.LabelStyle.FILL_AND_OUTLINE,
         verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
         pixelOffset: new Cesium.Cartesian2(0, -12),
-        disableDepthTestDistance: Number.POSITIVE_INFINITY,
         scaleByDistance: new Cesium.NearFarScalar(5e4, 1.4, 1.2e7, 0.55),
       },
     }))

@@ -2,39 +2,27 @@
 
 One-line commands from the repo root. Install once: `npm install` in `web/` and `web/src/rover/sandbox`; for the API, `source activatevenv311` then `pip install -r api/requirements.txt` (`python3.11` on PATH).
 
-Optional Cesium ion token for the textured Mars tileset: put `VITE_CESIUM_ION_TOKEN=…` in a repo-root `.env.local` (gitignored). Without it the globe is a rust sphere; the Jezero / Olympus bubbles and labels still show.
+Optional Cesium ion token for the higher-resolution Mars tileset: put `VITE_CESIUM_ION_TOKEN=…` in a repo-root `.env.local` (gitignored). Without it the globe is the NASA/USGS Viking color mosaic from Mars Trek. The Jezero and Olympus patches are sharper than that mosaic.
 
-## Planet + street view (two terminals)
+## Planet and street view (one window)
 
-Street view iframes the rover sandbox at `http://localhost:5174`, so both must be running.
-
-**Important:** bare `http://localhost:5173/` boots **site** mode (close-up Jezero fixture). That is not the Mars globe. Planet mode needs `?view=planet` (or click the **planet** button after load).
-
-**Terminal 1 — Mars globe (port 5173), opens in planet mode:**
+One command. Stop any dev server already running on port 5173 or 5174 first. An old process keeps the previous page, and the new one never takes the port. Do not start `web/src/rover/sandbox` yourself, and do not open `localhost:5174`. The planet server starts that sandbox, and street view is the page inside the globe. Bare `http://localhost:5173/` is the close-up Jezero site, not the planet. Use `?view=planet`.
 
 ```sh
 cd web && VITE_SITE_DIR=../contracts/fixtures npm run dev -- --open '/?view=planet'
 ```
 
-**Terminal 2 — rover sandbox for street view (port 5174):**
+In that window:
 
-```sh
-cd web/src/rover/sandbox && npm run dev
-```
+1. The globe is Mars, with **Jezero fan** and **Olympus Mons scarp** labels.
+2. Press **Drive** next to a name. That enters the rover on that patch in the same window. Or drag the yellow pegman onto the patch. A drop outside a patch stays on the planet.
+3. Drive with the arrow keys or W/S. Steer with the left and right arrows or A/D. Boost is Shift, brake is Space, reset is R.
+4. **Map** returns to the globe.
 
-Then:
-
-1. Confirm the **planet** control is the mode you want (URL should keep `?view=planet`).
-2. You should see the whole globe plus **Jezero fan** and **Olympus Mons scarp** labels. Zoom in on a label until the orthophoto patch appears.
-3. Drag the yellow pegman (lower right) onto that bubble. Drops outside a bubble are refused.
-4. **Map** leaves street view.
-
-| Bubble label | Street-view `?world=` | Size |
+| Place | Street-view world | Size |
 |---|---|---|
 | Jezero fan | `crater` | 1.8 km |
 | Olympus Mons scarp | `olympus` | ~2.2 km |
-
-Drive in street view: W/S, steer A/D, boost Shift/Space, reset R.
 
 ## Rover sandbox alone (port 5174)
 

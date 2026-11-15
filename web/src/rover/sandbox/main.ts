@@ -277,11 +277,11 @@ async function main() {
     $('msg').textContent = worldError;
     return;
   }
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -295,10 +295,9 @@ async function main() {
   scene.add(new THREE.AmbientLight(0xffffff, 0.12));
   const sun = new THREE.DirectionalLight(0xfff2e0, 3.2);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.02;
-  sun.shadow.radius = 3;
   Object.assign(sun.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6, near: 1, far: 90 });
   scene.add(sun, sun.target);
 
@@ -319,10 +318,26 @@ async function main() {
     `(${f(manifest.size_m / 2 ** level / 256, 2)} m posts), no vertical exaggeration.<br>` +
     `<b>Imagery</b>: ${ortho ? `${ortho.title} - ${ortho.credit ?? ''}` : 'none'}`;
 
-  const profile = await fetchProfile();
+  // Embedded street view passes link=0. Skip the API wait and the reconnect loop.
+  const offline = q.get('link') === '0';
+  const profile = offline ? DEFAULT_BUGGY_PROFILE : await fetchProfile();
   if (!worldName) await resolveStart();
   const controls = new KeyboardControls();
-  const link = new RoverLink({ url: WS });
+  const link = offline ? null : new RoverLink({ url: WS });
+  // The planet page keeps keyboard focus. It forwards keys here so arrows drive
+  // without a click inside the frame.
+  addEventListener('message', (e: MessageEvent) => {
+    if (e.origin !== location.origin) return;
+    const data = e.data as { type?: string; code?: string; down?: boolean; repeat?: boolean } | null;
+    if (!data || data.type !== 'ares-drive-key' || typeof data.code !== 'string') return;
+    dispatchEvent(new KeyboardEvent(data.down ? 'keydown' : 'keyup', {
+      code: data.code,
+      key: data.code,
+      repeat: !!data.repeat,
+      bubbles: true,
+      cancelable: true,
+    }));
+  });
   const driver = new RoverDriver({ sampler, profile, params: BUGGY_PARAMS, controls, link, start: START });
 
   const buggy = createBuggyModel({ castShadow: true });

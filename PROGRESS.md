@@ -37,6 +37,7 @@ Tests: `api/.venv/bin/python -m pytest api -q` → 17 passed.
 - `max_slope_deg` can only tighten a profile's limit, never loosen it.
 - `GET /rover/vehicles`, `POST /rover/vehicle {profile}`: the sim drives `crew_buggy` by default (matches the viewer); `rover_scout` for Perseverance-like scouting. Rover state includes `vehicle`.
 - Markers and routes persist across API restarts (per site). `/health` reports vehicle, viewers, marker and route counts.
+- Buggy grip μ 2.4 (4× baseline) with wheelie control (front keeps ≥ 15 % load, climbs ~36°), stability control (steering capped under roll-over) and ABS (braking under nose-over). Same climb limit in the API sim (`vehicle.py`).
 
 ### Known issues / notes
 

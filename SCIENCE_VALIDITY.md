@@ -32,9 +32,9 @@ Status key: **cited** (published NASA/peer value) · **derived** (computed from 
 | Buggy motor power | 25 kW (40 kW boost) | assumed | Concept. Reference: LRV ~750 W (4 × 0.25 hp) (cited). Acceleration is grip-limited at low speed (~(μ − Crr)·g ≈ 1.9 m/s², 0–86 km/h in ~13 s) |
 | Buggy slope rating | 25° | cited | LRV design slope capability (advisory limit in the viewer) |
 | Buggy turn radius | ~3.1 m at the rear axle (~3.8 m at the body centre) | derived | Front-wheel steering only (40° max lock). The LRV reached ~3 m with four-wheel steering (cited) |
-| Buggy drivetrain | Rear-wheel drive; centre of mass 0.25 m behind the wheelbase midpoint (~61 % rear weight) | assumed | Rear-engine dune-buggy layout. Consequence: only rear-axle grip pushes, so the climb limit drops to ~20° (vs ~27° with all-wheel drive); 0–86 km/h takes longer |
+| Buggy drivetrain | Rear-wheel drive; centre of mass 0.25 m behind the wheelbase midpoint (~61 % rear weight) | assumed | Rear-engine dune-buggy layout. Consequence: only rear-axle grip pushes, so climbs depend on rear-axle load. With μ 1.2 rear grip would allow ~47°, but wheelie control (motor keeps ≥ 15 % of the weight on the front wheels, as EV traction control does) caps steady climbs at ~36.5°: cos θ·a_r − sin θ·h ≥ 0.15 cos θ·L |
 | Buggy mass (loaded) | 700 kg | derived | LRV 210 kg + two suited crew + equipment |
-| Wheel–regolith grip μ | 0.6 | assumed | Gives a ~27° climb limit, consistent with the 25° LRV rating |
+| Wheel–regolith grip μ | 2.4 (buggy), 0.6 (scout) | assumed | Buggy: concept paddle tyres, 4× the 0.6 baseline on request (well above loose regolith; grip now exceeds the roll-over and nose-over limits, so stability control below sets the real limits; 0.6 gave a ~27° all-wheel-drive limit, consistent with the 25° LRV rating). Scout unchanged |
 | Rolling resistance | 0.08 | assumed | Loose regolith; to verify against rover mobility literature |
 | Boost duration | 6 s, 10 s recharge | assumed | Viewer feature; does not affect planning |
 | Jumps, landings, roll-overs | Emerge from the rigid-body model (no special modes): wheels leave the ground when the springs fully extend; flight under Mars g with free rotation; landing absorbed by springs, dampers and bump stops | derived | Check: 12 m/s over a 1.5 m / 16 m bump gives 1.75 s air, lands at 3.6 m/s, settles to ride height within 2 s |
@@ -46,7 +46,7 @@ Status key: **cited** (published NASA/peer value) · **derived** (computed from 
 | Buggy steering | Ackermann wheel angles for curvature steer/3.1 m; rear wheels counter-steer below 3 m/s, front-only above 8 m/s; full lock in 0.4 s | assumed | LRV had 4-wheel steering (cited); the speed blend is a stability choice for this concept |
 | Scout suspension | 1.0 Hz, ζ 0.6, 0.3 m travel; 0.2625 m wheels; CG 1.15 m; box 3.0 × 2.7 × 2.2 m | assumed (wheel size, dimensions cited) | Rocker-bogie approximated by four soft corner springs. Perseverance wheel 52.5 cm, body ~3 × 2.7 × 2.2 m (NASA) |
 | Scout steering | Corner wheels point along the turn; yaw rate commanded (40°/s on screen), not produced by wheel forces | assumed | Perseverance turns in place by steering its corner wheels |
-| Tyre model | Friction circle: √(F_long² + F_lat²) ≤ μ F_z per wheel; lateral force opposes slip velocity (stiff limit); drive torque beyond μ F_z spins the wheel; rolling resistance C_rr F_z; locked-wheel brakes | derived | Gives climb limit atan(μ − C_rr) ≈ 27.5°, brake hold atan μ ≈ 31°, cornering v²/R ≤ μ g. No slip-ratio curve or soil sinkage |
+| Tyre model | Friction circle: √(F_long² + F_lat²) ≤ μ F_z per wheel; lateral force opposes slip velocity (stiff limit); drive torque beyond μ F_z spins the wheel; rolling resistance C_rr F_z; locked-wheel brakes | derived | Buggy (μ 2.4): parked brakes hold past its ~50° static tip angle; cornering and braking set by stability control (below); scout (μ 0.6): climb limit atan(μ − C_rr) ≈ 27.5°. No slip-ratio curve or soil sinkage |
 | Coasting | Buggy coasts with no throttle (rolls back on slopes > ~4.6° = atan(Crr)); Space brakes | derived | Scout's drive motors hold it (auto_brake) |
 
 ## Models
@@ -111,6 +111,10 @@ Stream A's official ones land).
 ## Change log
 
 - 2026-11-14: First run on the real Jezero build (Caden's pipeline: HiRISE DTM 2 m grid, Mars 2020 traverse). `/validation` now uses every traverse drive (not just the first), length-weighted, with a site-wide baseline, and re-plans 8 odometry-measured waypoint pairs; results in the table above.
+
+- 2026-11-14: Buggy grip doubled again (μ 1.2 → 2.4). Grip now exceeds the tip limits, so added stability control: steering curvature capped at v²κ ≤ 0.85 g (track/2)/h ≈ 3.8 m/s² (roll-over threshold 1.2 g; R ≈ 38 m at 12 m/s, vs ~37 m at μ 1.2), and ABS caps braking at 0.6 × a_f/h ≈ 1.12 g (nose-over at 1.87 g; 60 % margin for suspension dive overshoot): 24 m/s → 0 in 5.8 s. Climbs stay wheelie-limited at ~36°.
+
+- 2026-11-14: Buggy grip doubled (μ 0.6 → 1.2) with motor wheelie control; climbs to ~36°, brakes hold to ~50°, turn radius at speed halves. API `grade_speed` now uses axle load transfer + the same wheelie limit.
 
 - 2026-11-14: API simulator drives the crew buggy by default with the same power/grip force balance as the viewer (stalls where driven-wheel grip runs out); vehicle switchable (`POST /rover/vehicle`).
 
