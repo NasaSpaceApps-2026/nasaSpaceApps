@@ -33,6 +33,15 @@ export interface BuggyAnimState {
   dt: number;
   /** Per-wheel suspension input FL, FR, RL, RR in metres, positive = wheel pushed up. */
   wheelGroundOffsets?: [number, number, number, number];
+  /**
+   * Offsets come from a suspension simulation (RoverPhysics wheels[].offset_m): use them as-is,
+   * without the cosmetic lag, rolling texture or boost squat.
+   */
+  suspensionFromPhysics?: boolean;
+  /** Per-wheel spin rate FL, FR, RL, RR, rad per wall-clock second (+ = rolling forward); default from speedMps. */
+  wheelSpinRadS?: [number, number, number, number];
+  /** Per-wheel steer angle FL, FR, RL, RR, degrees (+ = right); default from steerDeg (rear 0.4, opposite phase). */
+  wheelSteerDeg?: [number, number, number, number];
 }
 
 export interface BuggyModel {
@@ -45,7 +54,7 @@ export const BUGGY_DIMENSIONS = { wheelbase_m: WHEELBASE, track_m: TRACK, wheel_
 
 const SHOCK_LEN0 = 0.6; // reference length of the spring mesh
 const ARM_L = SUSP.outerX - SUSP.innerX;
-const MAX_TRAVEL = 0.12;
+const MAX_TRAVEL = 0.2; // covers the physics range: -static sag (full droop) .. travel - sag (bump stop)
 
 interface Corner {
   s: number; // -1 left, +1 right
@@ -61,6 +70,7 @@ interface Corner {
   shaft: THREE.Object3D;
   tieRod: THREE.Object3D;
   offset: number;
+  angle: number;
 }
 
 function armGroup(mats: BuggyMaterials, s: number, lower: boolean, shadows: boolean): THREE.Group {
@@ -177,7 +187,7 @@ export function createBuggyModel(opts: { castShadow?: boolean } = {}): BuggyMode
     group.add(upper, lower, upright, shock, tieRod);
     const name = `${front ? 'F' : 'R'}${s < 0 ? 'L' : 'R'}`;
     upright.name = `wheel_${name}`;
-    corners.push({ s, za, front, upper, lower, upright, steer, spin, shock, spring, shaft, tieRod, offset: 0 });
+    corners.push({ s, za, front, upper, lower, upright, steer, spin, shock, spring, shaft, tieRod, offset: 0, angle: 0 });
   }
 
   // ---------------------------------------------------------------- astronaut
@@ -243,21 +253,28 @@ export function createBuggyModel(opts: { castShadow?: boolean } = {}): BuggyMode
 
     const offs = s.wheelGroundOffsets ?? [0, 0, 0, 0];
     let mean = 0;
+    const direct = !!s.suspensionFromPhysics;
     corners.forEach((c, i) => {
-      // small high-frequency texture from rolling over regolith + boost squat
-      const rough = 0.006 * sf * Math.sin(t * (13 + i * 2.1) + i * 1.7);
-      const squat = boostLevel * (c.front ? -0.012 : 0.03);
-      const tgt = THREE.MathUtils.clamp((offs[i] || 0) + rough + squat, -MAX_TRAVEL, MAX_TRAVEL);
-      c.offset += (tgt - c.offset) * Math.min(1, dt * 18);
+      if (direct) {
+        c.offset = THREE.MathUtils.clamp(offs[i] || 0, -MAX_TRAVEL, MAX_TRAVEL);
+      } else {
+        // small high-frequency texture from rolling over regolith + boost squat
+        const rough = 0.006 * sf * Math.sin(t * (13 + i * 2.1) + i * 1.7);
+        const squat = boostLevel * (c.front ? -0.012 : 0.03);
+        const tgt = THREE.MathUtils.clamp((offs[i] || 0) + rough + squat, -MAX_TRAVEL, MAX_TRAVEL);
+        c.offset += (tgt - c.offset) * Math.min(1, dt * 18);
+      }
       mean += c.offset / 4;
       const dy = c.offset;
       const ang = Math.asin(THREE.MathUtils.clamp(dy / ARM_L, -0.9, 0.9));
       c.upper.rotation.z = c.s * ang;
       c.lower.rotation.z = c.s * ang;
       c.upright.position.y = WHEEL_RADIUS + dy;
-      const steerAng = (c.front ? -steerNow : steerNow * 0.4);
+      const steerAng = s.wheelSteerDeg ? -(s.wheelSteerDeg[i] || 0) * THREE.MathUtils.DEG2RAD : (c.front ? -steerNow : steerNow * 0.4);
       c.steer.rotation.y = steerAng;
-      c.spin.rotation.x = wheelAngle;
+      if (s.wheelSpinRadS) c.angle -= (s.wheelSpinRadS[i] || 0) * dt;
+      else c.angle = wheelAngle;
+      c.spin.rotation.x = c.angle % (Math.PI * 2);
       // coil-over between the fixed top mount and the lower arm tab
       const top = shockTop(c).clone();
       const lowLocal = tmp2.set(c.s * ARM_L * SUSP.shockLowFrac, 0.045, 0).applyAxisAngle(new THREE.Vector3(0, 0, 1), c.s * ang);
