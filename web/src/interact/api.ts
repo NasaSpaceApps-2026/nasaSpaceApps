@@ -1,5 +1,6 @@
 // Direct REST calls from the browser. Query engine (devapi) on :8001, rover API on :8000. Both send CORS `*`.
 import type { DescribeLoc, Poi } from './words'
+import staticPois from './atlas_pois.json'
 
 // Default: same-origin dev-server proxy (web/vite.config.ts: /__engine -> :8001, /__rover -> :8000). Env overrides still win.
 export const ENGINE = (import.meta.env.VITE_ENGINE_URL as string | undefined) ?? '/__engine'
@@ -32,21 +33,28 @@ export async function describeAt(x: number, y: number, signal?: AbortSignal): Pr
   return r.locations[0]
 }
 
-export async function fetchPois(): Promise<Poi[]> {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    for (const base of [ENGINE, ROVER_API]) {
-      try {
-        const r = await call<{ pois: Poi[] }>(`${base}/pois?limit=100`)
-        if (r.pois?.length) return r.pois
-        console.warn(`[atlas] ${base}/pois returned no places (attempt ${attempt + 1})`)
-      } catch (e) {
-        console.warn(`[atlas] ${base}/pois failed (attempt ${attempt + 1}):`, (e as Error).message)
-      }
+/** POIs bundled into the viewer build (snapshot of devapi /pois; regenerate per web/INTEGRATION.md). Needs no network. */
+export const STATIC_POIS: Poi[] = ((staticPois as { pois?: Poi[] }).pois ?? []) as Poi[]
+
+/** Fresh POIs from the API, or null (with a console.warn) if it is unreachable. */
+export async function refreshPois(): Promise<Poi[] | null> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const r = await call<{ pois: Poi[] }>(`${ENGINE}/pois?limit=100`)
+      if (r.pois?.length) return r.pois
+      console.warn(`[atlas] ${ENGINE}/pois returned no places (attempt ${attempt + 1})`)
+    } catch (e) {
+      console.warn(`[atlas] ${ENGINE}/pois failed (attempt ${attempt + 1}):`, (e as Error).message)
     }
     await new Promise((r) => setTimeout(r, 400 * 2 ** attempt))
   }
-  console.warn('[atlas] could not load place labels from the API; map shows IAU names only')
-  return []
+  console.warn('[atlas] API unreachable; using bundled place list')
+  return null
+}
+
+/** Bundled list first (never empty), API result only if it arrives. */
+export async function fetchPois(): Promise<Poi[]> {
+  return (await refreshPois()) ?? STATIC_POIS
 }
 
 export interface ProfileSample { d: number; x: number; y: number; z: number; slope_deg: number }

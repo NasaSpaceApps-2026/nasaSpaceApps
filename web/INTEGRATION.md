@@ -197,3 +197,15 @@ Bug: in the user's Retina Brave/Chrome the Jezero map had no POI labels (Delta F
 | `src/panels/chat/AtlasDock.tsx` | `DEFAULT_AGENT` -> `/__agent`; `DEFAULT_WS` -> `ws(s)://<host>/__rover/ws`; (frame check, route fetch derive from it) | rover WebSocket and `/site`, `/route` calls same-origin |
 
 Not changed: `rover/link.ts` default and `rover/sandbox` (the dock passes its own URL; sandbox is a separate app on 5174).
+
+### Bundled POI list (Sameer, Nov 15)
+
+The user's browser never made the `/pois` request, so POI labels were missing. `/data/*` is served from `data/build` (Caden's, and `data/build/data` may not exist), so instead the POI list is bundled into the viewer: `src/interact/atlas_pois.json` (exact `devapi /pois?limit=100` output, 29 POIs incl. `base`) is imported by `src/interact/api.ts` as `STATIC_POIS`. `Interactions.tsx` sets it immediately (no network, no dependence on IAU polling), then swaps in `refreshPois()` (API) if it arrives. `fetchPois()` (ExplorePanel) falls back to it instead of `[]`. Regenerate: `curl -s 'http://127.0.0.1:8001/pois?limit=100' > web/src/interact/atlas_pois.json`.
+
+| File | Change |
+|---|---|
+| `src/interact/atlas_pois.json` | new, snapshot |
+| `src/interact/api.ts` | `STATIC_POIS`, `refreshPois`, `fetchPois` falls back to static |
+| `src/interact/Interactions.tsx` | set static POIs first, API refresh after |
+
+Also in `Interactions.tsx` (same fix): the IAU-polling `build()` timers were never cancelled, so a stale timer (closure with `pois = []`) overwrote `places` with IAU names only. Now the effect sets POI places immediately, cancels the timer on cleanup, and merges IAU names when they load.
