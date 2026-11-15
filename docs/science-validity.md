@@ -42,7 +42,7 @@ official pipeline layers land.
 | 3 | Perseverance's first waypoint vs the published landing site | 6.5 m apart | `sitebuild/science.py` build log |
 | 4 | Searches return exactly what they define | Fast search agrees with a plain-loop reference on every cell tested; no returned spot has a failing cell in its footprint | `tests/oracle.py`, `tests/test_search.py` |
 | 5 | Walking time and distance | Dijkstra matches an independent reference implementation everywhere (rtol 1e-5); flat-ground time equals distance / speed within 1% | `tests/oracle_travel.py`, `tests/test_travel.py` |
-| 6 | Whole suite | 386 Python tests + 30 chat-panel tests pass | `.venv/bin/python -m pytest -q` |
+| 6 | Whole suite | 473 Python tests + 30 chat-panel tests pass | `.venv/bin/python -m pytest -q` |
 
 ### Validation against Perseverance's real drives
 
@@ -126,8 +126,10 @@ Each tool is checked against a known answer, not just "it runs".
 - Sample-site positions are derived from rover waypoints (10–50 m uncertainty). Named regions such
   as Séítah and the delta front are points, not mapped areas.
 - The CRISM map's registration to our terrain is unmeasured (36 m pixels).
-- The live AI agent has not yet been scored end to end (no API key yet). Tool-choice quality so far
-  comes from the blind review.
+- Live agent (DeepSeek, real Jezero site): 19 of 24 eval cases pass. Most remaining failures are the
+  model computing or estimating a number itself (e.g. doubling a walk time, guessing "200–400 m")
+  instead of quoting a tool; the number-provenance check catches these. Results:
+  `docs/eval-run-deepseek.md`. Not yet scored with Claude.
 - The lake tool floods today's topography, not the ancient lake floor, and the sources do not state
   their elevation datum. The site is only 8 km across, so lake areas at high levels are lower bounds.
 - `outcrop_exposure` is our own heuristic; it cannot tell rock from sand and is inflated where the
@@ -139,3 +141,4 @@ Each tool is checked against a known answer, not just "it runs".
 - **Nov 14:** first version.
 - **Nov 14 (later):** added sun/shadow, line of sight, landform layers, ancient lake and EVA safety tools with their validation; suite at 386 tests.
 - **Nov 14 (evening):** cited the team pipeline's independent rover-tilt check (r = 0.84) and noted the small traverse-statistics difference.
+- **Nov 14 (night):** first live agent scores (DeepSeek 19/24); suite at 473 tests.
