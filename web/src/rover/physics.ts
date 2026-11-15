@@ -74,7 +74,7 @@ export const DEFAULT_BUGGY_PROFILE: RoverProfile = {
   speed_curve_k: 2.0,
   mass_kg: 700,
   power_w: 25000,
-  traction_mu: 0.6,
+  traction_mu: 2.4,
   rolling_coeff: 0.08,
   boost_power_factor: 1.6,
   min_turn_radius_m: 3.1,
@@ -444,6 +444,16 @@ export class RoverPhysics {
   private steerAct = 0;
   private settling = false;
   private lastSuspForce = new Float64Array(4);
+  /** ABS limit, as a brake friction coefficient: 60 % of nose-over decel/g = a_f / h (margin for suspension dive overshoot). */
+  private get muBrake(): number {
+    const p = this.params;
+    return (0.6 * (p.wheelbase_m / 2 - p.cg_forward_m)) / p.cg_height_m;
+  }
+  /** Stability-control lateral limit, m/s^2: 85 % of the flat-ground roll-over threshold g (track / 2) / h. */
+  private get aLatMax(): number {
+    const p = this.params;
+    return (0.85 * MARS_G * p.track_m) / 2 / p.cg_height_m;
+  }
 
   // Per-wheel scratch (one sub-step).
   private wc = new Uint8Array(4);
@@ -888,7 +898,11 @@ export class RoverPhysics {
         const vt = this.pointVel(rpx, rpy, rpz, lwx, lwy, lwz) - this.wBt[i];
         let nl = this.lamL[i] - vl * this.wKl[i];
         let driveSat = false;
-        if (ctl.braked) nl = Math.max(-lim, Math.min(lim, nl));
+        if (ctl.braked) {
+          // ABS: brake force capped below nose-over (decel/g < a_f / h), as well as by grip.
+          const limB = Math.min(mu, this.muBrake) * fzh;
+          nl = Math.max(-limB, Math.min(limB, nl));
+        }
         else {
           // Motor torque beyond mu * Fz just spins the wheel; rolling resistance acts on top.
           const ld = Math.max(-lim, Math.min(lim, this.wDrive[i]));
@@ -1041,6 +1055,7 @@ export class RoverPhysics {
     let edge = false;
     let gripLimited = false;
     let cornerLimited = false;
+    let escLimited = false;
     let braked = false;
     let motorSum = 0, resistSum = 0;
     let landedImpact = -1;
@@ -1062,7 +1077,13 @@ export class RoverPhysics {
         const gain = (prof.traction_mu * Math.max(loads, m * MARS_G * 0.25)) / (0.05 * cap);
         const ctlF = (gain * (target - vfwd)) / (1 + (gain * h) / m) + m * MARS_G * M[7] + dir * prof.rolling_coeff * loads;
         const fMax = Math.abs(throttle) * power / Math.max(Math.abs(vfwd), 0.05 * cap);
-        drive = dir * Math.max(0, Math.min(fMax, dir * ctlF));
+        // Wheelie control (as in EV traction control): moments about the rear contact give front load
+        // m (g (cos a_r - sin h) - a h) / L, so cap acceleration to keep 15 % of the weight on the front.
+        const sinP = M[7], cosP = Math.sqrt(Math.max(0, 1 - sinP * sinP));
+        const aR = p.wheelbase_m / 2 + p.cg_forward_m;
+        const aMax = (MARS_G * (cosP * aR - sinP * p.cg_height_m - 0.15 * cosP * p.wheelbase_m)) / p.cg_height_m;
+        const fWheelie = dir > 0 ? Math.max(0, m * (aMax + MARS_G * sinP) + prof.rolling_coeff * loads) : Infinity;
+        drive = dir * Math.max(0, Math.min(fMax, fWheelie, dir * ctlF));
       }
       // Steering slews toward the input; car steering uses curvature, skid steer a yaw rate.
       const slew = h / (p.steer_lock_s * Math.max(prof.display_speed_factor, 1));
@@ -1072,7 +1093,8 @@ export class RoverPhysics {
         braked: brk,
         driveTotal: drive,
         yawCmd: skid ? (-this.steerAct * p.turn_rate_deg_s * DEG) / Math.max(prof.display_speed_factor, 1e-9) : NaN,
-        steerKappa: skid ? 0 : this.steerAct / prof.min_turn_radius_m!,
+        // Stability control: curvature capped so v^2 kappa stays under the roll-over threshold.
+        steerKappa: skid ? 0 : Math.sign(this.steerAct) * Math.min(Math.abs(this.steerAct) / prof.min_turn_radius_m!, this.aLatMax / Math.max(sp * sp, 1e-6)),
         rearBlend: p.rear_steer ? Math.max(0, Math.min(1, (p.rear_steer_off_mps - sp) / (p.rear_steer_off_mps - p.rear_steer_full_mps))) : 0,
         throttle,
         steerIn,
@@ -1102,6 +1124,7 @@ export class RoverPhysics {
       if (brk) braked = true;
       if (satDrive >= 2 && steerIn === 0) gripLimited = true;
       if (sat >= 2 && steerIn !== 0 && sp > 2) cornerLimited = true;
+      if (!skid && sp > 2 && Math.abs(this.steerAct) / prof.min_turn_radius_m! > this.aLatMax / (sp * sp)) escLimited = true;
       if (i === n - 1) {
         motorSum = 0;
         resistSum = 0;
@@ -1157,6 +1180,9 @@ export class RoverPhysics {
     } else if (cornerLimited) {
       s.status = 'slipping';
       s.stop_reason = `tyres at the grip limit in the turn: at ${vR.toFixed(0)} m/s the tightest turn is ~${((vR * vR) / (prof.traction_mu * MARS_G)).toFixed(0)} m (v²/μg)`;
+    } else if (escLimited) {
+      s.status = 'driving';
+      s.stop_reason = `stability control: steering eased to stay under the roll-over limit (at ${vR.toFixed(0)} m/s the tightest turn is ~${((vR * vR) / this.aLatMax).toFixed(0)} m)`;
     } else if (throttle === 0 && !braked && moving) {
       s.status = 'coasting';
       s.stop_reason = s.speed_mps < 0 ? `rolling backwards downhill (hold Space to brake)` : null;

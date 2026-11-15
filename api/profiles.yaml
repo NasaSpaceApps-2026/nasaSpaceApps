@@ -53,9 +53,12 @@ profiles:
     mass_kg: 700                 # LRV 210 kg + 2 suited crew + gear
     power_w: 25000               # 25 kW (assumed concept; LRV had ~750 W)
     boost_power_factor: 1.6
-    traction_mu: 0.6             # wheel-regolith grip (assumed); climb limit ~atan(mu - Crr) ~ 27 deg
+    traction_mu: 2.4             # wheel-regolith grip (assumed; concept paddle tyres, 4x the 0.6 baseline on request)
     rolling_coeff: 0.08          # loose regolith (assumed)
     driven_load_share: 0.61      # rear-wheel drive, ~61 % static rear weight (browser BUGGY_PARAMS)
+    wheelbase_m: 2.3             # geometry for load transfer + wheelie limit (browser BUGGY_PARAMS)
+    cg_height_m: 0.75
+    cg_forward_m: -0.25          # rear-biased CG
     display_speed_factor: 1      # real time; the viewer can time-lapse
     min_turn_radius_m: 3.1       # LRV ~3 m turning radius (4-wheel steering)
     # Suspension (assumed; soft long-travel off-road tune). Spring k = (m/4)(2 pi f)^2 = 9.1 kN/m per wheel,

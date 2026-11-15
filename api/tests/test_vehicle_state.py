@@ -1,4 +1,5 @@
 import math
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -25,15 +26,19 @@ def test_buggy_auto_drive_uses_force_model(client):
     assert abs(mission_s - 200 / 24) < 1.0, mission_s
 
 
-def test_buggy_stalls_where_grip_runs_out(client, data_dir):
-    """Driving straight up the 22 deg ridge flank: the rear-drive buggy (grip ~20 deg) stalls with a physics note."""
+def test_buggy_climbs_ridge_and_stalls_past_wheelie_limit(client):
+    """mu 1.2: the buggy climbs the 22 deg ridge flank; past ~36 deg wheelie control stops it."""
+    from ares_api.vehicle import grade_speed
     client.post("/rover/vehicle", json={"profile": "crew_buggy"})
     client.post("/rover/command", json={"cmd": "teleport", "target": {"x": -200, "y": -60}, "heading_deg": 0})
     res = client.post("/rover/command", json={"cmd": "drive", "distance_m": 100, "heading_deg": 0,
                                               "speed_factor": 8}).json()
-    assert res["stop_reason"] == "blocked_slope", res
-    assert "grip" in res["message"] or "limit" in res["message"]
-    assert res["state"]["y"] < 0
+    assert res["stop_reason"] != "blocked_slope", res
+    import yaml
+    prof = yaml.safe_load((Path(__file__).parents[1] / "profiles.yaml").read_text())["profiles"]["crew_buggy"]
+    assert grade_speed(prof, 30)[0] > 0
+    speed, note = grade_speed(prof, 40)
+    assert speed == 0 and "wheelie" in note
 
 
 def test_markers_and_routes_persist(data_dir, tmp_path):
