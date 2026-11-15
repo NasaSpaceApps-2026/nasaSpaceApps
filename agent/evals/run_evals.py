@@ -11,14 +11,13 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
 import re
 import sys
 from pathlib import Path
 
 import yaml
 
-from ..config import KEY_VARS, ROOT, Settings, has_key, load_dotenv
+from ..config import KEY_VARS, Settings, has_key, load_dotenv
 from ..replay import load_replay
 from .scoring import Score, Session, score_session, session_from_events
 
@@ -26,6 +25,7 @@ QUESTIONS = Path(__file__).resolve().parent / "questions.yaml"
 
 
 def load_cases(path: Path = QUESTIONS) -> tuple[list[dict], list[str]]:
+    """Load agent/evals/questions.yaml: (cases, tools always allowed). Raises ValueError on duplicate case ids."""
     doc = yaml.safe_load(path.read_text(encoding="utf-8"))
     cases = doc["cases"]
     ids = [c["id"] for c in cases]
@@ -35,10 +35,12 @@ def load_cases(path: Path = QUESTIONS) -> tuple[list[dict], list[str]]:
 
 
 def norm(s: str) -> str:
+    """Lower-case and collapse whitespace, for matching prompts to recorded sessions."""
     return re.sub(r"\s+", " ", s.strip().lower())
 
 
 def replay_files(targets: list[str]) -> list[Path]:
+    """Expand files and directories (recursively, *.jsonl) into a sorted list of recorded sessions."""
     files: list[Path] = []
     for t in targets:
         p = Path(t)
@@ -87,12 +89,14 @@ async def apply_setup(settings: Settings, setup: dict | None) -> None:
 
 
 async def teardown_setup(settings: Settings, setup: dict | None) -> None:
+    """Remove the markers a live eval case created through its `setup`, so cases do not leak state into each other."""
     if (setup or {}).get("markers"):
         for m in (await _rest(settings, "GET", "/markers")).get("markers", []):
             await _rest(settings, "DELETE", f"/markers/{m['id']}")
 
 
 async def run_live(cases: list[dict], always_allowed: list[str], settings: Settings) -> list[Score]:
+    """Run every case through the real loop (model + MCP bridge + REST) and score each session. Needs an API key."""
     from ..mcp_bridge import McpBridge
     from ..model import make_model
     from ..session import run_session
@@ -121,15 +125,18 @@ async def run_live(cases: list[dict], always_allowed: list[str], settings: Setti
 
 
 def status(s: Score) -> str:
+    """"SKIP", "PASS" or "FAIL" for a Score."""
     return "SKIP" if s.skipped else ("PASS" if s.passed else "FAIL")
 
 
 def print_row(s: Score, file=sys.stdout) -> None:
+    """CLI output: one result line per case."""
     print(f"{status(s):4}  {s.case_id:34} tools={'ok' if s.tool_ok else 'BAD'} numbers={'ok' if s.numbers_ok else 'BAD'} "
           f"checks={'ok' if s.checks_ok else 'BAD'}  calls={s.n_tool_calls}", file=file)
 
 
 def report(scores: list[Score], unmatched: list[str], strict: bool) -> int:
+    """CLI output: per-case rows, failure details, unmatched sessions and totals; returns the process exit code (1 if any case failed, or any skipped under `strict`)."""
     for s in scores:
         print_row(s)
         for f in s.failures:
@@ -146,6 +153,7 @@ def report(scores: list[Score], unmatched: list[str], strict: bool) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """CLI entry point; exit code 0 all pass, 1 a case failed, 2 cannot run (no key, no sessions, bad args)."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--questions", type=Path, default=QUESTIONS)
     ap.add_argument("--only", nargs="*", help="case ids to run/score")

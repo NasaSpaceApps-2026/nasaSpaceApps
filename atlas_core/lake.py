@@ -59,6 +59,7 @@ MAX_CELLS_STORED = 2_000_000
 
 
 def named_levels_text() -> str:
+    """One-line list of the published named lake levels (metres, same datum as the elevation layer), for hints."""
     return "; ".join(f"{k} = {v['level_m']:g} m ({v['kind']})" for k, v in NAMED_LEVELS.items())
 
 
@@ -90,6 +91,11 @@ def _members_from_mask(site: Site, mask: np.ndarray, connectivity8: bool, limit:
 def flood_at_level(site: Site, store: SetStore, level_m: float | None = None, named_level: str | None = None,
                    connected_to=None, check=None) -> dict:
     # ---- level ----
+    """Flood the present-day DEM to a level (metres, elevation-layer datum): water = elevation <= level AND 4-connected to a seed.
+    Give exactly one of `level_m` / `named_level`. `connected_to` (location refs) replaces the default seed (lowest known cell);
+    `check` (refs) reports whether those places are underwater. Returns area (m2), depth stats (m), the water body and shoreline stored
+    as region sets, plus CAVEAT/DATUM_NOTE. Raises AtlasError (hint) for a bad level, unknown name, or empty/unreachable seeds.
+    """
     if (level_m is None) == (named_level is None):
         raise AtlasError("Give exactly one of level_m (metres, same datum as the elevation layer) or named_level.",
                          hint="Named levels: " + named_levels_text() + ".")

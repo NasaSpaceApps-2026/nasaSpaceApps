@@ -37,6 +37,10 @@ def _check_bounds(site: Site, p: dict) -> dict:
 
 
 def resolve_ref(site: Site, ref, store: SetStore | None = None) -> list[dict]:
+    """Resolve a location reference (forms in the module docstring) to a list of members {id, name?, x, y, lat, lon}.
+    x, y are site-frame metres (x east, y north); lat/lon planetocentric degrees (east longitude). Raises AtlasError with a hint
+    for unknown POIs/markers/sets, malformed refs, or points outside the site.
+    """
     if isinstance(ref, list):
         out: list[dict] = []
         for r in ref:

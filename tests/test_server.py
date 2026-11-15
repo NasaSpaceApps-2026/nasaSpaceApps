@@ -1,3 +1,4 @@
+"""MCP server (mcp/server.py) end to end over the in-process devapi stand-in: tool list, text + structured results, error results, events."""
 import importlib.util
 import sys
 from pathlib import Path
@@ -7,7 +8,6 @@ import httpx
 import pytest
 from mcp.client import Client
 
-from atlas_core import search, travel
 from atlas_core.testing import make_site
 from devapi import create_app
 
@@ -53,32 +53,6 @@ def record_events(app):
         await orig(t, payload)
     hub.broadcast = spy
     return seen
-
-
-def _impl(fn, *a, **k):
-    try:
-        fn(*a, **k)
-        return True
-    except NotImplementedError:
-        return False
-
-
-def _search_ready():
-    from atlas_core.testing import make_site
-    from atlas_core import SetStore
-    return _impl(search.find_locations, make_site(), SetStore(), profile="landing_pad")
-
-
-def _regions_ready():
-    from atlas_core.testing import make_site
-    from atlas_core import SetStore
-    return _impl(search.find_regions, make_site(), SetStore(), conditions=[{"layer": "slope_2m", "op": "<", "value": 5}])
-
-
-def _nearest_ready():
-    from atlas_core.testing import make_site
-    from atlas_core import SetStore
-    return _impl(travel.nearest, make_site(), SetStore(), "base", "poi:landing")
 
 
 def text(r):
@@ -179,7 +153,6 @@ def test_get_set_roundtrip():
     assert r.is_error and "Unknown set" in text(r)
 
 
-@pytest.mark.skipif(not _search_ready(), reason="find_locations not implemented yet")
 def test_find_locations_tool():
     async def f(c):
         return await c.call_tool("find_locations", {"profile": "landing_pad", "limit": 3})
@@ -189,7 +162,6 @@ def test_find_locations_tool():
     assert any(a["source"] == "assumed" for a in r.structured_content["assumptions"])
 
 
-@pytest.mark.skipif(not _regions_ready(), reason="find_regions not implemented yet")
 def test_find_regions_tool():
     async def f(c):
         return await c.call_tool("find_regions", {"conditions": [{"evidence": "carbonate", "min_tier": "strong_orbital"}]})
@@ -197,7 +169,6 @@ def test_find_regions_tool():
     assert not r.is_error and r.structured_content["count"] >= 1
 
 
-@pytest.mark.skipif(not _nearest_ready(), reason="nearest not implemented yet")
 def test_nearest_tool_and_get_set():
     async def f(c):
         n = await c.call_tool("nearest", {"from_ref": "base", "to_ref": "poi:landing", "metric": "straight_m"})

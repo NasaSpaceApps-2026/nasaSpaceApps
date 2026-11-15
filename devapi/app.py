@@ -12,7 +12,7 @@ import math
 import os
 import uuid
 
-from fastapi import Body, FastAPI, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -35,11 +35,13 @@ def _g(v) -> str:
 
 
 class CleanJSONResponse(JSONResponse):
+    """JSONResponse that converts numpy values and NaN/inf to JSON-safe values (devapi.util.clean)."""
     def render(self, content) -> bytes:
         return super().render(clean(content))
 
 
 def load_configured_site() -> tuple[Site, bool]:
+    """(Site, synthetic) from ATLAS_SITE_DIR, or the synthetic test site when unset or ATLAS_SITE=synthetic."""
     d = os.environ.get("ATLAS_SITE_DIR")
     if d and os.environ.get("ATLAS_SITE", "").lower() != "synthetic":
         return load_site(d), False
@@ -58,6 +60,7 @@ def _traverse_from_env() -> dict | None:
 
 
 def take(body, allowed: tuple[str, ...], required: tuple[str, ...] = ()) -> dict:
+    """Validate a request body: must be an object, only `allowed` fields, all `required` present. Raises AtlasError with a hint (HTTP 422)."""
     if not isinstance(body, dict):
         raise AtlasError("The request body must be a JSON object.")
     unknown = sorted(set(body) - set(allowed))
@@ -71,6 +74,7 @@ def take(body, allowed: tuple[str, ...], required: tuple[str, ...] = ()) -> dict
 
 def create_app(site: Site | None = None, synthetic: bool | None = None, traverse: dict | None = None,
                snapshot_timeout_s: float = 5.0) -> FastAPI:
+    """Build the stand-in REST + WS API over atlas_core (every endpoint of contracts/mcp-api-needs.md). Defaults to the configured site; positions are site-frame metres; AtlasError -> 422 {error, hint}."""
     if site is None:
         site, synthetic = load_configured_site()
         traverse = traverse or _traverse_from_env()

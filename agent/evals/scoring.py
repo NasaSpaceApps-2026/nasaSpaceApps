@@ -19,6 +19,7 @@ MAX_TRAILING_ZERO_TOL_FROM = 1000
 
 @dataclass(frozen=True)
 class Mention:
+    """A number found in text: raw string, value, decimals, unit and the absolute tolerance (in its own unit) implied by its rounding."""
     raw: str
     value: float
     decimals: int
@@ -49,6 +50,7 @@ def _tolerance(int_part: str, decimals: int, value: float) -> float:
 
 
 def extract_numbers(text: str, *, skip_small_bare: bool = True, skip_identifiers: bool = True) -> list[Mention]:
+    """Find numeric mentions with units in `text`, skipping dates and (by default) small bare integers and identifiers like "set:3"."""
     text = DATE_RE.sub(" ", text)
     out: list[Mention] = []
     for m in NUM_RE.finditer(text):
@@ -94,6 +96,7 @@ _FACTORS = {"": (1.0,), "%": (1.0, 0.01), "km": (1.0, 1000.0), "m": (1.0, 0.001)
 
 
 def is_grounded(mention: Mention, source_values: Iterable[float]) -> bool:
+    """True if a mention matches some source value within its rounding tolerance, also after unit conversion (m/km, min/h, m2/ha; converted values allow round-half tolerance only)."""
     for factor in _FACTORS.get(mention.unit, (1.0,)):
         rv = mention.value * factor
         tol = mention.tol * factor * (1.0 if factor == 1.0 else 0.5)  # converted units: round-half only
@@ -104,6 +107,7 @@ def is_grounded(mention: Mention, source_values: Iterable[float]) -> bool:
 
 
 def source_value_set(texts: Iterable[str]) -> list[float]:
+    """All numbers appearing in the tool results (and prompt); negatives also count by magnitude ("-4.4 m" supports "4.4 m below")."""
     vals: list[float] = []
     for t in texts:
         vals.extend(m.value for m in extract_numbers(t, skip_small_bare=False, skip_identifiers=False))
@@ -127,6 +131,7 @@ def ungrounded_numbers(reply: str, sources: Iterable[str]) -> list[str]:
 
 @dataclass
 class Call:
+    """One tool call in a session: id, tool name, arguments, result text and whether it errored."""
     id: str
     name: str
     args: Any
@@ -136,6 +141,7 @@ class Call:
 
 @dataclass
 class Session:
+    """A recorded or live chat session as the scorer sees it: prompt, reply, tool calls, context block, stop reason, error and available tools."""
     prompt: str
     reply: str
     calls: list[Call]
@@ -216,6 +222,7 @@ def score_tool_path(names: list[str], spec: dict, always_allowed: Iterable[str] 
 
 
 def check_reply(reply: str, checks: dict) -> list[str]:
+    """Evaluate the case's reply checks (phrases that must or must not appear); returns failure messages (empty = pass)."""
     fails: list[str] = []
     low = reply.lower().replace("*", "").replace("`", "")  # markdown emphasis must not split a phrase ("today's** topography")
     for group in checks.get("reply_contains_all", []):
@@ -234,6 +241,7 @@ def check_reply(reply: str, checks: dict) -> list[str]:
 
 @dataclass
 class Score:
+    """Result of scoring one case: pass/skip flags for tools, numbers and reply checks, failure messages and the tool path taken."""
     case_id: str
     passed: bool
     skipped: bool = False
@@ -248,6 +256,7 @@ class Score:
 
 def score_session(case: dict, s: Session, always_allowed: Iterable[str] = (),
                   allow_prompt_numbers: bool = True) -> Score:
+    """Score a session against a case: tool choice, numbers grounded in tool results, reply checks. Skips (not fails) a case whose required tools the server does not offer."""
     sc = Score(case_id=case["id"], passed=False, tool_names=s.tool_names, n_tool_calls=len(s.calls))
     # Skip (not fail) when the expected path needs tools this server does not offer yet.
     if s.tools_available is not None:

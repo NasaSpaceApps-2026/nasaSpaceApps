@@ -1,5 +1,10 @@
-"""Site overview and layer catalogue. Spec: contracts/mcp-tools.md sections 4.1 and 4.2.
-OWNER: builder "server". Signatures and return shapes are FROZEN; implement the bodies.
+"""Site overview, layer catalogue and everyday-word aliases for evidence layers (contracts/mcp-tools.md 4.1, 4.2).
+
+Layer: atlas_core, called by devapi/ (REST) and from there by mcp/ tools; reads the Site loaded from data/build/site/<name>/.
+Inputs: a Site (layer metadata from site.yaml: kind, units, source, method, quality, aliases). Outputs: JSON-safe dicts
+(site_overview, list_layers, describe_layer) plus alias helpers used by conditions.expand_aliases.
+Failure: AtlasError (unknown layer id) with a hint listing close matches. No numbers are assumed here; every value comes
+from the catalogue. Return shapes are part of the tool contract.
 """
 from __future__ import annotations
 
@@ -55,6 +60,7 @@ def alias_groups(site: Site) -> list[dict]:
 
 
 def resolution_text(alias: str, layers: list[str]) -> str:
+    """One-line note of how an everyday alias resolved, e.g. "clay -> kaolinite, mg_smectite_2" (layer ids sorted)."""
     return f"{alias} -> {', '.join(sorted(layers))}"
 
 

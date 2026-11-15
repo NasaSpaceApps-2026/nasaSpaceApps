@@ -32,6 +32,7 @@ RES = 8.0
 
 
 def hillshade(z, res, az, alt=30):
+    """Hillshade of z for sun azimuth `az` (deg, clockwise from north) and altitude `alt` (deg); `res` in metres."""
     gy, gx = np.gradient(z, res)
     sl = np.arctan(np.hypot(gx, gy)); asp = np.arctan2(-gx, gy)
     a, e = np.radians(az), np.radians(alt)
@@ -39,6 +40,7 @@ def hillshade(z, res, az, alt=30):
 
 
 def hp(a, s=6):
+    """High-pass filter: a minus its Gaussian blur of sigma s pixels."""
     return a - ndimage.gaussian_filter(a, s)
 
 
@@ -62,6 +64,7 @@ def xcorr_shift(img, ref):
 
 
 def main():
+    """Measure the mosaic registration offset (see module docstring) and write offset_measurement.json."""
     mos = RAW / "x" / MOS
     if not mos.exists():
         with zipfile.ZipFile(RAW / "sim3464_database.zip") as z:

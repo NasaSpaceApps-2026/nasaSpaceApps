@@ -2,16 +2,13 @@
 
 Two layers: the MCP tools against the in-process devapi stand-in (synthetic site, vehicle profiles copied from
 api/profiles.yaml), and the split-mode adapters against canned ares_api responses (httpx.MockTransport)."""
-import json
-import sys
 
 import anyio
 import httpx
 import pytest
 
-from test_backends import INFO, STATE, ROUTE, ASSESS, _router, _rover_default, bk
+from test_backends import INFO, STATE, _router, _rover_default, bk
 from test_server import run, text, make_server
-from mcp.client import Client
 
 
 def _call(name, **args):

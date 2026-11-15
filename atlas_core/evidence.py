@@ -23,12 +23,14 @@ MAX_CAVEAT_CELLS = 600       # window size cap (cells per side) so a huge region
 
 
 def orbital_label(layer: Layer) -> str:
+    """Short "mission/instrument" label of a layer's orbital source, e.g. "MRO/CRISM" (from meta["source"])."""
     s = layer.meta.get("source") or {}
     inst = str(s.get("instrument") or "?").split(" (")[0].split(",")[0]
     return f"{s.get('mission') or '?'}/{inst}"
 
 
 def tier_sources(layer: Layer) -> dict:
+    """Per-tier provenance {tier name: {kind, platform, instrument, citation, samples?}}: the catalogue's `tier_sources`, else the orbital source for the two orbital tiers only (no rover source is claimed for tier 4)."""
     ts = layer.meta.get("tier_sources")
     if ts:
         return ts
@@ -42,6 +44,7 @@ def _samples(layer: Layer) -> list[dict]:
 
 
 def fmt_area(m2: float) -> str:
+    """Area text: km2 with two decimals from 100 000 m2 upward, else whole m2."""
     if m2 >= 1e5:
         return f"{m2 / 1e6:.2f} km2"
     return f"{m2:.0f} m2"

@@ -20,11 +20,13 @@ PROMPT_PATH = Path(__file__).resolve().parent / "system_prompt.md"
 
 
 def load_system_prompt() -> str:
+    """Read agent/system_prompt.md."""
     return PROMPT_PATH.read_text(encoding="utf-8")
 
 
 def build_system(prompt: str, context_block: str) -> list[dict]:
     # Stable prompt first (cacheable prefix), volatile per-turn context in its own block after it.
+    """System blocks: the stable prompt (prompt-cached prefix) then the volatile per-turn context block."""
     return [{"type": "text", "text": prompt, "cache_control": {"type": "ephemeral"}},
             {"type": "text", "text": context_block}]
 

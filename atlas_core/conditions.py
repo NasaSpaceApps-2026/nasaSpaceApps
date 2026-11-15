@@ -1,5 +1,8 @@
 """Condition language -> boolean masks. Spec: contracts/mcp-tools.md section 4.4.
-OWNER: builder "search". Signatures are FROZEN; implement the bodies.
+
+Layer: atlas_core, called by devapi/ (REST) and from there by mcp/ tools; reads the Site loaded from data/build/site/<name>/.
+Inputs: condition dicts + Site. Outputs: Compiled(label, mask, source) with bool masks on the site grid (unknown cells
+fail). Thresholds come from the caller or from profiles.yaml (merge_profile); none are defined here.
 
 Condition forms (all conditions in a list are ANDed):
     {"layer": "<continuous id>", "op": "<"|"<="|">"|">=", "value": number}
@@ -29,6 +32,7 @@ from .site import TIER_NAMES, TIERS, Site
 
 @dataclass
 class Compiled:
+    """One compiled condition: readable label, boolean mask on the site grid (True = passes; unknown cells are False), and its source (citation, "assumed" or None)."""
     label: str            # human-readable, e.g. "slope_2m <= 10", "carbonate >= strong_orbital"
     mask: np.ndarray      # bool, site grid shape
     source: str | None    # citation or "assumed" or None (user-supplied)
@@ -146,6 +150,10 @@ def _class_code(layer, v) -> int:
 
 
 def compile_condition(site: Site, cond: dict) -> Compiled:
+    """Compile one condition dict (forms in the module docstring) to a Compiled mask on the site grid.
+    Unknown cells (NaN, -1) always fail, including for "!=" / "not_in". Raises AtlasError with a hint for a malformed
+    condition, an unknown layer or class name, or an op that does not fit the layer kind.
+    """
     if not isinstance(cond, dict):
         raise AtlasError(f"Condition must be an object, got {cond!r}.",
                          hint='Example: {"layer": "slope_2m", "op": "<=", "value": 10}.')
@@ -232,6 +240,7 @@ def compile_condition(site: Site, cond: dict) -> Compiled:
 
 
 def compile_all(site: Site, conditions: list[dict]) -> list[Compiled]:
+    """Compile every condition in the list (see compile_condition); the caller ANDs them with combine()."""
     return [compile_condition(site, c) for c in conditions]
 
 

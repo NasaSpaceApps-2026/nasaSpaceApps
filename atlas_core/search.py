@@ -1,5 +1,9 @@
 """find_locations and find_regions. Spec: contracts/mcp-tools.md sections 4.4 and 4.5.
-OWNER: builder "search". Signatures and return shapes are FROZEN; implement the bodies.
+
+Layer: atlas_core, called by devapi/ (REST) and from there by mcp/ tools; reads the Site loaded from data/build/site/<name>/.
+Method: conditions -> boolean mask (conditions.py); footprint erosion by a disc (scipy distance transform); optional
+`within` reachability from travel.within_mask (MCP_Geometric least-cost, isotropic); candidates ranked by objective.
+Thresholds come from profiles.yaml or the caller; assumed ones are echoed in "assumptions". Failure: AtlasError + hint.
 
 Common return fields (both functions):
     {
@@ -227,6 +231,12 @@ def find_locations(site: Site, store: SetStore, conditions: list[dict] | None = 
                    profile: str | None = None, footprint_radius_m: float | None = None,
                    within: dict | None = None, objective: str = "flattest",
                    spacing_m: float | None = None, limit: int = 5) -> dict:
+    """Find the best footprint-sized spots where every condition holds (spec: contracts/mcp-tools.md 4.4).
+    Inputs: conditions or a `profile` (profiles.yaml), `footprint_radius_m` in metres (the whole disc must pass), optional
+    `within` {from, max, metric, profile} reachability limit, objective (see module docstring), `spacing_m` minimum separation
+    in metres, `limit` 1..50. Returns {set_id, count, results, objective, assumptions, diagnostics, hint}; a zero-result
+    search still returns diagnostics and a hint. Raises AtlasError (hint) for bad arguments.
+    """
     limit = _check_limit(limit)
     conditions, alias_notes = expand_aliases(site, conditions)
     conds, params, compiled, allmask = _compile(site, conditions, profile)
@@ -457,6 +467,10 @@ def _loc_hint(set_id, count, compiled, diag, R, within, objective, valid, n_cand
 def find_regions(site: Site, store: SetStore, conditions: list[dict] | None = None,
                  profile: str | None = None, min_area_m2: float = 400.0,
                  within: dict | None = None, objective: str = "largest", limit: int = 5) -> dict:
+    """Find connected regions (8-connected) where every condition holds, at least `min_area_m2` square metres (spec 4.5).
+    Same inputs/returns as find_locations apart from the footprint/spacing; members carry area_m2, bbox and an interior point.
+    Raises AtlasError (hint) for bad arguments.
+    """
     limit = _check_limit(limit)
     if isinstance(min_area_m2, bool) or not isinstance(min_area_m2, (int, float, np.integer, np.floating)) \
             or not np.isfinite(min_area_m2) or min_area_m2 < 0:

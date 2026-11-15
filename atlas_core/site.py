@@ -46,6 +46,7 @@ LAYER_KINDS = ("continuous", "categorical", "evidence")
 
 @dataclass
 class Layer:
+    """One raster layer: id, kind, grid `data` (encodings in the module docstring) and its catalogue entry `meta`; `classes` for categorical layers."""
     id: str
     kind: str                       # continuous | categorical | evidence
     data: np.ndarray                # see module docstring for encodings
@@ -63,6 +64,7 @@ class Layer:
 
 @dataclass
 class Site:
+    """A loaded site: frame (lat0, lon0, res_m, size_px; x east / y north in metres, row 0 north), layers, profiles, POIs, markers and the rover position."""
     name: str
     lat0: float
     lon0: float
@@ -139,6 +141,7 @@ def _read_raster(path: Path, kind: str) -> np.ndarray:
 
 
 def load_site(site_dir: str | Path) -> Site:
+    """Load a site directory (site.yaml, profiles.yaml, pois.geojson, <layer>.tif) into a Site. Raises AtlasError/OSError if the directory or a layer file is missing or malformed."""
     site_dir = Path(site_dir)
     cfg = yaml.safe_load((site_dir / "site.yaml").read_text())
     layers: dict[str, Layer] = {}

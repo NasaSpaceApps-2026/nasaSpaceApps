@@ -19,7 +19,6 @@ import json
 import math
 from pathlib import Path
 
-import numpy as np
 import rasterio
 import yaml
 from rasterio.transform import from_origin
@@ -29,11 +28,13 @@ WORLDS = REPO / "contracts" / "fixtures" / "rover_worlds"
 
 
 def world_center(name: str) -> tuple[float, float, float]:
+    """(center_x, center_y, size_m) of a rover sandbox world from its manifest.json, in site metres."""
     m = json.loads((WORLDS / name / "manifest.json").read_text())
     return float(m["center_x"]), float(m["center_y"]), float(m["size_m"])
 
 
 def crop(site_dir: str | Path, out_dir: str | Path, cx: float, cy: float, size_m: float) -> dict:
+    """Crop a site directory to a size_m square centred near (cx, cy) site metres (no resampling, so the centre snaps to the grid); writes out_dir and returns the info dict."""
     site_dir, out = Path(site_dir), Path(out_dir)
     cfg = yaml.safe_load((site_dir / "site.yaml").read_text())
     res, n = float(cfg["res_m"]), int(cfg["size_px"])
@@ -97,6 +98,7 @@ def crop(site_dir: str | Path, out_dir: str | Path, cx: float, cy: float, size_m
 
 
 def main() -> None:
+    """CLI entry point."""
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("site_dir")
     ap.add_argument("out_dir")

@@ -1,3 +1,7 @@
+"""Small helpers for devapi: JSON-safe conversion of atlas_core results.
+
+Architecture: used by every route and the WS hub so numpy scalars, NaN and inf never reach the wire.
+"""
 from __future__ import annotations
 
 import math

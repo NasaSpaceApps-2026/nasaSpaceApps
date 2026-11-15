@@ -24,6 +24,7 @@ def _take(body, allowed: tuple[str, ...], required: tuple[str, ...] = ()) -> dic
 
 
 def visibility_router(site, store) -> APIRouter:
+    """Router for POST /visibility/viewshed, /line_of_sight and /vantage over atlas_core.visibility."""
     router = APIRouter(prefix="/visibility", tags=["visibility"])
 
     @router.post("/viewshed")

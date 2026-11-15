@@ -11,6 +11,7 @@ router = APIRouter()
 
 
 def take(body, allowed: tuple[str, ...], required: tuple[str, ...] = ()) -> dict:
+    """Validate a request body (object, allowed/required fields); AtlasError with hint -> HTTP 422."""
     if not isinstance(body, dict):
         raise AtlasError("The request body must be a JSON object.")
     unknown = sorted(set(body) - set(allowed))
@@ -24,12 +25,14 @@ def take(body, allowed: tuple[str, ...], required: tuple[str, ...] = ()) -> dict
 
 @router.get("/lake/levels")
 async def lake_levels():
+    """GET /lake/levels: published named levels, datum note and caveat."""
     return clean({"levels": [{"named_level": k, **v} for k, v in lake.NAMED_LEVELS.items()],
                   "datum_note": lake.DATUM_NOTE, "caveat": lake.CAVEAT})
 
 
 @router.post("/lake/flood")
 async def lake_flood(request: Request, body: dict = Body(...)):
+    """POST /lake/flood -> atlas_core.lake.flood_at_level."""
     b = take(body, ("level_m", "named_level", "connected_to", "check"))
     w = request.app.state.world
     return clean(lake.flood_at_level(w.site, w.store, b.get("level_m"), b.get("named_level"),

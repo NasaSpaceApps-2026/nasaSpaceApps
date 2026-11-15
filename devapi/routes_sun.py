@@ -25,6 +25,7 @@ def _take(body, allowed, required=()):
 
 
 def make_router(site, store) -> APIRouter:
+    """Router for POST /sun/position, /sun/illumination and /sun/lit_windows over atlas_core.sun / illumination."""
     router = APIRouter(tags=["sun"])
 
     @router.post("/sun/position")

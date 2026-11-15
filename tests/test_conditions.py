@@ -1,3 +1,4 @@
+"""Condition language (atlas_core.conditions): unknown cells always fail, op/kind errors, masks against the brute-force oracle."""
 import dataclasses
 
 import numpy as np

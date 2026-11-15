@@ -33,10 +33,12 @@ def num(v, nd: int = 1) -> str:
 
 
 def xy(x, y) -> str:
+    """"(x, y)" rounded to whole site-frame metres (x east, y north)."""
     return f"({round(x):.0f}, {round(y):.0f})"
 
 
 def source_label(src) -> str:
+    """Provenance label for a threshold: "cited: <source>", "assumed", "user-specified" or "citation pending"; tool defaults and user input are not presented as citations."""
     if src is None:
         return "user-supplied"
     s = str(src).strip()
@@ -49,12 +51,11 @@ def source_label(src) -> str:
         return "user-specified"
     if low.startswith("user") or "default" in low:
         return s                                         # user input or tool default, not a citation
-    if low.startswith("default"):
-        return s                                         # a tool default, not a citation
     return f"cited: {s}"
 
 
 def assumptions_line(assumptions) -> str | None:
+    """"Thresholds used: ..." line listing each assumption with its source label, or None if there are none."""
     if not assumptions:
         return None
     parts = [f"{a.get('what')} [{source_label(a.get('source'))}]" for a in assumptions]
@@ -62,6 +63,7 @@ def assumptions_line(assumptions) -> str | None:
 
 
 def with_banner(text: str, synthetic: bool) -> str:
+    """Prefix the synthetic-site banner when the server is running on the synthetic test site (never present test data as Mars)."""
     return f"{SYNTHETIC_BANNER}\n{text}" if synthetic else text
 
 
@@ -164,6 +166,7 @@ def _short_cite(c) -> str | None:
 
 
 def registration_lines(d: dict) -> list[str]:
+    """Registration caveat lines (geologic map offset, CRISM pixel size) from a describe/search result, if any."""
     return list((d.get("registration_notes") or {}).values())
 
 
@@ -177,12 +180,14 @@ def _flags(m: dict) -> str:
 # ---- errors -------------------------------------------------------------------------------
 
 def fmt_error(message: str, hint: str | None = None) -> str:
+    """Readable error text: "message" plus "Hint: ..." (the message + hint convention used by AtlasError)."""
     return f"Error: {message}" + (f"\nTry: {hint}" if hint else "")
 
 
 # ---- overview / catalogue -----------------------------------------------------------------
 
 def fmt_overview(d: dict) -> str:
+    """Compact text summary of the site overview (extent, layers, POIs, rover, markers) (key numbers first; coordinates rounded to the metre, metres and minutes). The structured result keeps full precision."""
     s = d["site"]
     head = (f"Site \"{s['name']}\": {num(s['size_m'], 0)} m square at {num(s['res_m'])} m resolution, "
             f"centre {s['lat0']:.4f} N, {s['lon0']:.4f} E. {s['frame']}")
@@ -220,6 +225,7 @@ def fmt_overview(d: dict) -> str:
 
 
 def fmt_layers(d: dict) -> str:
+    """Compact text summary of the layer catalogue listing (key numbers first; coordinates rounded to the metre, metres and minutes). The structured result keeps full precision."""
     ls = d["layers"]
     if not ls:
         return "No layers match.\nTry: list_layers() with no filters."
@@ -232,6 +238,7 @@ def fmt_layers(d: dict) -> str:
 
 
 def fmt_layer(d: dict) -> str:
+    """Compact text summary of one layer catalogue entry (units, method, quality, source, registration) (key numbers first; coordinates rounded to the metre, metres and minutes). The structured result keeps full precision."""
     src = d.get("source") or {}
     cite = src.get("citation") or src.get("product") or "no citation recorded"
     head = f"{d['id']} [{d['kind']}] {d.get('title', '')}" + (f", units: {d['units']}" if d.get("units") else "")
@@ -283,6 +290,7 @@ def _unk(v: dict) -> str:
 
 
 def fmt_describe(d: dict) -> str:
+    """Compact text summary of describe_location (layer values, evidence tiers, nearest ground truth) (key numbers first; coordinates rounded to the metre, metres and minutes). The structured result keeps full precision."""
     locs = d["locations"]
     r = d["radius_m"]
     mode = f"footprint stats within {num(r)} m" if r > 0 else "point values"
@@ -371,6 +379,7 @@ def _member_line(m: dict, kind: str) -> str:
 
 
 def fmt_search(d: dict, kind: str) -> str:
+    """Compact text summary of find_locations / find_regions (`kind`), with thresholds used and pass-fraction diagnostics when empty."""
     noun = "spots" if kind == "spots" else "regions"
     n = d["count"]
     res = d.get("results", [])
@@ -408,6 +417,7 @@ def fmt_search(d: dict, kind: str) -> str:
 
 
 def fmt_nearest(d: dict) -> str:
+    """Compact text summary of a nearest() pair set (key numbers first; coordinates rounded to the metre, metres and minutes). The structured result keeps full precision."""
     res = d.get("results", [])
     n = d["count"]
     out = [f"{n} pair(s) ranked by cost; showing {len(res)}. Stored as {d['set_id']}."
@@ -440,6 +450,7 @@ def fmt_nearest(d: dict) -> str:
 
 
 def fmt_set(d: dict) -> str:
+    """Compact text summary of a paged location set (key numbers first; coordinates rounded to the metre, metres and minutes). The structured result keeps full precision."""
     ms = d["members"]
     off = d["offset"]
     out = [f"{d['set_id']} ({d['kind']}, created by {d['created_by']}): {d['count']} member(s); "
@@ -495,6 +506,7 @@ def _go_line(a: dict | None) -> str | None:
 
 
 def fmt_route(d: dict) -> str:
+    """Compact text summary of a planned route (length m, time min, ascent/descent, assumptions) (key numbers first; coordinates rounded to the metre, metres and minutes). The structured result keeps full precision."""
     if not d["feasible"]:
         nr = d.get("nearest_reachable")
         near = (f"Nearest reachable point: {xy(nr['x'], nr['y'])} m, {num(nr['distance_to_goal_m'], 0)} m from the "
@@ -524,6 +536,7 @@ def _limits(d: dict) -> str:
 
 
 def fmt_assess(d: dict) -> str:
+    """Compact text summary of a route assessment (slopes, consumables, EVA margin) (key numbers first; coordinates rounded to the metre, metres and minutes). The structured result keeps full precision."""
     if not d["feasible"]:
         return f"Route {d.get('route_id')} is NOT feasible: {d['reason']}"
     a = d["assessment"]
@@ -541,6 +554,7 @@ def fmt_assess(d: dict) -> str:
 
 
 def fmt_science(d: dict) -> str:
+    """Compact text summary of a science traverse (stops, value, time budget) (key numbers first; coordinates rounded to the metre, metres and minutes). The structured result keeps full precision."""
     t = d["time"]
     r = d.get("route")
     if not d["stops"]:
@@ -574,6 +588,7 @@ def fmt_science(d: dict) -> str:
 
 
 def fmt_profile(d: dict) -> str:
+    """Compact text summary of an elevation profile along a route (key numbers first; coordinates rounded to the metre, metres and minutes). The structured result keeps full precision."""
     s = d["samples"]
     pick = s if len(s) <= 9 else [s[round(i * (len(s) - 1) / 8)] for i in range(9)]
     rows = "; ".join(f"{num(p['d'], 0)} m: z {num(p['z'])} slope {num(p['slope_deg'])}" for p in pick)
@@ -621,6 +636,7 @@ def fmt_pois(d: dict, origin: dict | None = None) -> str:
 # ---- rover, FSD, view, markers, sites -------------------------------------------------------
 
 def fmt_rover_state(s: dict) -> str:
+    """Compact text summary of the rover state (pose, speed, vehicle, last event) (key numbers first; coordinates rounded to the metre, metres and minutes). The structured result keeps full precision."""
     z = f", z {num(s['z'], 0)} m" if s.get("z") is not None else ""
     return _lines(
         f"Rover {xy(s['x'], s['y'])} m{z}, heading {num(s['heading_deg'], 0)} deg (clockwise from north), pitch "
@@ -642,6 +658,7 @@ _REASON_TEXT = {
 
 
 def fmt_command(d: dict) -> str:
+    """Compact text summary of a rover command result (stop reason and final state) (key numbers first; coordinates rounded to the metre, metres and minutes). The structured result keeps full precision."""
     st = d["state"]
     reason = d.get("stop_reason")
     if d.get("feasible") is False:
@@ -666,6 +683,7 @@ def fmt_command(d: dict) -> str:
 
 
 def fmt_fsd(d: dict) -> str:
+    """Compact text summary of the FSD policy and last hazard (key numbers first; coordinates rounded to the metre, metres and minutes). The structured result keeps full precision."""
     h = d.get("last_hazard")
     pol = ", ".join(f"{k}={'on' if v else 'off'}" for k, v in d["policy"].items())
     return _lines(
@@ -680,10 +698,12 @@ def fmt_fsd(d: dict) -> str:
 
 
 def fmt_fsd_change(d: dict) -> str:
+    """Text for the result of changing the FSD policy."""
     return fmt_fsd(d["fsd"])
 
 
 def fmt_view(d: dict) -> str:
+    """Compact text summary of a viewer view change (camera target, layers, highlights) (key numbers first; coordinates rounded to the metre, metres and minutes). The structured result keeps full precision."""
     parts = []
     if d.get("mode"):
         parts.append(f"mode {d['mode']}")
@@ -701,6 +721,7 @@ def fmt_view(d: dict) -> str:
 
 
 def fmt_markers(d: dict) -> str:
+    """Compact text summary of the marker list (key numbers first; coordinates rounded to the metre, metres and minutes). The structured result keeps full precision."""
     if not d["markers"]:
         return "No markers placed.\nNext: place_marker(x, y, label) or ask the user to click the ground."
     rows = [f"- marker:{m['id']} {xy(m['x'], m['y'])} m z {num(m.get('z'), 0)}, \"{m.get('label')}\", placed by "
@@ -710,11 +731,13 @@ def fmt_markers(d: dict) -> str:
 
 
 def fmt_marker(m: dict) -> str:
+    """One-line text for a single marker."""
     return (f"Placed marker:{m['id']} \"{m['label']}\" at {xy(m['x'], m['y'])} m (z {num(m.get('z'), 0)}, "
             f"{m['lat']:.4f}, {m['lon']:.4f}).\nUse \"marker:{m['id']}\" as a location in other tools.")
 
 
 def fmt_sites(d: dict) -> str:
+    """Compact text summary of ranked candidate sites from search_sites (key numbers first; coordinates rounded to the metre, metres and minutes). The structured result keeps full precision."""
     n, ss = d["count"], d["sites"]
     if n == 0:
         return _lines(f"No sites found for {d['target']}.",

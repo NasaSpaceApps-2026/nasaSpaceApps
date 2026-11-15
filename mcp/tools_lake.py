@@ -35,6 +35,7 @@ def _values_line(values: dict) -> str:
 
 
 def fmt_flood(d: dict) -> str:
+    """Text summary of flood_at_level: level, flooded area (km2), depths, what is underwater, plus the present-day-topography caveat."""
     lv = d["level"]
     name = f" ({lv['named_level']}, {lv['kind']})" if lv.get("named_level") else " (user-specified)"
     lines = [f"Lake at {d['level_m']:g} m{name}: area {_n(d['area_km2'], 2)} km2 "
@@ -65,6 +66,7 @@ def fmt_flood(d: dict) -> str:
 
 
 def fmt_envelope(d: dict) -> str:
+    """Text summary of eva_envelope: usable minutes, reachable area, limits and the isotropic-travel caveat."""
     lines = [f"EVA envelope from {d['base'].get('id')} (profile {d['profile']}): budget {d['budget_min']:g} min, "
              f"reserve {d['reserve_fraction'] * 100:.0f}%, usable {d['usable_min']:g} min"
              + (f", stops {d['stops_min']:g} min" if d["stops_min"] else "") + ".",
@@ -90,6 +92,7 @@ def fmt_envelope(d: dict) -> str:
 
 
 def fmt_check(d: dict) -> str:
+    """Text summary of check_eva_return: verdict, walking times, budget/reserve and the point of no return (isotropic travel model)."""
     lines = [d["verdict"], _values_line(d["values"]),
              f"Route: {d['route_distance_m']:.0f} m, {d['route_walk_min']:.0f} min walking; havens: {d['havens']}; "
              f"budget {d['budget_min']:g} min, reserve {d['reserve_fraction'] * 100:.0f}%, usable {d['usable_min']:g} min."]
@@ -126,6 +129,7 @@ def fmt_check(d: dict) -> str:
 
 
 def register(tool, call, coerce, location_refs: str, schema_patch: dict, loc) -> None:
+    """Register flood_at_level, eva_envelope and check_eva_return on the MCP server using its tool decorator, request helper and shared schema fragments."""
     schema_patch["flood_at_level"] = {
         "named_level": {"enum": list(NAMED_LEVELS)},
         "connected_to": loc("place(s) whose basin is flooded (default: the lowest cell of the site)", many=True),

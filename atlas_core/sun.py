@@ -34,7 +34,7 @@ parallax, and the small difference between the DEM's local horizontal and the el
 from __future__ import annotations
 
 import math
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import numpy as np
 
@@ -95,6 +95,7 @@ def parse_utc(t=None) -> datetime:
 
 
 def jd_ut(t) -> float:
+    """Julian date (UT) of a UTC time given as datetime or ISO-8601 string."""
     return parse_utc(t).timestamp() / 86400.0 + JD_UNIX_EPOCH
 
 
@@ -111,11 +112,13 @@ def tt_minus_utc(jd_utc: float) -> float:
 
 
 def jd_tt(t) -> float:
+    """Julian date in Terrestrial Time: JD_UT + (TT - UTC)/86400 with TT - UTC from the leap-second table (Mars24 step A)."""
     ju = jd_ut(t)
     return ju + tt_minus_utc(ju) / 86400.0
 
 
 def utc_from_jd_ut(jd: float) -> datetime:
+    """Timezone-aware UTC datetime from a Julian date (UT)."""
     return datetime.fromtimestamp((jd - JD_UNIX_EPOCH) * 86400.0, timezone.utc)
 
 
@@ -149,11 +152,13 @@ def mars_state_tt(jdtt) -> dict:
 
 
 def planetocentric_to_planetographic(lat_c_deg):
+    """Planetographic latitude (deg) from planetocentric: tan(phi_g) = (a/b)^2 tan(phi_c), a, b the Mars ellipsoid radii."""
     t = (MARS_A_KM / MARS_B_KM) ** 2 * np.tan(np.radians(lat_c_deg))
     return np.degrees(np.arctan(t))
 
 
 def planetographic_to_planetocentric(lat_g_deg):
+    """Inverse of planetocentric_to_planetographic: tan(phi_c) = (b/a)^2 tan(phi_g)."""
     t = (MARS_B_KM / MARS_A_KM) ** 2 * np.tan(np.radians(lat_g_deg))
     return np.degrees(np.arctan(t))
 
@@ -174,6 +179,7 @@ def elevation_azimuth_tt(jdtt, lat_graphic_deg: float, lon_west_deg: float):
 # ---- public API ---------------------------------------------------------------------------------------
 
 def hms(hours: float) -> str:
+    """Hours (any float, wrapped to 0-24) as "HH:MM:SS"."""
     h = float(hours) % 24.0
     s = int(round(h * 3600)) % 86400
     return f"{s // 3600:02d}:{(s % 3600) // 60:02d}:{s % 60:02d}"
@@ -191,11 +197,13 @@ def lmst_hours(t, lon_east_deg: float) -> float:
 
 
 def ltst_hours(t, lon_east_deg: float) -> float:
+    """Local TRUE solar time (hours, 0-24) at an east longitude: mean time + longitude/15 + equation of time (the apparent sun)."""
     st = mars_state_tt(jd_tt(t))
     return float(_mod(st["mst_h"] + lon_east_deg / 15.0 + st["eot_h"], 24.0))
 
 
 def local_msd(t, lon_east_deg: float) -> float:
+    """Local Mars Sol Date: MSD + east longitude / 360 (sols)."""
     return msd(t) + lon_east_deg / 360.0
 
 
@@ -257,6 +265,7 @@ def sun_position(t, lat_c_deg: float, lon_east_deg: float) -> dict:
 
 
 def season_name(ls: float) -> str:
+    """Northern-hemisphere season name from areocentric solar longitude Ls in degrees (quarters of 90 deg)."""
     return ("northern spring" if ls < 90 else "northern summer" if ls < 180
             else "northern autumn" if ls < 270 else "northern winter")
 

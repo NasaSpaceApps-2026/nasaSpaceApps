@@ -1,3 +1,4 @@
+"""find_locations / find_regions (atlas_core.search) against the brute-force oracle in tests/oracle.py, plus the `within` reachability filter."""
 import dataclasses
 import math
 import time
@@ -29,17 +30,6 @@ def locs(site=SITE, **kw):
 def rc_of(site, m):
     r, c = site.rc_index(m["x"], m["y"])
     return int(r), int(c)
-
-
-def within_supported():
-    try:
-        travel.within_mask(SITE, {"from": {"x": 0, "y": 0}, "max": 10, "metric": "straight_m"}, None)
-        return True
-    except NotImplementedError:
-        return False
-
-
-needs_travel = pytest.mark.skipif(not within_supported(), reason="travel.within_mask not implemented yet")
 
 
 def window_site(site, r0, c0, n, slope=None, elev=None):
@@ -487,12 +477,10 @@ def test_within_flow_with_fake_travel(monkeypatch):
     _check_within_flow(SITE)
 
 
-@needs_travel
 def test_within_flow_with_real_travel():
     _check_within_flow(SITE)
 
 
-@needs_travel
 def test_walk_time_within_base():
     w = {"from": "base", "max": 120, "metric": "walk_time_min", "profile": "eva_walkable"}
     r, s = locs(conditions=SLOPE5, footprint_radius_m=8, within=w, spacing_m=10)

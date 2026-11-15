@@ -1,11 +1,9 @@
 """Regression tests for issues found in the real-data end-to-end review."""
 import importlib.util
-import sys
 from pathlib import Path
 
 import pytest
 
-from atlas_core.errors import AtlasError
 from atlas_core.site import Layer
 from atlas_core.testing import make_site
 

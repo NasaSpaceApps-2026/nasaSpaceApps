@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -20,12 +19,14 @@ from .session import run_session
 
 
 class ChatRequest(BaseModel):
+    """POST /chat body: the conversation `messages` (Anthropic message dicts) and optional client `context` (viewer state such as the selected markers)."""
     messages: list[dict[str, Any]]
     context: dict[str, Any] | None = None
 
 
 def create_app(*, model: ModelClient | None = None, bridge: McpBridge | None = None,
                settings: Settings | None = None) -> FastAPI:
+    """Build the agent FastAPI app (POST /chat as SSE, GET /health). `model`, `bridge` and `settings` can be injected for tests; otherwise they come from the environment."""
     if settings is None:
         load_dotenv()  # .env fills only variables not already in the environment
         settings = Settings.from_env()

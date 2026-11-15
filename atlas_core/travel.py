@@ -1,5 +1,9 @@
 """Travel cost, reachability and nearest pairs. Spec: contracts/mcp-tools.md sections 4.4 and 4.6.
-OWNER: builder "travel". Signatures and return shapes are FROZEN; implement the bodies.
+
+Layer: atlas_core, called by devapi/ (REST) and from there by mcp/ tools; reads the Site loaded from data/build/site/<name>/.
+Method: Dijkstra least-cost path via skimage.graph.MCP_Geometric on a ~4 m planning grid, 8-connected (diagonal steps cost
+sqrt(2) x the cell cost). Inputs: location refs, profile (profiles.yaml travel keys). Outputs: cost fields in metres or
+minutes, nearest pair sets. Failure: AtlasError + hint.
 
 Metrics:
     "straight_m"     Euclidean distance in metres, ignores terrain. Computed exactly on the
@@ -39,8 +43,8 @@ from .site import Site
 METRICS = ("straight_m", "walk_m", "walk_time_min")
 
 
-SNAP_RADIUS_M = 20.0
-MULTI_SOURCE_THRESHOLD = 25
+SNAP_RADIUS_M = 20.0            # ASSUMPTION: how far (m) a source may be moved onto passable terrain before it is ignored
+MULTI_SOURCE_THRESHOLD = 25    # above this many `from` members nearest() uses one multi-source Dijkstra (performance switch)
 PLACEHOLDER_NOTE = ("Walking speed uses a PLACEHOLDER Tobler-shaped curve (speed = flat_speed * exp(-3.5 * tan(slope))), "
                     "isotropic (uphill = downhill).")
 APPROX_NOTE = "Walk times and distances are approximate (4 m planning grid, 8-connected grid paths, isotropic speed)."
@@ -105,6 +109,8 @@ class _Plan:
         if metric == "walk_m":
             c = np.ones(self.passable.shape, np.float64)
         else:
+            # flat_speed_mps is from the profile (profiles.yaml); the exp(-3.5 tan) shape is the PLACEHOLDER curve,
+            # isotropic. Cost = seconds per metre of path.
             speed = float(travel["flat_speed_mps"]) * np.exp(-3.5 * np.tan(np.radians(self.slope)))
             c = 1.0 / speed
         c[~self.passable] = np.inf
@@ -112,6 +118,8 @@ class _Plan:
 
     def scale(self, metric: str) -> float:
         """Multiply MCP_Geometric cost (cost-units x cell steps) by this to get metres / minutes."""
+        # MCP_Geometric sums cost x step length in CELLS (diagonals count sqrt(2)); x cell_m gives metres, and
+        # seconds-per-metre cost x cell_m / 60 gives minutes.
         return self.cell_m if metric == "walk_m" else self.cell_m / 60.0
 
     def snap(self, x: float, y: float):

@@ -63,6 +63,7 @@ def _filled(site: Site) -> np.ndarray:
 
 
 def sun_vector(el_deg: float, az_deg: float) -> np.ndarray:
+    """Unit vector toward the sun in the site frame (x east, y north, z up) from elevation and azimuth in degrees (azimuth clockwise from north)."""
     e, a = math.radians(el_deg), math.radians(az_deg)
     return np.array([math.sin(a) * math.cos(e), math.cos(a) * math.cos(e), math.sin(e)])
 
@@ -79,6 +80,7 @@ def _horn_gradients(z: np.ndarray, res: float):
 
 
 def cos_incidence_grid(z: np.ndarray, res: float, s: np.ndarray) -> np.ndarray:
+    """cos(incidence angle) per cell = n . s for the Horn (1981) surface normal and sun vector `s` (float32; <= 0 means self-shadowed or facing away). `z` is the DEM in metres, `res` the cell size in metres."""
     gx, gy = _horn_gradients(z, res)
     return ((-gx * s[0] - gy * s[1] + s[2]) / np.sqrt(gx * gx + gy * gy + 1.0)).astype(np.float32)
 
@@ -201,6 +203,7 @@ def resolve_time(utc=None, sol=None, ltst=None, lon_east: float = S.LANDING_LON_
 
 
 def parse_clock(v) -> float:
+    """Local solar time as decimal hours (0..24) from a number or "HH:MM[:SS]". Raises AtlasError with a hint if unreadable or out of range."""
     if isinstance(v, bool):
         raise AtlasError(f"Cannot read local time {v!r}.")
     if isinstance(v, (int, float)):
@@ -489,7 +492,6 @@ def find_lit_windows(site: Site, store: SetStore, target, utc_from=None, utc_to=
         start = times[i] if i == 0 else refine(times[i - 1], times[i])
         end = times[j] if j == n_steps - 1 else refine(times[j], times[j + 1])
         mid = start + (end - start) / 2
-        wins = {"start_utc": start, "end_utc": end}
         sp_s, sp_e = S.sun_position(start, lat, lon), S.sun_position(end, lat, lon)
         sp_m = S.sun_position(mid, lat, lon)
         windows.append({

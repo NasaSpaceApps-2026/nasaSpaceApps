@@ -2,7 +2,6 @@
 (synthetic site) with a ScriptedModel. No API key needed."""
 from __future__ import annotations
 
-import asyncio
 import json
 from pathlib import Path
 
@@ -12,11 +11,11 @@ import pytest
 
 from agent.app import create_app
 from agent.config import Settings
-from agent.context import fetch_context, render_context_block
+from agent.context import render_context_block
 from agent.loop import normalize_messages, summarize
 from agent.mcp_bridge import McpBridge, stdio_params
 from agent.replay import load_replay, replay_events
-from agent.session import build_system, load_system_prompt, run_session
+from agent.session import load_system_prompt, run_session
 from agent.testing import ScriptedModel, text, tool
 
 ROVER = {"x": 12.5, "y": -40.0, "z": 3.1, "heading_deg": 90.0}

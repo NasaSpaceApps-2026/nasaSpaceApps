@@ -29,6 +29,7 @@ def _n(v, nd=1):
 
 
 def fmt_sun_position(d: dict) -> str:
+    """Text summary of sun_position: elevation/azimuth (degrees), local true solar time, Ls and season, sunrise and sunset."""
     ss = d.get("sunrise_sunset") or {}
     el = d["sun_elevation_deg"]
     state = "sun up" if el > 0 else "sun BELOW horizon (night/twilight)"
@@ -51,6 +52,7 @@ def fmt_sun_position(d: dict) -> str:
 
 
 def fmt_illumination(d: dict) -> str:
+    """Text summary of illumination_at: sun angles, incidence angle, lit or shadowed (cast/self), approximations stated."""
     t, s = d["time"], d["sun"]
     head = (f"At {t['utc']} (sol {t['mission_sol']}, {t['ltst']} LTST, {t['lmst']} LMST) the sun is at elevation "
             f"{_n(s['elevation_deg'])} deg, azimuth {_n(s['azimuth_deg'])} deg.")
@@ -87,6 +89,7 @@ def fmt_illumination(d: dict) -> str:
 
 
 def fmt_lit_windows(d: dict) -> str:
+    """Text summary of find_lit_windows: lit time windows (UTC and LTST) with durations in minutes."""
     q = d["query"]
     cond = f"sun elevation >= {q['min_elevation_deg']:g} deg" + (
         f", incidence <= {q['max_incidence_deg']:g} deg" if q.get("max_incidence_deg") is not None else "") + \
@@ -109,6 +112,7 @@ def fmt_lit_windows(d: dict) -> str:
 
 
 def register(tool, call, coerce, location_refs: str, schema_patch: dict, loc) -> None:
+    """Register sun_position, illumination_at and find_lit_windows on the MCP server using its tool decorator, request helper and shared schema fragments."""
     schema_patch["sun_position"] = {"at": loc("one place (default: the site centre)")}
     schema_patch["illumination_at"] = {"at": loc("place, footprint (with radius_m) or set to check; omit for the whole site")}
     schema_patch["find_lit_windows"] = {"target": loc("place, footprint (with radius_m), region or set to image", many=True)}

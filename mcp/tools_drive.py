@@ -21,17 +21,20 @@ MAX_REPLAN_ROUNDS = 3       # follow_route calls when the backend stops with `re
 
 
 class DriveFail(Exception):
+    """A drive_to precondition failed; carries a message and a hint, rendered as a readable error result."""
     def __init__(self, message: str, hint: str | None = None):
         super().__init__(message)
         self.message, self.hint = message, hint
 
 
 def short_src(src) -> str:
+    """Source label shortened to 60 characters ("assumed" when missing) for one-line output."""
     s = str(src or "assumed").split(";")[0].strip()
     return s if len(s) <= 60 else s[:57].rstrip() + "..."
 
 
 def vehicle_line(name: str, v: dict) -> str:
+    """One line for a vehicle: speed, slope limits and their (cited or assumed) source, all read from the API."""
     cau = v.get("caution_slope_deg")
     return (f"{name} ({v.get('title', name)}): flat speed {num(v.get('flat_speed_mps'), 2)} m/s"
             f"{', caution above ' + num(cau) + ' deg' if cau is not None else ''}, no-go above "
@@ -39,6 +42,7 @@ def vehicle_line(name: str, v: dict) -> str:
 
 
 def fmt_vehicle(d: dict) -> str:
+    """Text summary of select_vehicle / the vehicle table."""
     vs = d["vehicles"]
     cur = d["current"]
     head = (f"Active vehicle: {vehicle_line(cur, vs[cur])}." if cur in vs else f"Active vehicle: {cur}.")
@@ -50,6 +54,7 @@ def fmt_vehicle(d: dict) -> str:
 
 
 def fmt_drive_to(d: dict) -> str:
+    """Text summary of drive_to: target, route length and time, outcome (stop reason) and final state."""
     lim = d.get("limits") or {}
     veh = f"{d['vehicle']} (no-go above {num(lim.get('max_slope_deg'))} deg [{short_src(lim.get('source'))}])"
     lines: list[str] = []

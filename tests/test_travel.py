@@ -1,3 +1,4 @@
+"""Travel cost fields, within_mask and nearest (atlas_core.travel): MCP_Geometric cost semantics, unit conversions, snapping, against tests/oracle_travel.py."""
 import copy
 import math
 import time

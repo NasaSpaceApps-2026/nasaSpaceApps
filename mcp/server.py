@@ -885,6 +885,7 @@ def _startup_frame_check(atlas_url: str, rover_url: str) -> dict | None:
 
 
 def main(argv: list[str] | None = None) -> None:
+    """CLI entry point: serve over stdio, or with --http over streamable HTTP (default 127.0.0.1:8765, path /mcp)."""
     ap = argparse.ArgumentParser(description="Ares Atlas MCP server (wrapper over the REST API)")
     ap.add_argument("--http", action="store_true", help="serve streamable HTTP instead of stdio")
     ap.add_argument("--host", default="127.0.0.1")

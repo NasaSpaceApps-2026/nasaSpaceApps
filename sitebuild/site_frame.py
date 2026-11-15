@@ -1,4 +1,10 @@
-"""Site frame geometry (PRD contract 1) shared by build_site.py."""
+"""Site frame geometry (PRD contract 1) shared by the sitebuild scripts.
+
+Architecture: offline build step at the bottom of the data path (raw NASA/USGS products -> sitebuild -> data/build/site/<name>/ -> atlas_core.load_site -> devapi/MCP/agent).
+Frame: equirectangular on the Mars 2000 sphere (R = 3 396 190 m), origin at the site centre (lat0, lon0), x east / y north in
+metres, north-up grid with row 0 at the north edge. Centre, size and CRS come from pipeline/site_cfg.py (single source of truth);
+verify_frame() cross-checks it against an independent restatement to < 1 cm.
+"""
 import math
 import sys
 from pathlib import Path
@@ -7,7 +13,7 @@ from rasterio.transform import from_origin
 
 # Shared frame lives in Caden's pipeline/site_cfg.py (read-only import by path).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "pipeline"))
-import site_cfg  # team single source of truth for centre, size and CRS
+import site_cfg  # noqa: F401  team single source of truth for centre, size and CRS
 from site_cfg import CRS as SITE_CRS, LAT0, LON0, R, SIZE  # noqa: F401
 SRC_CRS = "+proj=eqc +lat_ts=0 +lon_0=0 +R=3396190 +units=m"   # source mosaics (lat_ts=0, lon_0=0)
 
@@ -50,6 +56,7 @@ def verify_frame(tol_m=0.01):
 
 
 def site_transform(size_px, res):
+    """Affine transform of the site grid: origin at the NW corner (-half, +half), `res` metre cells, row 0 north."""
     half = size_px * res / 2
     return from_origin(-half, half, res, res)     # origin at centre, row 0 north
 

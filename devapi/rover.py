@@ -32,6 +32,7 @@ def _bearing(a, b) -> float:
 
 
 class Rover:
+    """Terrain-following rover simulator (pose from four wheel samples of the DEM, slope-limited speed, no-go enforcement); see the module docstring for stop reasons and FSD."""
     def __init__(self, world):
         self.w = world
         site = world.site

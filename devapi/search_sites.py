@@ -14,7 +14,6 @@ from scipy import ndimage
 
 from atlas_core import AtlasError, evidence as EV, resolve_ref, route as R, search, travel
 from atlas_core.catalog import alias_groups, alias_table, resolution_text, resolve_alias
-from atlas_core.conditions import combine, compile_all
 from atlas_core.site import TIER_NAMES, TIERS, Site
 
 FIELDS = ("target", "near", "radius_m", "max_slope_deg", "top_k", "min_tier", "min_area_m2", "profile")
@@ -36,6 +35,7 @@ def _science_layers(site: Site):
 
 
 def search_targets(site: Site) -> list[dict]:
+    """GET /search/targets: evidence layers and categorical classes that can be searched (a class name shared by several layers is prefixed "<layer>:")."""
     names: dict[str, int] = {}
     for l in _science_layers(site):
         if l.kind == "categorical" and l.classes:
@@ -56,6 +56,7 @@ def search_targets(site: Site) -> list[dict]:
 
 
 def search_sites(site: Site, store, body: dict) -> dict:
+    """POST /search/sites: connected regions where `target` is present, ranked by best evidence tier then area, each with citable evidence. Raises AtlasError (hint) for an invalid body or unknown target."""
     if not isinstance(body, dict):
         raise AtlasError("The request body must be a JSON object.")
     unknown = sorted(set(body) - set(FIELDS))

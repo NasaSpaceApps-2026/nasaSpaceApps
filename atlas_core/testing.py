@@ -40,6 +40,7 @@ def _grid():
 
 
 def make_dem() -> np.ndarray:
+    """Synthetic DEM (float32, metres): 1 deg tilt, crater, scarp ridge and a NaN hole; layout in the module docstring."""
     X, Y = _grid()
     z = -2500.0 + np.tan(np.radians(1.0)) * X           # 1 degree tilt rising east
     # crater: parabolic-ish bowl, steep walls near the rim
@@ -57,6 +58,7 @@ def make_dem() -> np.ndarray:
 
 
 def make_site(with_pois: bool = True) -> Site:
+    """Build the synthetic test Site (256 x 256 cells at 2 m) with its layers, profiles and POIs. Not Mars data."""
     X, Y = _grid()
     dem = make_dem()
     hole = ~np.isfinite(dem)

@@ -51,6 +51,7 @@ def load_dotenv(path: Path | None = None, environ=None) -> list[str]:
 
 
 def has_key(provider: str, environ=None) -> bool:
+    """True if the API key variable for `provider` is set in `environ` (Anthropic also accepts ANTHROPIC_AUTH_TOKEN). Never returns or logs the key."""
     environ = os.environ if environ is None else environ
     if provider == "anthropic":
         return bool(environ.get("ANTHROPIC_API_KEY") or environ.get("ANTHROPIC_AUTH_TOKEN"))
@@ -82,6 +83,7 @@ def _flag(name: str, default: bool) -> bool:
 
 @dataclass
 class Settings:
+    """Agent configuration (provider, model, effort, token cap, MCP target), built from environment variables by Settings.from_env at call time."""
     provider: str = "anthropic"
     model: str = DEFAULT_MODEL
     effort: str = "medium"

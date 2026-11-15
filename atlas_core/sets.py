@@ -21,6 +21,7 @@ def public_member(m: dict) -> dict:
 
 @dataclass
 class LocationSet:
+    """A stored result: kind (spots | regions | pairs | points), who made it, the query that did, and members sorted best-first."""
     set_id: str
     kind: str                 # spots | regions | pairs | points
     created_by: str
@@ -33,6 +34,7 @@ class LocationSet:
 
 
 class SetStore:
+    """Session-lifetime store of LocationSets addressed by handle "set:N"; members get ids "N.k". Not persisted across server restarts."""
     def __init__(self):
         self._sets: dict[str, LocationSet] = {}
         self._counter = itertools.count(1)

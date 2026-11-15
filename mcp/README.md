@@ -108,3 +108,19 @@ claude mcp add --transport http ares-atlas http://127.0.0.1:8765/mcp
 - Tests: `.venv/bin/python -m pytest tests/test_server.py tests/test_devapi.py tests/test_backends.py` (MCP tools run
   against devapi in-process via httpx ASGI; the backend adapters and the frame check against canned ares_api responses;
   no network).
+
+## Architecture & module map
+
+```
+viewer / chat -> agent/ -> MCP (this server) -> REST (devapi query engine, or Yousef's rover API) -> atlas_core -> site data
+```
+
+| File | Role |
+|------|------|
+| `server.py` | FastMCP app: tool registration, one HTTP call per tool, text summary + structured result, `agent.event` emission, startup frame check |
+| `backends.py` | Routes each request to the query engine (`ATLAS_API_URL`) or the rover API (`ATLAS_ROVER_API_URL`) and translates his shapes to ours |
+| `format.py` | Pure text formatters (compact, key numbers first, coordinates rounded to the metre) |
+| `tools_sun.py`, `tools_lake.py`, `tools_visibility.py`, `tools_drive.py` | Tool groups: sun/illumination, paleolake and EVA envelope, line of sight, vehicle driving |
+
+Tools never compute science themselves; units are metres, degrees and minutes in the site frame (x east, y north). Errors are
+`message + hint`.

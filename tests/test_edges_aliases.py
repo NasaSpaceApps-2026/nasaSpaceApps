@@ -1,6 +1,5 @@
 """Region edges in nearest() and layer aliases (find_sites / evidence conditions / catalogue)."""
 import copy
-import dataclasses
 import json
 import math
 from pathlib import Path

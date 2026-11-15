@@ -16,6 +16,7 @@ from typing import Any, AsyncIterator, Callable, Awaitable
 
 
 class Recorder:
+    """Writes one JSON line per SSE event (with relative time) to a new file under `directory`; a no-op when disabled."""
     def __init__(self, directory: Path, meta: dict, enabled: bool = True):
         self.path: Path | None = None
         self._f = None

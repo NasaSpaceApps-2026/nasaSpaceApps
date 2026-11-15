@@ -22,11 +22,13 @@ SMALL_STRUCTURED_CHARS = 800
 
 
 class McpUnavailable(RuntimeError):
+    """The MCP server could not be reached or the call failed to start."""
     pass
 
 
 @dataclass
 class ToolOutcome:
+    """Result of one tool call: the text the model sees and whether the server flagged an error."""
     text: str
     is_error: bool
 
@@ -50,6 +52,7 @@ def result_to_text(result: Any) -> str:
 
 
 def claude_tool_def(tool: Any) -> dict:
+    """MCP tool -> Anthropic tool definition (name, description, input_schema with eager input streaming)."""
     schema = dict(tool.input_schema or {})
     schema.setdefault("type", "object")
     schema.setdefault("properties", {})
@@ -59,11 +62,13 @@ def claude_tool_def(tool: Any) -> dict:
 
 
 def stdio_params() -> StdioServerParameters:
+    """Parameters to launch mcp/server.py over stdio with the current interpreter and environment."""
     env = dict(os.environ)
     return StdioServerParameters(command=sys.executable, args=[str(ROOT / "mcp" / "server.py")], env=env)
 
 
 class McpBridge:
+    """Lazy MCP client: connects on first use (so the agent boots without the server), lists tools and calls them; the connection lives in one background task."""
     def __init__(self, target: Any | None = None, settings: Settings | None = None):
         """target: anything mcp.client.Client accepts (URL str, StdioServerParameters, server).
         None -> chosen from settings (ATLAS_MCP_STDIO / ATLAS_MCP_URL)."""

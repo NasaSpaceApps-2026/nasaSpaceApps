@@ -1,5 +1,10 @@
 """Terrain derivatives. Shared by the pipeline (to build layers) and tests (to build fixtures).
 
+Layer: atlas_core, pure numpy functions on DEM arrays (row 0 = north, metres), used by sitebuild/ to write layers and by
+visibility/illumination at query time.
+References implemented: Horn (1981) slope/aspect; Zevenbergen & Thorne (1987) curvature; Weiss (2001) TPI; Riley et al.
+(1999) TRI; local relief as max-min within a disc (cf. Evans 1972 relief measures).
+
 Definitions (these are what the layer catalogue describes; keep them in sync):
     slope_deg:  Horn (1981) 3x3 finite difference on the DEM grid, degrees. On the 2 m grid
                 this is the "slope_2m" layer. NaN wherever any of the 3x3 neighbours is NaN.
@@ -12,6 +17,7 @@ import numpy as np
 
 
 def slope_deg(dem: np.ndarray, res_m: float) -> np.ndarray:
+    """Slope in degrees (float32) by the Horn (1981) 3x3 finite difference; edge-padded so border cells use replicated neighbours; NaN propagates from any NaN neighbour. `res_m` is the cell size in metres."""
     z = np.pad(dem.astype(np.float64), 1, mode="edge")
     a, b, c = z[:-2, :-2], z[:-2, 1:-1], z[:-2, 2:]
     d, f = z[1:-1, :-2], z[1:-1, 2:]
@@ -23,6 +29,7 @@ def slope_deg(dem: np.ndarray, res_m: float) -> np.ndarray:
 
 
 def roughness(dem: np.ndarray, window: int = 5) -> np.ndarray:
+    """Standard deviation of elevation (metres, float32) in a `window` x `window` square (default 5x5), no plane removal; edge-padded."""
     from numpy.lib.stride_tricks import sliding_window_view
     p = window // 2
     z = np.pad(dem.astype(np.float64), p, mode="edge")
@@ -154,6 +161,7 @@ def disc_offsets(radius_m: float, res_m: float):
 
 
 def disc_kernel(radius_m: float, res_m: float, exclude_center: bool = False) -> np.ndarray:
+    """Boolean disc kernel of radius `radius_m` (metres) in cells of `res_m`; optionally without the centre cell."""
     r, rows = disc_offsets(radius_m, res_m)
     k = np.zeros((2 * r + 1, 2 * r + 1))
     for dy, w in rows:

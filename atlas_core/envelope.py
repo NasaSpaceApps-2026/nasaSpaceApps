@@ -113,6 +113,12 @@ def _fields(site, base_pts, haven_pts, profile):
 def eva_envelope(site: Site, store: SetStore, base, budget_min: float | None = None,
                  reserve_fraction: float | None = None, profile: str = "eva_walkable", stops_min: float = 0.0,
                  havens=None) -> dict:
+    """EVA safety envelope: every cell reachable from `base` whose out-and-back walk fits the usable budget.
+    Usable minutes = budget * (1 - reserve_fraction), of which `stops_min` is spent on stops; budget/reserve default to the profile's eva_limit_min and
+    reserve_fraction (profiles.yaml, labelled cited/assumed in the result). `havens` (location refs) are alternative
+    return points; the return leg goes to the nearest haven. Times in minutes, areas in m2, isotropic walk model.
+    Raises AtlasError (hint) if `base` is not exactly one location or the budget/reserve/stops are out of range.
+    """
     budget, reserve, stops, usable, used = _resolve_budget(site, profile, budget_min, reserve_fraction, stops_min)
     bpts = resolve_ref(site, base, store)
     if len(bpts) != 1:

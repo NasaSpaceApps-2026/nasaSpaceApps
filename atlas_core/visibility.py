@@ -62,7 +62,7 @@ from .site import MARS_RADIUS_M, Site
 R_MARS = MARS_RADIUS_M
 MAX_RADIUS_M = 8000.0
 COARSE_ABOVE_M = 3500.0           # auto-use the 4 m lattice beyond this radius
-MAX_VANTAGE_SAMPLES = 12
+MAX_VANTAGE_SAMPLES = 12   # target samples per region (farthest-point sampling); bounds run time, see module docstring
 MAX_LISTED = 25
 
 
@@ -519,6 +519,13 @@ def find_vantage_points(site: Site, store: SetStore, target, observer_height_m: 
                         conditions: list[dict] | None = None, limit: int = 5, target_height_m: float = 0.0,
                         max_distance_m: float = 1500.0, spacing_m: float | None = None, curvature: bool = True,
                         min_distance_m: float = 0.0) -> dict:
+    """Find places from which `target` (refs) is visible, ranked by how much of it they see (metres, degrees).
+    Eye height `observer_height_m`, target height `target_height_m`, search radius `max_distance_m` (20..4000 m, default 1500;
+    `min_distance_m` excludes the near field), optional `conditions`/`within` to restrict candidates, `spacing_m` between results.
+    Candidates are a 4 m lattice; the best pool is re-scored by forward line of sight on the 2 m DEM (see module
+docstring); curvature correction d^2/(2R) when `curvature`.
+    Raises AtlasError (hint) for bad arguments or an empty target.
+    """
     t_start = time.perf_counter()
     h_o = _num(observer_height_m, "observer_height_m", 0, 1000)
     h_t = _num(target_height_m, "target_height_m", 0, 1000)

@@ -1,3 +1,4 @@
+"""Site overview, layer catalogue and describe_location (atlas_core.catalog / describe) on the synthetic site with known ground truth."""
 import math
 
 import pytest

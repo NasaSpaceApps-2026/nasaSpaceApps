@@ -1,4 +1,7 @@
-"""Errors that become readable tool results (never raw exceptions to the model)."""
+"""Errors that become readable tool results (never raw exceptions to the model).
+
+Architecture: raised anywhere in atlas_core; devapi turns AtlasError into HTTP 422 {"error", "hint"}; mcp/ renders it as an
+error tool result. Convention everywhere: a plain-sentence message plus a hint saying what to try instead."""
 
 
 class AtlasError(Exception):

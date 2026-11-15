@@ -67,6 +67,7 @@ URL_HUROWITZ = "https://goldschmidtabstracts.info/2023/18487.pdf"
 
 # ------------------------------------------------------------------ fetching (cached)
 def fetch(url: str, path: Path, resume: bool = False) -> Path:
+    """Download `url` to `path` unless cached (curl with resume for large files); prints progress (CLI script)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists() and not resume:
         return path
@@ -91,11 +92,13 @@ from site_cfg import LAT0, LON0  # noqa: E402
 
 
 def in_site(x, y, margin=0.0):
+    """Boolean mask: site-frame points within the square site (plus `margin` metres)."""
     return (np.abs(x) <= HALF + margin) & (np.abs(y) <= HALF + margin)
 
 
 # ------------------------------------------------------------------ 1. traverse, waypoints
 def load_waypoints():
+    """Perseverance end-of-drive waypoints (NASA MMGIS) projected to the site frame (x east / y north, metres)."""
     p = fetch(URL_WAYPOINTS, RAW / "mmgis/M20_waypoints.json")
     feats = json.loads(p.read_text())["features"]
     out = []
@@ -109,6 +112,7 @@ def load_waypoints():
 
 
 def build_traverse(wps):
+    """Perseverance traverse line (NASA MMGIS) clipped to the site as GeoJSON-ready features, sorted by sol."""
     p = fetch(URL_TRAVERSE, RAW / "mmgis/M20_traverse.json")
     segs = json.loads(p.read_text())["features"]
     segs = sorted(segs, key=lambda f: (f["properties"]["sol"]))
@@ -154,12 +158,14 @@ def build_traverse(wps):
 
 
 def landing_offset(wps, landing_xy):
+    """Distance (m) between the landing localisation (first waypoint) and the nominal landing point, plus that waypoint."""
     w0 = wps[0]          # sol 13, site 3 drive 0: "Site increment, no motion" = the landing localisation
     return float(math.hypot(w0["x"] - landing_xy[0], w0["y"] - landing_xy[1])), w0
 
 
 # ------------------------------------------------------------------ 2. samples
 def load_samples():
+    """Parse NASA's Mars rock sample table into records (name, sol, type, location text)."""
     p = fetch(URL_SAMPLES, RAW / "nasa/mars-rock-samples.html")
     t = p.read_text(encoding="utf8")
     i = t.find("<table")
@@ -183,8 +189,8 @@ def load_samples():
 
 
 def slug(s):
+    """Lower-case ascii identifier from a sample name (alias text dropped, accents folded, non-alphanumerics -> "_")."""
     s = re.sub(r"\s*\(aka.*?\)", "", s)
-    s = s.encode("ascii", "ignore").decode() if False else s
     import unicodedata
     s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode()
     return re.sub(r"[^a-z0-9]+", "_", s.lower()).strip("_")
@@ -228,6 +234,7 @@ def derive_sample_positions(samples, wps):
 
 # ------------------------------------------------------------------ 3. geologic units (USGS SIM 3464)
 def sim_gdb() -> Path:
+    """Path to the USGS SIM 3464 geodatabase, downloading and unzipping it on first use."""
     gdb = RAW / "usgs_sim3464/Nili.gdb"
     if gdb.exists():
         return gdb
@@ -273,13 +280,12 @@ def build_geologic_unit(shift=None):
     src = CRS.from_wkt(meta["crs"])
     dst = CRS.from_string(site_crs())
     cols = [str(c) for c in meta["fields"]]
-    ui, ni, si, bi = cols.index("unit"), cols.index("name"), cols.index("symbol_noSub"), cols.index("subscript")
+    ni, si, bi = cols.index("name"), cols.index("symbol_noSub"), cols.index("subscript")
     recs = []
     for k in range(len(geom)):
         name = UNIT_FIX.get(fields[ni][k], fields[ni][k])
         sym = (fields[si][k] or "") + (fields[bi][k] or "")
         recs.append((name, sym, from_wkb(geom[k])))
-    names = sorted({(n, s) for n, s, _ in recs})
     # polygons are transformed MTM -> site frame (same Mars 2000 sphere, R=3396190)
     items = []
     for name, sym, g in recs:
@@ -418,12 +424,14 @@ def build_evidence(cls, sf, black, white):
 
 
 def tier_shares(t):
+    """Fraction of cells per evidence tier code (rounded to 4 decimals)."""
     v, c = np.unique(t, return_counts=True)
     return {int(a): round(float(b) / t.size, 4) for a, b in zip(v, c)}
 
 
 # ------------------------------------------------------------------ rasters / yaml
 def write_tif(path, arr, dtype, nodata):
+    """Write one single-band tiled GeoTIFF on the site grid."""
     with rasterio.open(path, "w", driver="GTiff", width=N, height=N, count=1, dtype=dtype,
                        crs=site_crs(), transform=site_transform(N, RES), nodata=nodata,
                        compress="deflate", tiled=True, blockxsize=256, blockysize=256) as d:
@@ -431,6 +439,7 @@ def write_tif(path, arr, dtype, nodata):
 
 
 def disc_mask(shape_xy, cx, cy, r):
+    """Boolean mask of site cells within radius r (metres) of (cx, cy) site metres, built on the window around the disc only."""
     xs = -HALF + (np.arange(N) + 0.5) * RES
     ys = HALF - (np.arange(N) + 0.5) * RES
     c0, c1 = np.searchsorted(xs, cx - r - RES), np.searchsorted(xs, cx + r + RES)
@@ -456,11 +465,13 @@ def tier_sources(lid, crism_src, samples):
 
 
 def geo_offset_info():
+    """Contents of offset_measurement.json (registration offset of the geologic map), or None if not measured."""
     p = RAW / "usgs_sim3464/offset_measurement.json"
     return json.loads(p.read_text()) if p.exists() else None
 
 
 def run(out_dir: Path = OUT, make_figure: bool = True):
+    """Build all interim science layers and POIs into out_dir and update site.yaml; see the module docstring for the list."""
     global OUT
     OUT = Path(out_dir)
     RAW.mkdir(parents=True, exist_ok=True)
@@ -768,6 +779,7 @@ def figure(out_dir, unit, uclasses, ev, wps, sample_pois, region_pois, cls):
 
 
 def write_sources(report, off_info):
+    """Rewrite the science section of SOURCES_site.md (sources, retrieval date, method, offsets)."""
     p = OUT / "SOURCES_site.md"
     t = p.read_text() if p.exists() else ""
     t = t.split("\n## Science layers (INTERIM")[0].rstrip() + "\n"

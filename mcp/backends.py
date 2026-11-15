@@ -42,6 +42,7 @@ ROVER_PREFIXES = ("/rover/", "/fsd/", "/route", "/markers", "/view", "/search/si
 
 
 class Unreachable(Exception):
+    """A backend (query engine or rover API) could not be reached; carries which one and its URL."""
     def __init__(self, which: str, url: str, msg: str = ""):
         super().__init__(msg or f"{which} backend not reachable at {url}")
         self.which, self.url = which, url
@@ -115,6 +116,7 @@ def map_vehicle(name: str | None) -> str | None:
 
 
 def map_profile(name: str | None) -> str | None:
+    """Profile name mapping for the rover API: vehicle aliases first, then PROFILE_MAP; unknown names unchanged."""
     if not name:
         return name
     name = map_vehicle(name)
@@ -139,6 +141,7 @@ _SITE_ID = re.compile(r"^site\d+$")
 
 
 def is_set_ref(s: Any) -> bool:
+    """True for a location-set reference such as "set:3" or "3.1" (resolved by the query engine, not the rover API)."""
     return isinstance(s, str) and bool(_SET_REF.match(s.strip()))
 
 
@@ -229,6 +232,7 @@ def science_to_rover(body: dict) -> tuple[dict, list[str]]:
 
 
 def sites_to_rover(body: dict) -> tuple[dict, list[str]]:
+    """Our search_sites body -> his search request; parameters he lacks (e.g. min_tier) become notes, never silently dropped."""
     b = {k: v for k, v in body.items() if v is not None}
     notes = []
     if "min_tier" in b:
@@ -257,6 +261,7 @@ def adapt_error(status: int, data: Any) -> dict:
 
 
 def adapt_state(s: dict, info: dict, remaining_m: float = 0.0) -> dict:
+    """His rover state -> our state shape (fills remaining_m, profile; trims last_event)."""
     out = dict(s)
     if isinstance(out.get("last_event"), str):
         out["last_event"] = out["last_event"].rstrip(". ") or None
@@ -277,6 +282,7 @@ def _hazard_detail(h: dict) -> str:
 
 
 def adapt_fsd(f: dict, info: dict | None = None) -> dict:
+    """His FSD state -> our shape: policy booleans, last hazard with type/detail, and what blocks driving."""
     pol = f.get("policy") or {}
     haz = f.get("last_hazard")
     if haz:
@@ -297,6 +303,7 @@ def adapt_fsd(f: dict, info: dict | None = None) -> dict:
 
 
 def adapt_command(res: dict, info: dict, notes: list[str] | None = None) -> dict:
+    """His command result -> our shape (state adapted, command-specific fields such as teleport/route progress, notes appended)."""
     out = dict(res)
     cmd = res.get("cmd")
     if "state" in res:
@@ -403,6 +410,7 @@ def infeasible_from_error(msg: str, info: dict, profile: str | None) -> dict | N
 
 
 def adapt_science(r: dict, assess: dict | None, info: dict, body: dict, notes: list[str]) -> dict:
+    """His science traverse (+ assessment) -> the shape fmt_science expects; an infeasible plan becomes an empty, explained result."""
     budget = float(body.get("time_budget_min", 0))
     if r.get("feasible") is False and "points" not in r:
         return {"stops": [], "route": None, "science_value_total": None, "science_weighting_note": None,
@@ -439,11 +447,13 @@ def adapt_science(r: dict, assess: dict | None, info: dict, body: dict, notes: l
 
 
 def adapt_markers(d: dict) -> dict:
+    """His marker list -> ours (adds count)."""
     ms = d.get("markers", [])
     return {**d, "count": d.get("count", len(ms)), "markers": ms}
 
 
 def adapt_view(res: dict, req: dict) -> dict:
+    """His view response + our request -> our view result (camera target, per-layer visibility)."""
     cam = res.get("camera") or {}
     target = None
     if cam.get("x") is not None:
@@ -459,6 +469,7 @@ def adapt_view(res: dict, req: dict) -> dict:
 
 
 def adapt_pois(d: dict, extra_types: list[str] | None = None, known: list[str] | None = None) -> dict:
+    """His POI list -> ours: adds poi:<id> refs and a null science_value where he has none."""
     pois = []
     for p in d.get("pois", []):
         q = dict(p)
@@ -471,6 +482,7 @@ def adapt_pois(d: dict, extra_types: list[str] | None = None, known: list[str] |
 
 
 def adapt_profile(d: dict, spacing_m: float) -> dict:
+    """His elevation series -> our profile shape with total ascent/descent (m) and slope statistics."""
     series = d["series"]
     zs = [s["z"] for s in series if s.get("z") is not None]
     sl = [s["slope"] for s in series if s.get("slope") is not None]
@@ -506,6 +518,7 @@ def adapt_sample(d: dict, info: dict, profile: str) -> dict:
 
 
 def adapt_sites(d: dict, kind: str | None, near: dict, notes: list[str]) -> dict:
+    """His candidate sites -> our site shape; evidence-tier fields he lacks are null, travel_min is kept as walk_travel_min."""
     sites = []
     for s in d.get("sites", []):
         q = dict(s)

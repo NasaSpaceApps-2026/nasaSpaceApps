@@ -1,11 +1,19 @@
 #!/usr/bin/env python
 """Build data/build/site/jezero/ : the site directory read by atlas_core.load_site.
 
+Architecture: offline build step at the start of the data path (raw NASA/USGS products -> sitebuild ->
+data/build/site/<name>/ -> atlas_core.load_site -> devapi / MCP / agent).
+Inputs: HiRISE DTM (1 m, Fergason et al. 2020) with a CTX DTM (20 m) fill, windowed and cached under data/raw/
+(reruns do not refetch); the shared frame (centre, size, CRS) from pipeline/site_cfg.py.
+Outputs: elevation, slope_2m, rough_5x5 and quality_flag GeoTIFFs on the 2 m grid (x east / y north metres, row 0
+north), site.yaml (catalogue entries), profiles.yaml (values marked "assumed" where no citation exists), pois.geojson
+and QC figures; sitebuild.science and sitebuild.geomorph then add the science layers.
+Method: reprojection to the site frame, slope by atlas_core.terrain.slope_deg (Horn 1981), roughness as the 5x5
+standard deviation, seam/noise detectors (seams.py, noise.py) that flag cells but never alter elevations.
+
 Run:  .venv/bin/python -m sitebuild.build_site   (or python sitebuild/build_site.py)
-Raw windows are cached under data/raw/, so reruns do not refetch.
 """
 import json
-import math
 import sys
 import time
 from pathlib import Path
@@ -30,7 +38,7 @@ from fetch_hirise import get_ctx, get_hirise
 from seams import detect_seams
 from noise import detect_noise, BLOCK as NOISE_BLOCK
 from site_cfg import LAT0, LON0, SIZE
-from site_frame import SRC_CRS, site_crs, site_transform, verify_frame
+from site_frame import site_crs, site_transform
 
 NAME = "jezero"
 RES = 2.0
@@ -57,6 +65,7 @@ QUALITY_CLASSES = {0: "hirise_dtm", 1: "ctx_fill", 2: "hirise_seam_suspect", 3: 
 
 
 def warp(src, src_tr, src_crs, resampling, dst_nodata=np.nan, src_nodata=np.nan):
+    """Reproject a source raster onto the site grid (N x N, RES m, site CRS); cells with no source data stay NaN."""
     dst = np.full((N, N), np.nan, np.float32)
     reproject(src, dst, src_transform=src_tr, src_crs=src_crs, src_nodata=src_nodata,
               dst_transform=site_transform(N, RES), dst_crs=site_crs(),
@@ -65,6 +74,7 @@ def warp(src, src_tr, src_crs, resampling, dst_nodata=np.nan, src_nodata=np.nan)
 
 
 def hillshade(z, res, az=315, alt=35):
+    """Lambertian hillshade (0-1) of a DEM for QC figures only; `az`/`alt` are sun azimuth and altitude in degrees, `res` the cell size in metres."""
     zz = np.where(np.isfinite(z), z, np.nanmean(z))
     gy, gx = np.gradient(zz, res)
     sl = np.arctan(np.hypot(gx, gy)); asp = np.arctan2(-gx, gy)
@@ -73,6 +83,7 @@ def hillshade(z, res, az=315, alt=35):
 
 
 def write_tif(path, arr, dtype, nodata):
+    """Write one single-band, tiled, deflate-compressed GeoTIFF on the site grid."""
     with rasterio.open(path, "w", driver="GTiff", width=N, height=N, count=1, dtype=dtype,
                        crs=site_crs(), transform=site_transform(N, RES),
                        nodata=nodata, compress="deflate", tiled=True, blockxsize=256, blockysize=256) as d:
@@ -80,6 +91,7 @@ def write_tif(path, arr, dtype, nodata):
 
 
 def main():
+    """Build the whole site directory (layers, catalogue, profiles, POIs, figures, report); prints a build report to stdout."""
     t0 = time.time()
     OUT.mkdir(parents=True, exist_ok=True)
     print("fetching/reading HiRISE window ..."); sys.stdout.flush()
@@ -220,7 +232,6 @@ def main():
 
     # --- reports + figures -------------------------------------------------------------
     s = slope[np.isfinite(slope)]
-    h0 = q == 0
     print("\n== REPORT ==")
     print(f"centre {LAT0} N {LON0} E; HiRISE valid fraction {hi_frac:.4f}")
     print(f"landing site x={x:.1f} y={y:.1f} in grid={site.in_bounds(x, y)} quality_flag={landing_q} elev={z:.2f} m")
@@ -241,6 +252,7 @@ def main():
 
 
 def profiles():
+    """profiles.yaml content: traveller/landing profiles. Every value here is source "assumed" (team assumption pending a citation); the query engine echoes that label in its results."""
     A = "assumed"
     return {
         "landing_pad": {
@@ -319,6 +331,7 @@ def noise_figure(elev, slope, rough, q, noise_z, noise_blk, src_shape):
 
 
 def figures(site, elev, slope, q, hi, seam_rows, seam2, lx, ly):
+    """Write the QC figures (hillshade, quality flags, seams, noise) under docs/."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt

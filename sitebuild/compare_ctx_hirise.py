@@ -1,5 +1,10 @@
-"""Compare the CTX data Cesium Mars uses for Jezero against the HiRISE TRN mosaics
-for one window around the Perseverance landing site. Writes a figure and prints stats."""
+"""Compare the CTX data Cesium Mars uses for Jezero against the HiRISE TRN mosaics for one window around the Perseverance
+landing site. Writes a figure and prints stats (one-off analysis script, not part of the build).
+
+Architecture: offline build step at the bottom of the data path (raw NASA/USGS products -> sitebuild -> data/build/site/<name>/ -> atlas_core.load_site -> devapi/MCP/agent).
+Reports elevation difference (median, RMS, p99 |dz|) and slope percentiles at 2 m / 4 m / 20 m, using plain np.gradient slopes
+(not the Horn operator of atlas_core.terrain), to compare how the CTX and HiRISE terrain differ in slope at each resolution.
+"""
 import math, sys, numpy as np, rasterio
 from rasterio.windows import from_bounds
 from rasterio.warp import reproject, Resampling
@@ -43,10 +48,12 @@ def read_local(path, res, resampling, src_bounds_pad=1.3):
     return dst
 
 def slope_deg(z, res):
+    """Slope in degrees from np.gradient (plain central differences, not the Horn operator)."""
     gy, gx = np.gradient(z, res)
     return np.degrees(np.arctan(np.hypot(gx, gy)))
 
 def hillshade(z, res, az=315, alt=35):
+    """Hillshade clipped to 0-1; `az`, `alt` in degrees."""
     gy, gx = np.gradient(z, res)
     sl = np.arctan(np.hypot(gx, gy)); asp = np.arctan2(-gx, gy)
     a, e = np.radians(az), np.radians(alt)
@@ -63,6 +70,7 @@ ort_hi = read_local(HI_ORT, 0.5, Resampling.average)
 print("orthos done")
 
 # Compare slopes at the planning resolutions in the PRD (2 m and 4 m) vs CTX native 20 m
+# block(z, f): NaN-aware mean of f x f blocks (remainder rows/cols cropped)
 def block(z, f): n = z.shape[0]//f*f; return np.nanmean(z[:n,:n].reshape(n//f,f,n//f,f), axis=(1,3))
 s_ctx = slope_deg(ctx, 20)
 s_hi2 = slope_deg(block(hi, 2), 2); s_hi4 = slope_deg(block(hi, 4), 4)

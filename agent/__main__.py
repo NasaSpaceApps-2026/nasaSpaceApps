@@ -7,6 +7,7 @@ import uvicorn
 
 
 def main() -> None:
+    """Serve the agent backend with uvicorn (ATLAS_AGENT_HOST / ATLAS_AGENT_PORT / ATLAS_LOG_LEVEL; default 127.0.0.1:8766)."""
     uvicorn.run(
         "agent.app:create_app",
         factory=True,

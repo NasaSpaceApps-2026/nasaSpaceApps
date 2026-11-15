@@ -1,4 +1,8 @@
-"""Server state: site, location sets, markers, routes, rover, WS hub."""
+"""Server state: site, location sets, markers, routes, rover, WS hub.
+
+Architecture: one World per devapi app (devapi.app.create_app); routes read and mutate it, atlas_core stays stateless
+apart from the SetStore held here. Routes are kept in insertion order and capped at MAX_ROUTES.
+"""
 from __future__ import annotations
 
 from collections import OrderedDict
@@ -12,6 +16,7 @@ MAX_ROUTES = 200
 
 
 class World:
+    """Server state shared by every route: site, location-set store, markers, routes (capped at MAX_ROUTES), rover simulator and WS hub."""
     def __init__(self, site: Site, synthetic: bool = False, traverse: dict | None = None,
                  snapshot_timeout_s: float = 5.0):
         from .rover import Rover

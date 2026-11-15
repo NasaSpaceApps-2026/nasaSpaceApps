@@ -36,6 +36,7 @@ def _tiers(path: Path) -> np.ndarray:
 
 
 def export(site_dir: str | Path, out_dir: str | Path) -> Path:
+    """Write the ARES_DATA_DIR layout (manifest, analysis rasters, pois) from one of our site directories; returns out_dir."""
     site_dir, out = Path(site_dir), Path(out_dir)
     cfg = yaml.safe_load((site_dir / "site.yaml").read_text())
     files = {e["id"]: e for e in cfg["layers"]}
@@ -91,6 +92,7 @@ def export(site_dir: str | Path, out_dir: str | Path) -> Path:
 
 
 def main() -> None:
+    """CLI entry point."""
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("site_dir")
     ap.add_argument("out_dir")

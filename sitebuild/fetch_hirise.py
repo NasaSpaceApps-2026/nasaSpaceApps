@@ -1,4 +1,10 @@
-"""Windowed, cached read of the HiRISE DTM (and CTX DTM) around a site."""
+"""Windowed, cached read of the HiRISE DTM (and CTX DTM) around a site.
+
+Architecture: offline build step at the bottom of the data path (raw NASA/USGS products -> sitebuild -> data/build/site/<name>/ -> atlas_core.load_site -> devapi/MCP/agent).
+Input: site centre (lat0, lon0) and half-width in metres; output: (array, transform, crs) of the source window, cached as a
+GeoTIFF under data/raw/. The window bounds come from site_frame.src_window_bounds (padded so reprojection has no edge loss).
+Network: HiRISE is read over HTTP range requests (/vsicurl/); no data is modified.
+"""
 import os
 from pathlib import Path
 
@@ -123,6 +129,7 @@ def read_window(path, bounds, out_tif, reuse=False):
 
 
 def get_hirise(lat0, lon0, half):
+    """Windowed read of the HiRISE DTM around (lat0, lon0) with half-width `half` metres; cached under data/raw/hirise/."""
     os.environ.setdefault("GDAL_DISABLE_READDIR_ON_OPEN", "EMPTY_DIR")
     os.environ.setdefault("GDAL_HTTP_MULTIRANGE", "YES")
     os.environ.setdefault("GDAL_HTTP_MERGE_CONSECUTIVE_RANGES", "YES")
@@ -131,5 +138,6 @@ def get_hirise(lat0, lon0, half):
 
 
 def get_ctx(lat0, lon0, half):
+    """Windowed read of the CTX DTM around (lat0, lon0) with half-width `half` metres; cached under data/raw/ctx/."""
     b = src_window_bounds(lat0, lon0, half, pad=1.3)
     return read_window(CTX_PATH, b, f"data/raw/ctx/window_{lat0}_{lon0}_{int(half)}.tif")

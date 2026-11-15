@@ -7,20 +7,23 @@ if the turn has a tool_use block, else "end_turn", unless given as (blocks, stop
 from __future__ import annotations
 
 import re
-from typing import Any, AsyncIterator, Callable
+from typing import Any, AsyncIterator
 
 Turn = Any  # list[dict] | tuple[list[dict], str] | Callable[[list[dict]], list[dict]]
 
 
 def text(t: str) -> dict:
+    """A text content block."""
     return {"type": "text", "text": t}
 
 
 def tool(id: str, name: str, **input: Any) -> dict:
+    """A tool_use content block with id, tool name and input arguments."""
     return {"type": "tool_use", "id": id, "name": name, "input": input}
 
 
 class ScriptedModel:
+    """Deterministic fake ModelClient replaying scripted turns; `calls` records what the loop sent."""
     name = "scripted"
 
     def __init__(self, turns: list[Turn]):

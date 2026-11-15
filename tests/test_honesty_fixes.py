@@ -3,16 +3,13 @@
 Tier-4 provenance, per-tier areas, tier glosses, registration caveats, assumed science value, POI/sample sources,
 describe_location paging, plan/drive profile warning. Synthetic site for logic; the real Jezero build for catalogue facts.
 """
-import copy
 import importlib.util
-import sys
 from pathlib import Path
 
-import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from atlas_core import SetStore, describe, evidence, load_site, route as R, search, travel
+from atlas_core import SetStore, describe, load_site, route as R, search, travel
 from atlas_core.testing import make_site
 from devapi import create_app
 from devapi.search_sites import search_sites

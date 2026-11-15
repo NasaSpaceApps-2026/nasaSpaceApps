@@ -1,5 +1,10 @@
-"""describe_location. Spec: contracts/mcp-tools.md section 4.3.
-OWNER: builder "server". Signature and return shape are FROZEN; implement the body.
+"""describe_location: every layer's value at a point or averaged over a footprint (contracts/mcp-tools.md 4.3).
+
+Layer: atlas_core, called by devapi/ (REST) and from there by mcp/ tools; reads the Site loaded from data/build/site/<name>/.
+Input: location refs (atlas_core.refs), optional radius_m (metres, site frame x east / y north). Layer values are
+bilinear point samples (terrain.bilinear) or footprint statistics; evidence layers add provenance and registration
+caveats from atlas_core.evidence. Output: dict with one entry per location and a nearest ground-truth (rover sample) note.
+Failure: AtlasError for bad refs or more than MAX_LOCATIONS locations, with a hint.
 """
 from __future__ import annotations
 

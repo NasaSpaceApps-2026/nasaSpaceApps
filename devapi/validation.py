@@ -18,6 +18,7 @@ def _xy(site, lonlat):
 
 
 def run_validation(world) -> dict:
+    """Compare the site's terrain and planner with the real Perseverance traverse; returns {"available": False, reason, hint} when no traverse is loaded rather than inventing numbers."""
     site, tr = world.site, world.traverse
     if not tr:
         return {"available": False, "reason": "No traverse.geojson is loaded, so there is no real rover path "

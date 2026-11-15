@@ -121,3 +121,21 @@ driven by `agent/testing.py::ScriptedModel` against the real MCP server over std
 ## DeepSeek provider
 
 `agent/model.py::DeepSeekModel` speaks the OpenAI-compatible Chat Completions API over httpx (no extra dependency). The loop keeps Anthropic-format messages; conversion happens at the API boundary (system blocks -> system message, `tool_use` -> `tool_calls`, `tool_result` -> `role: tool`, MCP tool defs -> function tools). Streamed tool-call fragments are assembled by index; malformed arguments become a non-object `input` that the loop reports back to the model as an error. 429/5xx are retried with backoff. Run live evals with `ATLAS_PROVIDER=deepseek`; results for the first run are in `docs/eval-run-deepseek.md`.
+
+## Architecture & module map
+
+```
+viewer / chat -> agent/ (this backend) -> MCP server (mcp/) -> REST (devapi or Yousef's rover API) -> atlas_core -> site data
+```
+
+| File | Role |
+|------|------|
+| `app.py` | FastAPI app: `POST /chat` (SSE), `GET /health` |
+| `session.py` | One recorded session: context fetch, system blocks, tool loop, recording (shared with the eval runner) |
+| `loop.py` | `run_turn`: model text, tool calls through the bridge, SSE-ready events |
+| `model.py` | Model clients (Anthropic, DeepSeek) behind the `ModelClient.stream_turn` protocol |
+| `mcp_bridge.py` | Lazy MCP client: connect, list tools, call tools |
+| `context.py` | Per-turn rover and marker context block (data, not instructions) |
+| `replay.py`, `testing.py` | Session recording/replay; `ScriptedModel` fake for tests |
+| `config.py` | Environment-driven `Settings` |
+| `evals/` | Eval cases (`questions.yaml`), scoring and runner |

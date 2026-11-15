@@ -26,6 +26,7 @@ SKIPPED = ("Not executed: the per-turn tool-call limit ({cap}) was reached. Answ
 
 
 def summarize(text: str) -> str:
+    """Short summary of a tool result for the UI (first two lines, synthetic-site banner dropped, truncated to SUMMARY_CHARS)."""
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     synthetic = bool(lines and lines[0].startswith(BANNER_PREFIX))
     if synthetic:
@@ -68,6 +69,7 @@ def validate_args(schema: dict, args: Any) -> str | None:
 async def run_turn(*, model: ModelClient, bridge: McpBridge, system: list[dict], messages: list[dict],
                    max_tool_calls: int = 12, tool_timeout_s: float = 180.0,
                    tools: list[dict] | None = None) -> AsyncIterator[dict]:
+    """Run one user turn: stream model text, execute requested tools through the MCP bridge (at most `max_tool_calls`, `tool_timeout_s` each) and yield SSE-ready event dicts; failures become an "error" event, never an exception."""
     if tools is None:
         try:
             tools = await bridge.tools()

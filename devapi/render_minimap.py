@@ -26,6 +26,7 @@ def _block_mean(a: np.ndarray, k: int) -> np.ndarray:
 
 
 def render(site_dir: str | Path, out_dir: str | Path, px: int = 900) -> dict:
+    """Write current.png (hillshade, north-up, px pixels across the whole site) and current.json (extent, POIs, traverse); returns the info dict."""
     site_dir, out = Path(site_dir), Path(out_dir)
     cfg = yaml.safe_load((site_dir / "site.yaml").read_text())
     res, n = float(cfg["res_m"]), int(cfg["size_px"])
@@ -75,6 +76,7 @@ def render(site_dir: str | Path, out_dir: str | Path, px: int = 900) -> dict:
 
 
 def main() -> None:
+    """CLI entry point."""
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("site_dir")
     ap.add_argument("out_dir")

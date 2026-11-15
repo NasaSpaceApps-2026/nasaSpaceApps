@@ -24,9 +24,10 @@ from .site import TIER_NAMES, Site
 from .terrain import bilinear
 
 SPACING_M = 5.0
+# ASSUMPTIONS: fallbacks when a profile omits these keys (real values live in profiles.yaml); reported as "[assumed]".
 DEFAULTS = {"caution_slope_deg": 15.0, "eva_limit_min": 480.0, "reserve_fraction": 0.2}
 SCIENCE_TYPES = ("science_target", "sample_site", "landmark")
-DEFAULT_SCIENCE_VALUE = 0.5
+DEFAULT_SCIENCE_VALUE = 0.5   # ASSUMPTION: used only for POIs without science_value; always flagged value_assumed
 MAX_CANDIDATES = 20
 
 
@@ -55,6 +56,10 @@ def route_params(site: Site, profile: str, max_slope_deg: float | None = None) -
 
 
 def speed_mps(params: dict, slope_deg) -> np.ndarray:
+    """Walking/driving speed in m/s for slope (degrees; scalar or array): flat_speed_mps * exp(-3.5 * tan(slope)).
+    ASSUMPTION: a placeholder Tobler-shaped curve (not measured for suits or vehicles), isotropic; flat_speed_mps comes from
+    the profile travel block in profiles.yaml, never from this file.
+    """
     return float(params["flat_speed_mps"]) * np.exp(-3.5 * np.tan(np.radians(slope_deg)))
 
 

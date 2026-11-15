@@ -76,7 +76,7 @@ def test_location_description_documents_member_form():
 
 def test_nearest_hint_uses_real_argument_names_and_accepts_aliases():
     async def f(c):
-        pads = await c.call_tool("find_locations", {"profile": "landing_pad", "limit": 3})
+        await c.call_tool("find_locations", {"profile": "landing_pad", "limit": 3})   # creates set:1
         reg = await c.call_tool("find_regions", {"conditions": [{"layer": "slope_2m", "op": "<", "value": 5}]})
         a = await c.call_tool("nearest", {"from": "set:2", "to": "set:1"})
         b = await c.call_tool("nearest", {"from_ref": "set:2", "to_ref": "set:1"})

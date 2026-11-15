@@ -1,3 +1,4 @@
+"""Terrain illumination (atlas_core.illumination): incidence angle, self and cast shadows, lit fractions and time windows, on analytic surfaces."""
 import math
 
 import numpy as np

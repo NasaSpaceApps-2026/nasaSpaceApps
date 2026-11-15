@@ -62,6 +62,7 @@ def _src(citation, product="sitebuild/geomorph.py (atlas_core/terrain.py)"):
 
 
 def write_tif(path, arr, dtype, nodata, n, res):
+    """Write one single-band GeoTIFF of an n x n grid at `res` metres in the site frame."""
     with rasterio.open(path, "w", driver="GTiff", width=n, height=n, count=1, dtype=dtype, crs=site_crs(),
                        transform=site_transform(n, res), nodata=nodata, compress="deflate", tiled=True,
                        blockxsize=256, blockysize=256) as d:
@@ -206,6 +207,7 @@ def _entries(res, report, geo_meta):
 
 
 def run(out_dir: Path = OUT, make_figure: bool = True):
+    """Compute every geomorphometry layer with atlas_core.terrain, write the GeoTIFFs, update site.yaml (idempotent) and optionally the check figure."""
     out_dir = Path(out_dir)
     t0 = time.time()
     from atlas_core import load_site
@@ -272,6 +274,7 @@ def run(out_dir: Path = OUT, make_figure: bool = True):
 
 
 def figure(out_dir, elev, L, n, res):
+    """Write docs/geomorph_check.png: the new layers next to the hillshade."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt

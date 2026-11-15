@@ -1,5 +1,4 @@
 """Paleolake flooding and EVA safety envelope (atlas_core.lake, atlas_core.envelope, devapi routes)."""
-import copy
 from pathlib import Path
 
 import numpy as np

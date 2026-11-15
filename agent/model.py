@@ -11,7 +11,7 @@ import os
 import uuid
 from typing import Any, AsyncIterator, Protocol
 
-from .config import KEY_VARS, Settings, has_key
+from .config import KEY_VARS, Settings
 
 ModelEvent = tuple[str, Any]
 
@@ -28,6 +28,7 @@ class ModelUnavailable(RuntimeError):
 
 
 class ModelClient(Protocol):
+    """What the loop needs from a model: `stream_turn` yielding ("text", delta) events and one ("final", {content, stop_reason})."""
     name: str
 
     def stream_turn(self, *, system: list[dict], messages: list[dict], tools: list[dict],
@@ -35,6 +36,7 @@ class ModelClient(Protocol):
 
 
 def block_to_dict(block: Any) -> dict:
+    """SDK content block -> plain dict, keeping only the fields the API accepts back."""
     d = block.model_dump(exclude_none=True, mode="json")
     keep = _KEEP.get(d.get("type"))
     return {k: d[k] for k in keep if k in d} if keep else d
@@ -120,12 +122,14 @@ class DeepSeekAPIError(RuntimeError):
 
 
 def system_to_text(system: list[dict] | str) -> str:
+    """Flatten system blocks to one string (for providers without block-structured system prompts)."""
     if isinstance(system, str):
         return system
     return "\n\n".join(b.get("text", "") for b in system if b.get("type", "text") == "text" and b.get("text"))
 
 
 def tools_to_openai(tools: list[dict]) -> list[dict]:
+    """Anthropic tool definitions -> OpenAI-style function tools (used for DeepSeek)."""
     return [{"type": "function",
              "function": {"name": t["name"], "description": t.get("description", ""),
                           "parameters": t.get("input_schema") or {"type": "object", "properties": {}}}}
@@ -337,11 +341,13 @@ class DeepSeekModel:
 
 
 def make_model(settings: Settings | None = None) -> ModelClient:
+    """Model client for settings.provider ("anthropic" or "deepseek")."""
     s = settings or Settings.from_env()
     return DeepSeekModel(s) if s.provider == "deepseek" else AnthropicModel(s)
 
 
 def describe_model_error(e: BaseException) -> str:
+    """Readable one-sentence message for a model/API failure (credentials, balance, rate limit, network); Anthropic errors go through _describe_anthropic."""
     if isinstance(e, ModelUnavailable):
         return str(e)
     if isinstance(e, DeepSeekAPIError):

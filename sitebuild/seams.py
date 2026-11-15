@@ -35,6 +35,7 @@ MAX_LINE_ROWS = 8      # ... and at most 8 source rows tall (blobs on steep terr
 
 
 def detect_seams(z, band=1500):
+    """Per-row seam score from the median |d2| (N-S second derivative) in column blocks of the 1 m source grid; processed in row bands of `band` rows. Flags only, never edits z."""
     H, W = z.shape
     nb = W // BLOCK
     A = np.full((H, nb), np.nan, np.float32)

@@ -24,6 +24,7 @@ def _thing(t: dict) -> str:
 
 
 def fmt_viewshed(d: dict) -> str:
+    """Text summary of viewshed: share of known terrain within the radius that is visible (m2 and %), farthest visible distance, named places in range."""
     o = d["observer"]
     out = [f"From {fmt.xy(o['x'], o['y'])} (eye {fmt.num(o['eye_elevation_m'] - o['elevation_m'])} m above terrain, "
            f"ground elevation {fmt.num(o['elevation_m'])} m): sees {fmt.num(d['visible_fraction'] * 100)}% of the known "
@@ -50,6 +51,7 @@ def fmt_viewshed(d: dict) -> str:
 
 
 def fmt_los(d: dict) -> str:
+    """Text summary of line_of_sight between two points: visible or not, blocking terrain and clearance (metres)."""
     a, b = d["a"], d["b"]
     if d["clear"]:
         mc = d.get("min_clearance_m")
@@ -77,6 +79,7 @@ def fmt_los(d: dict) -> str:
 
 
 def fmt_vantage(d: dict) -> str:
+    """Text summary of find_vantage_points: ranked observer positions and the share of the target each sees."""
     res = d.get("results") or []
     if not d["count"]:
         out = ["No vantage point found."]
@@ -106,6 +109,7 @@ def fmt_vantage(d: dict) -> str:
 
 def register(tool, call, loc, coerce, schema_patch: dict, units: str, location_refs: str, conditions_text: str,
              within_text: str, conditions_schema: dict, within_schema: dict) -> None:
+    """Register viewshed, line_of_sight and find_vantage_points on the MCP server using its tool decorator, request helper and shared schema fragments."""
     schema_patch.update({
         "viewshed": {"at": loc("observer position"),
                      "check": loc("extra places (e.g. a set) whose visibility is reported individually", many=True)},
