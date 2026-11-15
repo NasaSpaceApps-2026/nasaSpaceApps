@@ -137,3 +137,37 @@ marker X (none was placed), correctly not driving. Screenshots: `docs/buggy_delt
    `caution_slope_deg` and `eva_limit_min` (we read them from `/site`).
 3. A per-command `elapsed_sim_min` and a synchronous "instant" mode (already requested in `docs/api-compat.md`).
 4. A "highest point" query on his side is not needed; the query engine already does it.
+
+## 6. Visible drives, place resolution, plain language (Nov 15, second pass)
+
+* **Drives are visible and non-blocking by default.** `drive_to`, `goto_location`, `follow_route`, `drive_rover` start the drive in
+  the API's real-time 10 Hz sim and return at once with "Driving now: about X km to <place>, about N s on screen". N comes from the
+  route (target 8-20 s below 500 m, then 20-60 s up to 3 km; `speed_factor` = planned duration / N, 0.1 to 1000, so the buggy gets
+  about 1 to 2.5x and the scout about 100x+). `wait=true` blocks for the final stop reason (evals and tests); `animate=false` +
+  `wait=true` computes instantly. `get_drive_progress` (and `get_rover_state`) report distance to go, percent, seconds left or the
+  outcome; `drive_to` disarms the FSD it armed once the drive is over (next progress/stop/drive call). devapi: `wait:false` on
+  `/rover/command` runs the drive as a background task. Live check on the real API: 3.2 km delta-front drive = 547 `rover.state`
+  events over 56 s; rover stayed at the goal.
+* **Bug report (viewer builder): rover returned to its start after a goto, ~96 m/s on screen.** Speed: 96 = buggy 24 m/s x the
+  `speed_factor 4` the caller passed; our factor is now computed from the route. Return-to-start is NOT ours (nothing in mcp/,
+  agent/, devapi/ teleports): reproduced against `api/` alone. Repro: start the API, `POST /rover/command {"cmd":"goto","target":{"x":1700,"y":-300},"wait":false,"speed_factor":4}`,
+  wait for `mode: idle`, then send on `/ws` `{"type":"rover.pose","x":1844.3,"y":-432.7,"z":-2569.8,"heading_deg":0}` (an unflagged
+  periodic pose carrying the viewer's old position): `RoverSim.manual_pose` adopts it (no command running) and the rover jumps back
+  (`mode: manual`). Fix options for Yousef/viewer: ignore unflagged poses for a few seconds after a command finishes or when the pose
+  is more than a few metres from the sim pose and the last mode was auto/fsd; and the viewer should adopt the final server pose
+  before it resumes sending manual poses.
+* **Places.** `atlas_core/places.py` (gazetteer) + devapi `GET /places/resolve|/places|/places/craters`; the MCP resolves location
+  arguments (`mcp/place_resolution.py`) before every tool and says what it chose. Sources: site POIs, IAU names inside the site
+  (Belva), craters detected from the DEM (closed depressions by priority-flood fill at ~8 m, depth >= 3 m, >= 60 m wide, depth/width
+  >= 0.02, compact; 20 on the real site, the biggest is Belva), aliases (Kodiak, Three Forks, Santa Cruz, Hawksbill Gap, Maaz map to
+  the nearest named area and are flagged approximate: no position is invented), generic terms (crater -> nearest, near rim; hill ->
+  highest gently sloping ground within 1 km; flat ground), and 393 global IAU/USGS names (`sitebuild/build_global_names.py` ->
+  `atlas_core/data/mars_global_names.json`, downloaded from the USGS gazetteer).
+* **Far places** (Olympus Mons, Gale, Valles Marineris): the tool explains in one sentence (great-circle distance on our 3396.19 km
+  Mars sphere), does not move the rover, sends `POST /view {mode:"globe", target:{lat,lon}}` and names the street-view patch
+  ("Olympus Mons scarp" under Drive). NOTE for the lead/Yousef: the API's `/view` accepts only modes globe/orbit/chase/ground and
+  relays a FLAT `view.camera` `{mode, x, y, z, target, ...}` (site-frame equirectangular x, y), not the
+  `{"type":"view.camera","payload":{"mode":"planet","lat","lon","height_m","label"}}` shape the viewer wants. We cannot produce that
+  envelope from mcp/ (the hub only relays what api/main.py emits); api/ needs: accept `mode: "planet"`, carry `lat`/`lon`/`label`
+  through in the `view.camera` event. Our MCP already accepts `mode="planet"` (mapped to `globe`) and `{lat, lon}` targets in
+  set_view/fly_camera.

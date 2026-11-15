@@ -141,6 +141,8 @@ def report(scores: list[Score], unmatched: list[str], strict: bool) -> int:
         print_row(s)
         for f in s.failures:
             print(f"        - {f}")
+        for w in s.warnings:
+            print(f"        ~ {w}")
     for u in unmatched:
         print(f"UNMATCHED  {u}")
     ran = [s for s in scores if not s.skipped]

@@ -269,6 +269,67 @@ cases:
       reply_not_contains: ["scout"]
       max_tool_calls: 5
 
+  - id: friendly_drive_to_the_crater
+    source: friendly copilot
+    prompt: "drive to the crater"
+    tool_path:
+      required: [[drive_to, goto_location]]
+      forbidden: [teleport_rover]
+    checks:
+      reply_contains_any: ["crater", "driving", "on its way", "on screen"]
+      reply_not_contains: ["can't find", "cannot find", "could not find", "couldn't find", "not found"]
+      max_tool_calls: 5
+
+  - id: friendly_go_to_seitah
+    source: friendly copilot
+    prompt: "go to seitah"
+    tool_path:
+      required: [[teleport_rover, drive_to, goto_location]]
+    checks:
+      reply_contains_any: ["Séítah", "Seitah", "seitah"]
+      reply_not_contains: ["can't find", "cannot find", "could not find", "couldn't find", "not found"]
+      max_tool_calls: 5
+
+  - id: friendly_buggy_up_the_hill
+    source: friendly copilot
+    prompt: "drive the buggy up the hill"
+    tool_path:
+      required: [drive_to]
+      forbidden: [teleport_rover]
+    checks:
+      reply_contains_any: ["hill", "high", "top", "driving", "on its way"]
+      max_tool_calls: 5
+
+  - id: friendly_mount_sons
+    source: friendly copilot
+    prompt: "drive from Jezero to Mount Sons"
+    tool_path:
+      required: [[drive_to, goto_location, plan_route]]
+    checks:
+      reply_contains_all: [["Olympus"]]
+      reply_contains_any: ["globe", "far", "km", "outside", "street"]
+      reply_not_contains: ["can't find", "cannot find", "could not find", "couldn't find", "not found", "doesn't exist"]
+      max_tool_calls: 5
+
+  - id: friendly_take_me_to_mt_sharp
+    source: friendly copilot
+    prompt: "take me to mt sharp"
+    tool_path:
+      required: [[teleport_rover, fly_camera, set_view]]
+    checks:
+      reply_contains_any: ["Mount Sharp", "Aeolis", "Gale"]
+      reply_not_contains: ["can't find", "cannot find", "could not find", "couldn't find", "not found"]
+      max_tool_calls: 5
+
+  - id: friendly_drive_300_north
+    source: friendly copilot
+    prompt: "drive 300 m north"
+    tool_path:
+      required: [drive_rover]
+    checks:
+      reply_contains_any: ["north", "driving", "on its way"]
+      max_tool_calls: 3
+
   - id: buggy_highest_within_1km
     source: buggy driving
     prompt: "Drive the buggy to the highest point within 1 km."

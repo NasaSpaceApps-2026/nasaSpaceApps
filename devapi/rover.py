@@ -308,6 +308,29 @@ class Rover:
         return pts[0]
 
     async def command(self, body: dict) -> dict:
+        """Run a rover command. Motion commands block until a stop reason by default; `wait: false` starts the drive
+        as a background task and returns the current state at once (`started: true`); errors that surface within the
+        first moments (bad target, infeasible route) are still raised, later outcomes are in state().status/last_event."""
+        if body.get("wait") is False and body.get("cmd") in ("drive", "goto", "follow_route"):
+            task = asyncio.ensure_future(self._command({**body, "wait": True}))
+            self._task = task
+            done, _ = await asyncio.wait({task}, timeout=0.25)
+            if done:
+                return task.result()
+            task.add_done_callback(self._background_done)
+            return {"state": self.state(), "started": True, "stop_reason": None, "cmd": body.get("cmd")}
+        return await self._command(body)
+
+    def _background_done(self, task) -> None:
+        try:
+            task.result()
+        except Exception as e:  # noqa: BLE001  (a background drive must never raise into the event loop)
+            self.running = False
+            self.speed = 0.0
+            self.status = "stopped: error"
+            self.last_event = f"drive failed: {e}"
+
+    async def _command(self, body: dict) -> dict:
         cmd = body.get("cmd")
         known = ("drive", "turn", "goto", "follow_route", "stop", "teleport", "fsd_enable", "fsd_disable")
         if cmd not in known:

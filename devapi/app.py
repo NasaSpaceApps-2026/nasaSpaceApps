@@ -313,6 +313,47 @@ def create_app(site: Site | None = None, synthetic: bool | None = None, traverse
         return {"count": len(out), "pois": out[:limit], "types": types, "known_ids": known,
                 "note": "science_value is null where the POI has none recorded."}
 
+    # ---- places (gazetteer) -------------------------------------------------------------------------
+    from fastapi.concurrency import run_in_threadpool
+    from atlas_core.places import Gazetteer
+    gaz = Gazetteer(site, os.environ.get("ATLAS_SITE_DIR"))
+    world.gazetteer = gaz
+
+    def _near(near: str | None):
+        if not near:
+            return None
+        parts = near.split(",")
+        if len(parts) == 2:
+            try:
+                return float(parts[0]), float(parts[1])
+            except ValueError:
+                pass
+        p = resolve_ref(site, near, store)[0]
+        return float(p["x"]), float(p["y"])
+
+    @app.get("/places/resolve")
+    async def places_resolve(q: str, near: str | None = None, limit: int = 4):
+        """Free text ("the crater", "seitah", "the hill") -> best place + plain-language explanation + candidates."""
+        return await run_in_threadpool(gaz.resolve, q, _near(near), max(1, min(limit, 10)))
+
+    @app.get("/places")
+    async def places_search(q: str | None = None, near: str | None = None, limit: int = 10, kind: str | None = None):
+        """Gazetteer search (fuzzy). Without q: every named place (POIs, IAU names inside the site, detected craters)."""
+        npt = _near(near)
+        if q:
+            hits = await run_in_threadpool(gaz.search, q, npt, max(1, min(limit, 50)), {kind} if kind else None)
+        else:
+            ents = list(gaz.entries) + await run_in_threadpool(gaz.crater_entries)
+            hits = [gaz._desc(e, npt) for e in ents if not kind or e.kind == kind]
+            if npt is not None:
+                hits.sort(key=lambda d: d.get("distance_m", 1e18))
+            hits = hits[:max(1, min(limit, 200))]
+        return {"count": len(hits), "places": hits}
+
+    @app.get("/places/craters")
+    async def places_craters():
+        return {"count": len(await run_in_threadpool(lambda: gaz.craters)), "craters": gaz.craters}
+
     # ---- routes ---------------------------------------------------------------------------------
     @app.post("/route")
     async def post_route(body: dict = Body(...)):

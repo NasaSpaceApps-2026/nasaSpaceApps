@@ -36,6 +36,7 @@ from mcp.server.mcpserver.exceptions import ToolError  # noqa: E402
 
 import format as fmt  # noqa: E402  (mcp/format.py)
 import backends  # noqa: E402  (mcp/backends.py: rover API / query engine split)
+import place_resolution  # noqa: E402  (mcp/place_resolution.py: 'the crater' -> coordinates)
 
 DEFAULT_API_URL = "http://localhost:8000"
 
@@ -65,11 +66,13 @@ PROFILES = ('profile: "rover_scout" (scout rover), "crew_buggy" (the crewed bugg
             '(astronaut on foot); speeds and no-go slopes come from the API (select_vehicle lists them, the result '
             'prints the ones used, cited or assumed). For a route a vehicle will drive, omit profile: it uses the '
             'ACTIVE vehicle (select_vehicle).')
-DRIVE_NOTE = ("Blocking: returns when the rover stops, with the final state and a stop_reason: arrived, "
-              "blocked_slope, blocked_hazard, replanned, stopped_by_user or timeout. animate=true plays the motion "
-              "live in the viewer at 10 Hz (takes real seconds; speed_factor is a multiplier of real rover speed, "
-              "default about 200 for rover_scout, which shows about 8 m/s on screen); the default computes the drive "
-              "instantly. Driving advances simulated time and the odometer (the result reports the minutes).")
+DRIVE_NOTE = ("NON-BLOCKING by default: the drive starts at once and plays LIVE on the viewer screen (about 8 to 60 "
+              "seconds for a typical trip, speed chosen from the route length; speed_factor overrides it), and the tool "
+              "returns immediately with 'Driving now ...' and the route summary. Check progress with get_drive_progress "
+              "or get_rover_state; stop_rover cancels. Pass wait=true only when you need the final stop_reason in the "
+              "same call (arrived, blocked_slope, blocked_hazard, replanned, stopped_by_user or timeout); animate=false "
+              "(with wait=true) computes the drive instantly with no on-screen motion. Driving advances simulated time "
+              "and the odometer.")
 
 
 # ---- JSON schemas (patched into the tools' input schemas; runtime validation stays lenient) -----
@@ -93,7 +96,7 @@ _LOC_NOTE = ' Location reference: {x,y} | {lat,lon} | "poi:<id>" | "marker:<id>"
 TIERS = ["not_detected", "inferred_from_unit", "weak_orbital", "strong_orbital", "confirmed_in_situ"]
 METRICS = ["straight_m", "walk_m", "walk_time_min"]
 PROFILES_ENUM = ["rover_scout", "crew_buggy", "crew_rover", "eva_walkable"]
-VIEW_MODES = ["globe", "orbit", "chase", "ground"]
+VIEW_MODES = ["globe", "planet", "orbit", "chase", "ground"]   # "planet" = "globe" (the viewer's name for it)
 CONDITION_SCHEMA = {
     "type": "object",
     "description": ('One condition: {"layer": id, "op": ..., "value": ...} or {"evidence": id, "min_tier": tier} or '
@@ -185,6 +188,35 @@ def _coerce(v: Any) -> Any:
     return v
 
 
+_COMPASS = {"n": 0, "north": 0, "ne": 45, "northeast": 45, "e": 90, "east": 90, "se": 135, "southeast": 135, "s": 180,
+            "south": 180, "sw": 225, "southwest": 225, "w": 270, "west": 270, "nw": 315, "northwest": 315,
+            "nne": 22.5, "ene": 67.5, "ese": 112.5, "sse": 157.5, "ssw": 202.5, "wsw": 247.5, "wnw": 292.5, "nnw": 337.5}
+
+
+def _loose_move(distance, heading):
+    """Accept '300 m', '0.3 km', 300 and 'north', 'north-west', 'NE', 315 -> (metres, degrees or None, error or None)."""
+    import re
+    d = distance
+    if isinstance(d, str):
+        m = re.match(r"\s*(-?\d+(?:\.\d+)?)\s*(km|kilomet\w*|m|met\w*)?\s*$", d.strip(), re.I)
+        if not m:
+            return None, None, f'I could not read the distance "{distance}".'
+        d = float(m.group(1)) * (1000.0 if (m.group(2) or "").lower().startswith("k") else 1.0)
+    if not isinstance(d, (int, float)) or isinstance(d, bool) or d <= 0:
+        return None, None, "The distance must be a positive number of metres."
+    h = heading
+    if isinstance(h, str):
+        key = re.sub(r"[^a-z]", "", h.lower())
+        if key in _COMPASS:
+            h = float(_COMPASS[key])
+        else:
+            try:
+                h = float(h)
+            except ValueError:
+                return None, None, f'I could not read the direction "{heading}".'
+    return float(d), (None if h is None else float(h)), None
+
+
 def _short(o: Any, n: int = 140) -> str:
     s = json.dumps(_clean(o), separators=(",", ":"), default=str) if not isinstance(o, str) else o
     return s if len(s) <= n else s[: n - 1] + "…"
@@ -214,6 +246,10 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
         rover_client = httpx.AsyncClient(base_url=rover_url, timeout=httpx.Timeout(340.0, connect=3.0))
     bk = backends.Backends(client, rover_client, api_url, rover_url)
     state: dict[str, Any] = {"synthetic": None}
+    drive_state: dict[str, Any] = {}      # the visible drive in progress (tools_drive / goto / follow_route fill it)
+    drive_helpers: dict[str, Any] = {}    # functions tools_drive.register exposes to the rover tools below
+    drive_helpers.update(about_dist=lambda m: __import__("tools_drive").about_dist(m),
+                         about_secs=lambda x: __import__("tools_drive").about_secs(x))
     pending: set[asyncio.Task] = set()
 
     Unreachable = backends.Unreachable
@@ -457,8 +493,37 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
             except ValueError:
                 pass
         params = {"q": query, "type": type, "near": near, "radius": radius_m, "limit": limit}
-        return await call("GET", "/pois", lambda d: fmt.fmt_pois(d, origin),
-                          params={k: v for k, v in params.items() if v is not None})
+        res = await call("GET", "/pois", lambda d: fmt.fmt_pois(d, origin),
+                         params={k: v for k, v in params.items() if v is not None})
+        if query and not type and radius_m is None and not res.is_error:
+            # the POI text match found nothing, or the words are generic ("the crater", "the hill"): use the gazetteer
+            # (fuzzy names, aliases, detected craters, nearest-crater / high-ground / flat-ground terms)
+            sc = res.structured_content if isinstance(res.structured_content, dict) else {}
+            gz = await places_fetch(query)
+            if gz and not gz.get("resolved") and sc.get("count") == 0:
+                res.content[0].text += "\n" + (gz.get("explanation") or "")
+                sc["resolution"] = gz
+            elif gz and (sc.get("count") == 0 or gz.get("kind") in place_resolution.GENERIC_KINDS):
+                items = ([gz["chosen"]] if gz.get("chosen") else []) + list(gz.get("candidates") or [])
+                rows = []
+                for it in items[:max(1, limit)]:
+                    ref = it.get("ref") or f"{it['x']},{it['y']}"
+                    rows.append(f"- {it.get('name')} ({ref})"
+                                + (f", {fmt.dist_text(it['distance_m'])} {it.get('direction', '')} of the rover"
+                                   if it.get("distance_m") is not None else "")
+                                + (" [approximate: no exact position in our data]" if it.get("approximate") else ""))
+                head = gz.get("explanation") or ""
+                if not gz.get("resolved"):
+                    head = f"No exact match for \"{query}\". " + head
+                data = {"count": len(items), "pois": [{"id": it.get("id"), "ref": it.get("ref"), "name": it.get("name"),
+                                                       "type": it.get("type") or it.get("kind"), "x": it.get("x"),
+                                                       "y": it.get("y"), "distance_m": it.get("distance_m")}
+                                                      for it in items], "resolution": gz,
+                        "types": [], "known_ids": []}
+                return await ok(head + ("\nOptions:\n" + "\n".join(rows) if rows else "") +
+                                "\nNext: use the best match as the target of teleport_rover, goto_location or drive_to "
+                                "(a phrase such as the one the user said works there too).", data)
+        return res
 
     # ---- search ----
 
@@ -609,14 +674,70 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
         "fsd), speed, odometer, active route, status, last event, FSD armed, and the vehicle's caution and no-go slopes. Use before planning from the rover or "
         "after any drive to confirm where it is. " + UNITS + " Example: get_rover_state()"))
     async def get_rover_state() -> CallToolResult:
-        return await call("GET", "/rover/state", fmt.fmt_rover_state)
+        res = await call("GET", "/rover/state", fmt.fmt_rover_state)
+        if not res.is_error and drive_state and "progress" in drive_helpers:
+            try:
+                p = await drive_helpers["progress"]()
+                if res.content and hasattr(res.content[0], "text"):
+                    res.content[0].text = drive_helpers["fmt_progress"](p).split("\nDetails:")[0] + "\n" + res.content[0].text
+                if isinstance(res.structured_content, dict):
+                    res.structured_content["drive_progress"] = {k: v for k, v in p.items() if k != "state"}
+            except Exception:  # noqa: BLE001  (progress is a bonus; the state itself is already in the result)
+                pass
+        return res
 
-    async def command(body: dict, animate: bool, speed_factor: float | None) -> CallToolResult:
+    async def command(body: dict, animate: bool | None, speed_factor: float | None, wait: bool = False,
+                      total_m: float | None = None, duration_s: float | None = None, label: str | None = None,
+                      route: dict | None = None) -> CallToolResult:
+        """Send a motion command. Visible (live in the viewer) and non-blocking unless wait=true; animate=false computes
+        instantly and implies wait. total_m / duration_s (planned) pick the on-screen speed."""
+        animate = True if animate is None else bool(animate)
+        if not animate:
+            wait = True
+        await drive_helpers["settle"]() if "settle" in drive_helpers else None
         if animate:
             body["realtime"] = True
+            if speed_factor is None and total_m and duration_s and "visible_factor" in drive_helpers:
+                speed_factor = drive_helpers["visible_factor"](total_m, duration_s)
         if speed_factor is not None:
             body["speed_factor"] = speed_factor
-        return await call("POST", "/rover/command", fmt.fmt_command, body=body)
+        if not wait:
+            body["wait"] = False
+        res = await call("POST", "/rover/command", fmt.fmt_command, body=body)
+        sc = res.structured_content if isinstance(res.structured_content, dict) else {}
+        if not wait and not res.is_error and (sc.get("started") or sc.get("stop_reason") is None) and sc.get("state"):
+            import time as _time
+            screen = (duration_s / speed_factor) if (duration_s and speed_factor) else None
+            drive_state.clear()
+            drive_state.update(goal=label, total_m=float(total_m or 0.0), t0=_time.monotonic(), screen_s=screen,
+                               disarm_fsd=False, route_id=body.get("route_id"))
+            head = (f"Driving now: {drive_helpers['about_dist'](total_m)} to {label or 'the destination'}"
+                    f"{', ' + drive_helpers['about_secs'](screen) + ' on screen' if screen else ''}. "
+                    "I'll stop if it gets too steep.")
+            if route:
+                head += (f"\nRoute: steepest part about {fmt.num(route.get('max_slope_deg'), 0)} degrees"
+                         + (f"; {fmt.num(route['filled_length_m'], 0)} m crosses ground the orbital data only estimates"
+                            if route.get("filled_length_m") else "") + ".")
+            head += "\nCheck get_drive_progress for how far it got; stop_rover cancels."
+            res.content[0].text = head + "\nDetails: " + res.content[0].text.replace("\n", "\n  ")
+            sc["driving_now"] = {"goal": label, "total_m": total_m, "screen_s": screen, "speed_factor": speed_factor}
+        return res
+
+    async def plan_for_drive(goal: Any) -> dict | None:
+        """Plan rover -> goal for the active vehicle; the route dict when feasible, else None (the goto call then
+        reports why)."""
+        try:
+            st, r = await request("POST", "/route", json_body={"start": "rover", "goal": goal}, timeout=120.0)
+        except Unreachable:
+            return None
+        return r if st < 400 and isinstance(r, dict) and r.get("feasible", True) and r.get("route_id") else None
+
+    async def vehicle_flat_speed() -> float | None:
+        try:
+            t = await drive_helpers["vehicles"]()
+            return float(t["vehicles"][t["current"]].get("flat_speed_mps") or 0.0) or None
+        except Exception:  # noqa: BLE001
+            return None
 
     async def with_nearby(res: CallToolResult) -> CallToolResult:
         """After a placement/drive, state where the rover now is relative to the base and the nearest POIs, so the
@@ -645,22 +766,32 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
         "Drive the rover in a straight line for distance_m along heading_deg (degrees clockwise from north: 0 north, "
         "90 east; default current heading). It stops on slopes above the no-go limit (stop_reason blocked_slope) or "
         "unknown ground (blocked_hazard) and tells you why. Use for short manual-style moves ('drive 200 m "
-        "north-west' = heading 315); for a destination use goto_location, and for a planned route follow_route. "
+        "north-west' = heading 315); for a destination use goto_location or drive_to, and for a planned route "
+        "follow_route. wait=true returns the final stop reason (default: the drive plays live and the call returns at once). "
         + DRIVE_NOTE + " " + UNITS + " Example: drive_rover(distance_m=200, heading_deg=315)"), act)
-    async def drive_rover(distance_m: float, heading_deg: float | None = None, animate: bool = False,
-                          speed_factor: float | None = None) -> CallToolResult:
+    async def drive_rover(distance_m: Any, heading_deg: Any = None, animate: bool | None = None,
+                          speed_factor: float | None = None, wait: bool = False) -> CallToolResult:
+        distance_m, heading_deg, bad = _loose_move(distance_m, heading_deg)
+        if bad:
+            return await err(bad, 'Example: drive_rover(distance_m=300, heading_deg="north") or heading_deg=315.')
         body = {"cmd": "drive", "distance_m": distance_m, "heading_deg": heading_deg}
-        return await command({k: v for k, v in body.items() if v is not None}, animate, speed_factor)
+        flat = await vehicle_flat_speed()
+        return await command({k: v for k, v in body.items() if v is not None}, animate, speed_factor, wait,
+                             total_m=distance_m, duration_s=(distance_m / flat) if flat else None,
+                             label=f"{distance_m:.0f} m on")
 
     @tool("goto_location", (
         "Plan a route from the rover to a place and drive it (one call). target is any location reference (POI, "
-        "marker, point); or pass x and y. If the place is unreachable it does not move and returns the reason and "
-        "the nearest reachable point. Use goto_location only when the user asks to DRIVE ('drive to the landing "
-        "site'); it advances simulated time and odometer. Use plan_route + assess_route + follow_route when the user "
-        "wants to review the route first, and teleport_rover for 'take me to X' (instant, no time cost). "
-        + DRIVE_NOTE + " " + LOCATION_REFS + " " + UNITS + " Example: goto_location(target=\"poi:landing\")"), act)
+        "marker, point) or plain words (\"the crater\", \"seitah\", \"the delta\", \"landing site\": resolved for you; "
+        "the result says what was chosen); or pass x and y. If the place is unreachable it does not move and returns the "
+        "reason and the nearest reachable point. Use goto_location only when the user asks to DRIVE ('drive to the "
+        "landing site'); the rover drives live on screen and the call returns at once (wait=true to get the final stop "
+        "reason). Use plan_route + assess_route + follow_route when the user wants to review the route first, and "
+        "teleport_rover for 'take me to X' (instant, no time cost). " + DRIVE_NOTE + " " + LOCATION_REFS + " " + UNITS +
+        " Example: goto_location(target=\"poi:landing\")"), act)
     async def goto_location(target: Any = None, x: float | None = None, y: float | None = None,
-                            animate: bool = False, speed_factor: float | None = None) -> CallToolResult:
+                            animate: bool | None = None, speed_factor: float | None = None,
+                            wait: bool = False) -> CallToolResult:
         body: dict = {"cmd": "goto"}
         if target is not None:
             body["target"] = _coerce(target)
@@ -669,24 +800,54 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
         else:
             return await err("goto_location needs a target, or x and y.",
                              'Example: goto_location(target="poi:landing") or goto_location(x=50, y=-50).')
-        return await with_nearby(await command(body, animate, speed_factor))
+        goal = body.get("target") if "target" in body else {"x": x, "y": y}
+        label = None
+        for r in place_resolution.current.get() or []:
+            if r.get("arg") == "target":
+                label = r["chosen"].get("name")
+        label = label or ("the spot you picked" if isinstance(goal, dict) else await drive_helpers["goal_label"](goal))
+        route = await plan_for_drive(goal)       # plan first: the route length picks the on-screen speed
+        if route:
+            res = await command({"cmd": "follow_route", "route_id": route["route_id"]}, animate, speed_factor, wait,
+                                total_m=route.get("distance_m"), duration_s=(route.get("duration_min") or 0) * 60.0,
+                                label=label, route=route)
+        else:
+            res = await command(body, animate, speed_factor, True)   # infeasible: the backend explains why, nothing moves
+        return await with_nearby(res)
 
     @tool("follow_route", (
         "Drive the rover along a stored route (route_id from plan_route). The rover must be within 3 m of the route "
         "start (plan with start=\"rover\" or goto/teleport first). With FSD armed (fsd_enable) caution slopes slow "
-        "it and a blocked route is replanned once (stop_reason replanned, a new route_id is returned and the rover "
-        "waits for you to call follow_route again); without FSD it stops on a no-go slope (blocked_slope) and "
+        "it and a blocked route is replanned once; without FSD it stops on a no-go slope (blocked_slope) and "
         "reports the hazard. Use for 'scout that route'. Always pass route_id from the most recent plan_route. If omitted, it uses the "
         "MOST RECENTLY PLANNED route (or the one bound by fsd_enable(route_id=...), whichever is newer) and the "
         "result says which route it used. If the rover is not at the route start the error gives the "
-        "teleport_rover/goto_location call to get there. "
-        + DRIVE_NOTE + " " + UNITS + " Example: follow_route(route_id=\"route-3\", animate=true, speed_factor=200)"), act)
-    async def follow_route(route_id: str | None = None, animate: bool = False,
-                           speed_factor: float | None = None) -> CallToolResult:
+        "teleport_rover/goto_location call to get there. The rover drives live on screen and the call returns at once "
+        "(wait=true to get the final stop reason). "
+        + DRIVE_NOTE + " " + UNITS + " Example: follow_route(route_id=\"route-3\", wait=true)"), act)
+    async def follow_route(route_id: str | None = None, animate: bool | None = None,
+                           speed_factor: float | None = None, wait: bool = False) -> CallToolResult:
         body = {"cmd": "follow_route"}
         if route_id:
             body["route_id"] = route_id
-        return await command(body, animate, speed_factor)
+        total = dur = None
+        route = None
+        rid = route_id
+        if rid:
+            try:
+                st, r = await request("GET", f"/route/{rid}")
+                if st < 400 and isinstance(r, dict):
+                    route, total, dur = r, r.get("distance_m"), (r.get("duration_min") or 0) * 60.0
+            except Unreachable:
+                pass
+        label = None
+        if route:
+            g = route.get("goal")
+            label = g if isinstance(g, str) else (g.get("label") or g.get("name")) if isinstance(g, dict) else None
+            if isinstance(label, str) and (label.startswith("(") or label.startswith("poi:") or label.startswith("route")):
+                label = None
+        return await command(body, animate, speed_factor, wait, total_m=total, duration_s=dur,
+                             label=label or "the end of the route", route=route)
 
     async def fsd_cmd(body: dict) -> CallToolResult:
         return await call("POST", "/rover/command", fmt.fmt_fsd_change, body=body)
@@ -722,7 +883,10 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
     @tool("stop_rover", ("Stop the rover now (cancels the active drive; any blocking drive call returns "
                          "stopped_by_user). Returns the state. Example: stop_rover()"), act_idem)
     async def stop_rover() -> CallToolResult:
-        return await call("POST", "/rover/command", fmt.fmt_command, body={"cmd": "stop"})
+        res = await call("POST", "/rover/command", fmt.fmt_command, body={"cmd": "stop"})
+        if "settle" in drive_helpers:
+            await drive_helpers["settle"]()
+        return res
 
     @tool("teleport_rover", (
         "Place the rover at a location instantly (no driving, no time cost, odometer unchanged), optionally with a "
@@ -757,6 +921,7 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
         "Example: set_view(mode=\"orbit\", target=\"poi:landing\", layers={\"carbonate\": true}, highlights=[\"set:2\"])"), act)
     async def set_view(mode: str | None = None, target: Any = None, layers: Any = None,
                        highlights: Any = None) -> CallToolResult:
+        mode = "globe" if mode == "planet" else mode      # the API's name for the planet view
         body = {"mode": mode, "target": _coerce(target), "layers": _coerce(layers), "highlights": _coerce(highlights)}
         return await call("POST", "/view", fmt.fmt_view, body={k: v for k, v in body.items() if v is not None})
 
@@ -767,6 +932,7 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
         "results. " + LOCATION_REFS + " "
         'Example: fly_camera(target="poi:landing", mode="orbit", distance_m=300)'), act)
     async def fly_camera(target: Any, mode: str = "orbit", distance_m: float | None = None) -> CallToolResult:
+        mode = "globe" if mode == "planet" else mode
         body = {"target": _coerce(target), "mode": mode, "distance_m": distance_m}
         return await call("POST", "/view", fmt.fmt_view, body={k: v for k, v in body.items() if v is not None})
 
@@ -800,7 +966,7 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
     tools_drive.register({"tool": tool, "act": act, "act_idem": act_idem, "request": request, "ok": ok, "err": err,
                           "Unreachable": Unreachable, "coerce": _coerce, "location_refs": LOCATION_REFS,
                           "units": UNITS, "drive_note": DRIVE_NOTE, "schema_patch": SCHEMA_PATCH, "loc": _loc,
-                          "backends": backends})
+                          "backends": backends, "drive_state": drive_state, "helpers": drive_helpers, "ro": ro})
 
     # ---- schema patch, aliases and friendly validation errors ----------------------------------
     import re as _re
@@ -812,6 +978,54 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
     def _describe_type(v: Any) -> str:
         return {dict: "an object", list: "a list", str: "a string", int: "a number", float: "a number",
                 bool: "a boolean", type(None): "null"}.get(type(v), type(v).__name__)
+
+    async def places_fetch(text: str) -> dict | None:
+        """Gazetteer lookup (devapi GET /places/resolve) relative to the rover; None when the backend has no gazetteer."""
+        near = None
+        try:
+            st, rs = await request("GET", "/rover/state", timeout=5.0)
+            if st < 400 and isinstance(rs, dict) and rs.get("x") is not None and rs.get("y") is not None:
+                near = f"{rs['x']},{rs['y']}"
+        except Unreachable:
+            pass
+        try:
+            params = {"q": text, **({"near": near} if near else {})}
+            st, d = await request("GET", "/places/resolve", params=params, timeout=60.0)
+        except Unreachable:
+            return None
+        return d if st == 200 and isinstance(d, dict) and "resolved" in d else None
+
+    state["places_fetch"] = places_fetch
+
+    ACTS_ON_GLOBE = ("drive_to", "goto_location", "teleport_rover", "plan_route", "follow_route", "drive_rover")
+
+    async def outside_site_answer(tname: str, res: dict) -> CallToolResult:
+        """The place exists on Mars but not in the 8 km drivable Jezero site: say so in one friendly breath and act on the
+        best alternative (fly the globe camera there, point to a street-view patch) instead of failing."""
+        ch = res["chosen"]
+        lon = ch["lon"] if ch["lon"] <= 180 else ch["lon"] - 360
+        view_ok, view_note = False, ""
+        if tname in ACTS_ON_GLOBE:
+            try:
+                st, d = await request("POST", "/view", json_body={"mode": "globe", "target": {"lat": ch["lat"], "lon": lon}},
+                                      timeout=15.0)
+                view_ok = st < 400
+            except Unreachable:
+                pass
+            view_note = (" I've flown the globe view to it." if view_ok else
+                         " (I could not move the globe camera: no viewer or the backend cannot take lat/lon.)")
+        sw = ch.get("street_world")
+        text = (res.get("explanation") or "") + view_note
+        if tname in ACTS_ON_GLOBE:
+            text += (" The rover did not move." +
+                     (f" To drive there yourself, switch to Drive and choose '{sw}'." if sw else
+                      " I can still drive to anything inside the Jezero area (for example the delta front, Séítah or a crater)."))
+        data = {"outside_site": True, "place": ch, "distance_m": ch.get("distance_m"), "globe_view_sent": view_ok,
+                "street_world": sw, "alternatives": res.get("candidates") or [],
+                "view_event": {"type": "view.camera", "mode": "globe", "lat": ch["lat"], "lon": lon, "label": ch.get("name"),
+                               "note": "sent as POST /view {mode: globe, target: {lat, lon}}; the API relays view.camera "
+                                       "with site-frame x, y (equirectangular about the site centre), not lat/lon"}}
+        return await ok(text, data)
 
     def _wrap_tool(tname: str, t) -> None:
         props_schema = t.parameters.setdefault("properties", {})
@@ -845,8 +1059,27 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
             missing = [k for k in required if k not in args]
             if missing:
                 return await bad(f"Missing required argument(s) for {tname}: {', '.join(missing)}.")
+            places_done: list[dict] = []
+            if tname in place_resolution.LOC_ARGS or tname in place_resolution.LOC_LIST_ARGS:
+                args, places_done, failure = await place_resolution.resolve_arguments(tname, args, places_fetch)
+                if failure and failure.get("outside_site"):
+                    return await outside_site_answer(tname, failure)
+                if failure:
+                    cands = failure.get("candidates") or []
+                    hint = ("Pick the one the user most likely means and retry with it, e.g. target=\"" +
+                            str(cands[0].get("ref")) + "\"." if cands else "Ask the user for a place name or coordinates.")
+                    return await err(failure.get("explanation") or f"I could not place \"{failure.get('query')}\".", hint)
+            tok = place_resolution.current.set(places_done)
             try:
-                return await orig(args, context, convert_result=convert_result)
+                res = await orig(args, context, convert_result=convert_result)
+                if places_done and isinstance(res, CallToolResult):
+                    note = place_resolution.notes_text(places_done)
+                    if note and res.content and hasattr(res.content[0], "text"):
+                        res.content[0].text += "\n" + note
+                    if isinstance(res.structured_content, dict):
+                        res.structured_content["places_resolved"] = [
+                            {k: d[k] for k in ("arg", "query", "kind", "explanation", "ref", "chosen")} for d in places_done]
+                return res
             except ToolError as e:
                 if not isinstance(e.__cause__, ValidationError):
                     raise
@@ -859,6 +1092,8 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
                     got = args.get(name)
                     parts.append(f'"{name}" has the wrong type or form (got {_describe_type(got)}): {ve["msg"]}')
                 return await bad(f"Invalid argument(s) for {tname}. " + " ".join(parts))
+            finally:
+                place_resolution.current.reset(tok)
         object.__setattr__(t, "run", run)
 
     for _t in list(mcp._tool_manager.list_tools()):

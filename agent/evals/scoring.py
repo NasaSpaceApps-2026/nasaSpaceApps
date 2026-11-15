@@ -239,6 +239,19 @@ def check_reply(reply: str, checks: dict) -> list[str]:
     return fails
 
 
+JARGON_RE = re.compile(r"\b(?:set:\d+(?:\.\d+)?|poi:\w+|marker:\w+|route-\d+|slope_2m|rough_5x5|tpi_\w+|local_relief_\w+|"
+                       r"strong_orbital|weak_orbital|confirmed_in_situ|inferred_from_unit|not_detected|no_coverage|"
+                       r"blocked_slope|blocked_hazard|stopped_by_user|out_of_bounds|crew_buggy|rover_scout|crew_rover|"
+                       r"[a-z]+_[a-z0-9]+(?:_[a-z0-9]+)+)\b")
+
+
+def jargon_in_reply(reply: str) -> list[str]:
+    """Raw ids and internal names in a reply (set:3, slope_2m, strong_orbital, poi:..., snake_case). A SOFT check: the
+    copilot should say 'the delta front' and 'seen from orbit', not these. Returns the distinct offenders."""
+    text = reply.replace("`", "")
+    return sorted({m.group(0) for m in JARGON_RE.finditer(text)})
+
+
 @dataclass
 class Score:
     """Result of scoring one case: pass/skip flags for tools, numbers and reply checks, failure messages and the tool path taken."""
@@ -252,6 +265,7 @@ class Score:
     ungrounded: list[str] = field(default_factory=list)
     tool_names: list[str] = field(default_factory=list)
     n_tool_calls: int = 0
+    warnings: list[str] = field(default_factory=list)   # soft checks (do not affect `passed`)
 
 
 def score_session(case: dict, s: Session, always_allowed: Iterable[str] = (),
@@ -290,5 +304,8 @@ def score_session(case: dict, s: Session, always_allowed: Iterable[str] = (),
         sc.numbers_ok = not sc.ungrounded
         if sc.ungrounded:
             sc.failures.append("numbers not found in any tool result: " + ", ".join(sc.ungrounded))
+    jg = jargon_in_reply(s.reply)
+    if jg and not case.get("checks", {}).get("allow_jargon"):
+        sc.warnings.append("jargon in reply (raw ids): " + ", ".join(jg))
     sc.passed = sc.tool_ok and sc.numbers_ok and sc.checks_ok and not s.error and s.stop_reason is not None
     return sc

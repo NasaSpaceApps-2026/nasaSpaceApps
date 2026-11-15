@@ -124,7 +124,7 @@ def test_schemas_have_enums_and_item_schemas():
     assert p["within"]["properties"]["metric"]["enum"] == ["straight_m", "walk_m", "walk_time_min"]
     assert "best_evidence" in p["objective"]["pattern"]
     assert sch["nearest"]["properties"]["metric"]["enum"]
-    assert sch["set_view"]["properties"]["mode"]["enum"] == ["globe", "orbit", "chase", "ground"]
+    assert sch["set_view"]["properties"]["mode"]["enum"] == ["globe", "planet", "orbit", "chase", "ground"]
     assert sch["fly_camera"]["properties"]["mode"]["enum"]
     assert sch["plan_route"]["properties"]["profile"]["enum"] == ["rover_scout", "crew_buggy", "crew_rover", "eva_walkable"]
     for name, prop in (("describe_location", "at"), ("plan_route", "goal"), ("goto_location", "target"),
@@ -142,7 +142,7 @@ def test_follow_route_default_is_latest_planned_and_says_so():
         await c.call_tool("teleport_rover", {"x": 0, "y": 0})
         await c.call_tool("fsd_enable", {"route_id": "route-1"})
         await c.call_tool("plan_route", {"goal": {"x": 0, "y": 40}, "start": {"x": 0, "y": 0}})
-        return await c.call_tool("follow_route", {})
+        return await c.call_tool("follow_route", {"wait": True, "animate": False})
     r = run(f)
     assert not r.is_error, text(r)
     assert "route-2" in text(r) and "most recently planned" in text(r)
@@ -153,7 +153,7 @@ def test_follow_route_not_at_start_offers_teleport_with_coordinates():
     async def f(c):
         await c.call_tool("plan_route", {"goal": {"x": 40, "y": 0}, "start": {"x": 0, "y": 0}})
         await c.call_tool("teleport_rover", {"x": 50, "y": -50})
-        return await c.call_tool("follow_route", {"route_id": "route-1"})
+        return await c.call_tool("follow_route", {"wait": True, "animate": False, "wait": True, "animate": False, "route_id": "route-1"})
     r = run(f)
     assert r.is_error and "teleport_rover(x=0, y=0)" in text(r) and "goto_location(x=0, y=0)" in text(r)
 

@@ -138,7 +138,7 @@ def test_select_vehicle_lists_and_switches():
 def test_buggy_limits_come_from_the_api_not_the_tool():
     server, app = make_server()
     lim = app.state.world.site.profiles["crew_buggy"]["travel"]
-    r, = _seq(("drive_to", {"target": "poi:landing", "vehicle": "buggy"}))
+    r, = _seq(("drive_to", {"wait": True, "animate": False, "target": "poi:landing", "vehicle": "buggy"}))
     got = r.structured_content["limits"]
     assert got["max_slope_deg"] == lim["max_slope_deg"]["value"]
     assert got["flat_speed_mps"] == lim["flat_speed_mps"]["value"]
@@ -146,7 +146,7 @@ def test_buggy_limits_come_from_the_api_not_the_tool():
 
 
 def test_drive_to_buggy_arrives_and_reports_everything():
-    sel, r, st = _seq(("select_vehicle", {}), ("drive_to", {"target": "poi:landing", "vehicle": "buggy"}),
+    sel, r, st = _seq(("select_vehicle", {}), ("drive_to", {"wait": True, "animate": False, "target": "poi:landing", "vehicle": "buggy"}),
                       ("get_rover_state", {}))
     sc = r.structured_content
     assert not r.is_error and sc["vehicle"] == "crew_buggy" and sc["driven"] and sc["stop_reason"] == "arrived"
@@ -157,7 +157,7 @@ def test_drive_to_buggy_arrives_and_reports_everything():
 
 
 def test_drive_to_other_start_teleports_first_and_says_so():
-    r, st = _seq(("drive_to", {"target": "base", "start": "poi:landing", "vehicle": "buggy"}), ("get_rover_state", {}))
+    r, st = _seq(("drive_to", {"wait": True, "animate": False, "target": "base", "start": "poi:landing", "vehicle": "buggy"}), ("get_rover_state", {}))
     sc = r.structured_content
     assert sc["repositioned"] == "teleport" and sc["driven"]
     assert any("teleport" in n and "no simulated time" in n for n in sc["notes"])
@@ -166,15 +166,15 @@ def test_drive_to_other_start_teleports_first_and_says_so():
 
 
 def test_drive_to_reposition_drive_and_none():
-    r, = _seq(("drive_to", {"target": "base", "start": "poi:landing", "vehicle": "buggy", "reposition": "drive"}))
+    r, = _seq(("drive_to", {"wait": True, "animate": False, "target": "base", "start": "poi:landing", "vehicle": "buggy", "reposition": "drive"}))
     sc = r.structured_content
     assert sc["repositioned"] == "drive" and sc["driven"] and any("Drove" in n and "start first" in n for n in sc["notes"])
-    r, = _seq(("drive_to", {"target": "base", "start": "poi:landing", "reposition": "sideways"}))
+    r, = _seq(("drive_to", {"wait": True, "animate": False, "target": "base", "start": "poi:landing", "reposition": "sideways"}))
     assert r.is_error and "reposition" in text(r)
 
 
 def test_drive_to_infeasible_goal_does_not_move():
-    r, st = _seq(("drive_to", {"target": {"x": 107, "y": -49}, "vehicle": "buggy"}), ("get_rover_state", {}))
+    r, st = _seq(("drive_to", {"wait": True, "animate": False, "target": {"x": 107, "y": -49}, "vehicle": "buggy"}), ("get_rover_state", {}))
     sc = r.structured_content
     assert not r.is_error and sc["feasible"] is False and sc["driven"] is False
     assert "NOT DRIVEN" in text(r)
@@ -182,7 +182,7 @@ def test_drive_to_infeasible_goal_does_not_move():
 
 
 def test_drive_to_highest_flags_unreachable_summit_and_uses_reachable_point():
-    r, = _seq(("drive_to", {"vehicle": "buggy", "highest_within_m": 200}))
+    r, = _seq(("drive_to", {"wait": True, "animate": False, "vehicle": "buggy", "highest_within_m": 200}))
     sc = r.structured_content
     h = sc["highest"]
     assert sc["driven"] and h["true_summit_reached"] is False
@@ -194,14 +194,14 @@ def test_drive_to_highest_flags_unreachable_summit_and_uses_reachable_point():
 
 
 def test_drive_to_highest_true_summit_when_reachable():
-    r, = _seq(("drive_to", {"vehicle": "buggy", "highest_within_m": 60}))
+    r, = _seq(("drive_to", {"wait": True, "animate": False, "vehicle": "buggy", "highest_within_m": 60}))
     sc = r.structured_content
     assert sc["highest"]["true_summit_reached"] is True and "true highest cell" in text(r)
 
 
 def test_drive_to_scout_to_point_and_state_changes_vehicle():
     server, app = make_server()
-    r, st = _seq(("drive_to", {"target": {"x": 40, "y": -20}, "vehicle": "scout"}), ("get_rover_state", {}))
+    r, st = _seq(("drive_to", {"wait": True, "animate": False, "target": {"x": 40, "y": -20}, "vehicle": "scout"}), ("get_rover_state", {}))
     sc = r.structured_content
     assert sc["vehicle"] == "rover_scout" and sc["stop_reason"] == "arrived"
     assert sc["limits"]["max_slope_deg"] == app.state.world.site.profiles["rover_scout"]["travel"]["max_slope_deg"]["value"] \
@@ -213,14 +213,14 @@ def test_drive_to_scout_to_point_and_state_changes_vehicle():
 def test_drive_to_needs_target_or_radius_and_clamps_slope():
     r = _call("drive_to")
     assert r.is_error and "highest_within_m" in text(r)
-    r = _call("drive_to", target="poi:landing", vehicle="buggy", max_slope_deg=80)
+    r = _call("drive_to", wait=True, animate=False, target="poi:landing", vehicle="buggy", max_slope_deg=80)
     assert any("looser" in n for n in r.structured_content["notes"])
-    r = _call("drive_to", target="poi:landing", max_slope_deg=5)
+    r = _call("drive_to", wait=True, animate=False, target="poi:landing", max_slope_deg=5)
     assert r.structured_content["slope_limit_used_deg"] == 5
 
 
 def test_drive_to_fsd_is_disarmed_again():
-    r, st = _seq(("drive_to", {"target": "poi:landing", "fsd": True}), ("get_rover_state", {}))
+    r, st = _seq(("drive_to", {"wait": True, "animate": False, "target": "poi:landing", "fsd": True}), ("get_rover_state", {}))
     assert r.structured_content["driven"] and st.structured_content["fsd_armed"] is False
 
 
@@ -260,7 +260,7 @@ def test_fsd_status_shows_limits_and_filled_policy():
 
 
 def test_drive_to_defaults_to_fsd_caution_and_reports_filled_fields():
-    r, st = _seq(("drive_to", {"target": "poi:landing", "vehicle": "buggy"}), ("get_rover_state", {}))
+    r, st = _seq(("drive_to", {"wait": True, "animate": False, "target": "poi:landing", "vehicle": "buggy"}), ("get_rover_state", {}))
     sc = r.structured_content
     assert sc["fsd"] is True and sc["filled_policy"] == "caution" and sc["driven"]
     assert sc["filled_crossed_m"] == 0 and sc["route"]["filled_policy"] == "caution"
@@ -269,13 +269,13 @@ def test_drive_to_defaults_to_fsd_caution_and_reports_filled_fields():
 
 @pytest.mark.parametrize("pol", ["block", "allow"])
 def test_drive_to_filled_option_and_fsd_false(pol):
-    r = _call("drive_to", target="poi:landing", vehicle="buggy", filled=pol, fsd=False)
+    r = _call("drive_to", wait=True, animate=False, target="poi:landing", vehicle="buggy", filled=pol, fsd=False)
     assert r.structured_content["filled_policy"] == pol and r.structured_content["fsd"] is False
     assert r.structured_content["stop_reason"] == "arrived"
 
 
 def test_drive_to_bad_filled_is_an_error():
-    r = _call("drive_to", target="poi:landing", filled="sometimes")
+    r = _call("drive_to", wait=True, animate=False, target="poi:landing", filled="sometimes")
     assert r.is_error
 
 

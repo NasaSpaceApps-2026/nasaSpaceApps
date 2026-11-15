@@ -60,7 +60,7 @@ cd web/src/rover/sandbox && npm run dev -- --open '/?world=olympus'
 
 ## Jezero Cesium site viewer (port 5173)
 
-Close-up site / orbit / ground / rover cameras (not the planet pegman flow):
+Close-up Jezero view (the viewer now opens on Mars; use the Jezero tab, key 2, or this URL):
 
 ```sh
 cd web && VITE_SITE_DIR=../contracts/fixtures npm run dev

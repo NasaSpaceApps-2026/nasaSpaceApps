@@ -71,7 +71,7 @@ def test_lists_tools_and_descriptions():
         "stop_rover", "set_view", "list_markers", "place_marker", "find_sites", "teleport_rover", "fly_camera",
         "viewshed", "line_of_sight", "find_vantage_points",
         "flood_at_level", "eva_envelope", "check_eva_return",
-        "sun_position", "illumination_at", "find_lit_windows", "select_vehicle", "drive_to"}
+        "sun_position", "illumination_at", "find_lit_windows", "select_vehicle", "drive_to", "get_drive_progress"}
     for name, t in tools.items():
         assert "Example" in t.description, name
         assert len(t.description) > 80, name
@@ -237,12 +237,12 @@ def test_find_sites_search_pois_science_profile():
 def test_rover_tools_drive_and_stop_reasons():
     async def f(c):
         s0 = await c.call_tool("get_rover_state", {})
-        d = await c.call_tool("drive_rover", {"distance_m": 300, "heading_deg": 90})
+        d = await c.call_tool("drive_rover", {"wait": True, "animate": False, "wait": True, "animate": False, "distance_m": 300, "heading_deg": 90})
         fs = await c.call_tool("fsd_status", {})
         t = await c.call_tool("teleport_rover", {"target": "poi:landing", "heading_deg": 90})
-        g = await c.call_tool("goto_location", {"x": 80, "y": -50})
-        bad = await c.call_tool("goto_location", {"x": 106, "y": -50})
-        none = await c.call_tool("goto_location", {})
+        g = await c.call_tool("goto_location", {"wait": True, "animate": False, "wait": True, "animate": False, "x": 80, "y": -50})
+        bad = await c.call_tool("goto_location", {"wait": True, "animate": False, "wait": True, "animate": False, "x": 106, "y": -50})
+        none = await c.call_tool("goto_location", {"wait": True, "animate": False})
         tb = await c.call_tool("teleport_rover", {"x": 106, "y": -50})
         sp = await c.call_tool("stop_rover", {})
         return s0, d, fs, t, g, bad, none, tb, sp
@@ -269,9 +269,9 @@ def test_follow_route_with_fsd_replan_through_mcp():
     async def f(c):
         await c.call_tool("teleport_rover", {"x": 60, "y": -100})
         en = await c.call_tool("fsd_enable", {"route_id": "route-90"})
-        r = await c.call_tool("follow_route", {})
+        r = await c.call_tool("follow_route", {"wait": True, "animate": False})
         new_id = r.structured_content["new_route"]["route_id"]
-        r2 = await c.call_tool("follow_route", {"route_id": new_id})
+        r2 = await c.call_tool("follow_route", {"wait": True, "animate": False, "wait": True, "animate": False, "route_id": new_id})
         fs = await c.call_tool("fsd_disable", {})
         return en, r, r2, fs
     en, r, r2, fs = run(f, app)
