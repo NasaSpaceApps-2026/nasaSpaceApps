@@ -9,6 +9,7 @@
  */
 
 import * as THREE from 'three';
+import sandUrl from './mars_sand.jpg';
 import {
   ChaseCamera,
   BUGGY_PARAMS,
@@ -104,12 +105,102 @@ async function fetchProfile(): Promise<RoverProfile> {
   }
 }
 
-function buildTerrain(manifest: Manifest, sampler: TileHeightSampler, level: number, stride = 2): THREE.Group {
+/** Repeating sand from a real Mastcam frame. The normal map is what makes grains catch the sun. */
+function marsGrit(): { color: THREE.Texture; normal: THREE.Texture } {
+  const loader = new THREE.TextureLoader();
+  const color = loader.load(sandUrl);
+  color.colorSpace = THREE.SRGBColorSpace;
+  color.wrapS = color.wrapT = THREE.RepeatWrapping;
+  color.anisotropy = 8;
+  const s = 256;
+  const flat = new Uint8Array(s * s * 4);
+  for (let i = 0; i < s * s; i++) {
+    flat[i * 4] = 128;
+    flat[i * 4 + 1] = 128;
+    flat[i * 4 + 2] = 255;
+    flat[i * 4 + 3] = 255;
+  }
+  const normal = new THREE.DataTexture(flat, s, s);
+  normal.wrapS = normal.wrapT = THREE.RepeatWrapping;
+  normal.colorSpace = THREE.NoColorSpace;
+  normal.flipY = false;
+  normal.needsUpdate = true;
+  const image = new Image();
+  image.onload = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = s;
+    canvas.height = s;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(image, 0, 0, s, s);
+    const src = ctx.getImageData(0, 0, s, s).data;
+    const h = new Float32Array(s * s);
+    for (let i = 0; i < s * s; i++) h[i] = (src[i * 4] + src[i * 4 + 1] + src[i * 4 + 2]) / (3 * 255);
+    const out = new Uint8Array(s * s * 4);
+    const strength = 3.2;
+    for (let y = 0; y < s; y++) {
+      for (let x = 0; x < s; x++) {
+        const left = h[y * s + (x + s - 1) % s];
+        const right = h[y * s + (x + 1) % s];
+        const up = h[((y + s - 1) % s) * s + x];
+        const down = h[((y + 1) % s) * s + x];
+        let nx = (left - right) * strength;
+        let ny = (up - down) * strength;
+        let nz = 1;
+        const len = Math.hypot(nx, ny, nz) || 1;
+        nx /= len; ny /= len; nz /= len;
+        const i = (y * s + x) * 4;
+        out[i] = (nx * 0.5 + 0.5) * 255;
+        out[i + 1] = (ny * 0.5 + 0.5) * 255;
+        out[i + 2] = (nz * 0.5 + 0.5) * 255;
+        out[i + 3] = 255;
+      }
+    }
+    normal.image = { data: out, width: s, height: s };
+    normal.needsUpdate = true;
+  };
+  image.src = sandUrl;
+  return { color, normal };
+}
+
+const GRIT = marsGrit();
+
+function terrainMaterial(tex: THREE.Texture, tileM: number): THREE.MeshStandardMaterial {
+  // One copy of the sand photo every 2.5 m, on top of the unique satellite colour.
+  const copies = Math.max(1, tileM / 2.5);
+  GRIT.color.repeat.set(copies, copies);
+  GRIT.normal.repeat.set(copies, copies);
+  const mat = new THREE.MeshStandardMaterial({
+    map: tex,
+    normalMap: GRIT.normal,
+    normalScale: new THREE.Vector2(0.9, 0.9),
+    roughness: 0.96,
+    metalness: 0,
+    toneMapped: false,
+  });
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.detailMap = { value: GRIT.color };
+    shader.fragmentShader = 'uniform sampler2D detailMap;\n' + shader.fragmentShader;
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <map_fragment>',
+      `#include <map_fragment>
+      {
+        vec3 grit = texture2D(detailMap, vMapUv * ${copies.toFixed(3)}).rgb;
+        float gritL = dot(grit, vec3(0.299, 0.587, 0.114));
+        diffuseColor.rgb *= 0.78 + 0.45 * gritL;
+      }`,
+    );
+  };
+  return mat;
+}
+
+function buildTerrain(manifest: Manifest, sampler: TileHeightSampler, level: number): THREE.Group {
   const group = new THREE.Group();
   group.name = 'terrain';
   const ortho = manifest.layers.find((l) => l.id === 'ortho');
   const useOrtho = !!ortho && ortho.max_level >= level;
   const loader = new THREE.TextureLoader();
+  const tileM = manifest.size_m / 2 ** level;
   const n = 2 ** level;
   for (let ty = 0; ty < n; ty++) {
     for (let tx = 0; tx < n; tx++) {
@@ -117,6 +208,9 @@ function buildTerrain(manifest: Manifest, sampler: TileHeightSampler, level: num
       if (!data) continue;
       const px = Math.round(Math.sqrt(data.length));
       const b = tileBounds(manifest.size_m, level, tx, ty);
+      // Keep posts that are already about 2 m. Coarser tiles use every post.
+      const postM = b.size / (px - 1);
+      const stride = postM > 1.2 ? 1 : 2;
       const m = Math.floor((px - 1) / stride);
       const verts = (m + 1) * (m + 1);
       const pos = new Float32Array(verts * 3);
@@ -155,11 +249,9 @@ function buildTerrain(manifest: Manifest, sampler: TileHeightSampler, level: num
       if (useOrtho) {
         const tex = loader.load(`${BASE}/tiles/ortho/${level}/${tx}/${ty}.webp`);
         tex.colorSpace = THREE.SRGBColorSpace;
-        tex.anisotropy = 4;
+        tex.anisotropy = 16;
         tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
-        // Imagery already carries shading; draw it unlit so we do not shade it twice.
-        // toneMapped: false keeps the imagery's own colours under ACES tone mapping.
-        mat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
+        mat = terrainMaterial(tex, tileM);
       } else {
         mat = new THREE.MeshLambertMaterial({ color: 0x9b8a78 });
       }
