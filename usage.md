@@ -16,8 +16,8 @@ cd web && VITE_SITE_DIR=../contracts/fixtures npm run dev -- --open '/?view=plan
 
 In that window:
 
-1. The globe is Mars, with **Jezero fan** and **Olympus Mons scarp** labels.
-2. Press **Drive** next to a name. That enters the rover on that patch in the same window. Or drag the yellow pegman onto the patch. A drop outside a patch stays on the planet.
+1. The globe is Mars, with **Jezero fan** and **Olympus Mons scarp** labels. Top bar: **Mars** / **Jezero** (site analysis) / **Mons** (Olympus street view).
+2. Click a pin and press **Explore Jezero** or **Explore Mons** for that patch’s HiRISE street view (not the grey fixture site). Or drag the yellow pegman onto the patch.
 3. Drive with the arrow keys or W/S. Steer with the left and right arrows or A/D. Boost is Shift, brake is Space, reset is R.
 4. **Map** returns to the globe.
 

@@ -28,7 +28,7 @@ interface Props {
 const MODES: { id: Mode; label: string; hint: string; key: string }[] = [
   { id: 'mars', label: 'Mars', hint: 'Planet globe', key: '1' },
   { id: 'jezero', label: 'Jezero', hint: 'Site analysis: terrain, imagery, copilot highlights', key: '2' },
-  { id: 'drive', label: 'Drive', hint: 'Street view with the buggy', key: '3' },
+  { id: 'drive', label: 'Mons', hint: 'Olympus Mons scarp street view with the buggy', key: '3' },
 ]
 
 const Icon = ({ d }: { d: string }) => (
@@ -119,12 +119,12 @@ export function TopBar({ mode, ready, onMode, query, hits, onSearch, onPick, lay
             <div className="popover" role="dialog" aria-label="Controls">
               <h3>Controls</h3>
               <dl className="keys">
-                <dt>1 / 2 / 3</dt><dd>Mars / Jezero / Drive</dd>
+                <dt>1 / 2 / 3</dt><dd>Mars / Jezero / Mons</dd>
                 <dt>Drag</dt><dd>Rotate the globe or site</dd>
                 <dt>Right-drag</dt><dd>Tilt</dd>
                 <dt>Wheel</dt><dd>Zoom</dd>
-                <dt>W A S D</dt><dd>Drive the buggy (Drive); arrow keys also work</dd>
-                <dt>R</dt><dd>Reset the buggy (Drive)</dd>
+                <dt>W A S D</dt><dd>Drive the buggy (street view); arrow keys also work</dd>
+                <dt>R</dt><dd>Reset the buggy (street view)</dd>
                 <dt>Esc</dt><dd>Close this popover</dd>
               </dl>
               <p className="note">Imagery is false colour. Slope limits and walking speeds are assumed values, not mission data.</p>
