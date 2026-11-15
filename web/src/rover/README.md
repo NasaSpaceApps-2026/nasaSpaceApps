@@ -14,7 +14,7 @@ npm run build      # tsc --noEmit + vite build
 
 The sandbox serves `contracts/fixtures/` as its public dir. It decodes the height tiles itself, builds a displaced mesh with the `ortho` tile draped on it, and adds the rover, the chase camera and a HUD. If `http://localhost:8000/site` is reachable it reads `profiles.rover_scout` and `speed_curve.k` from it. Otherwise it uses built-in defaults (0.04 m/s, x200, caution 15 deg, no-go 20 deg, k 3.5), and the HUD labels them "assumed". The API WebSocket is optional: the link retries with backoff and driving works offline.
 
-Query params: `?base=<tiles+manifest URL>` (for example `http://localhost:8000` once the API serves `/tiles`), `?api=`, `?level=`, `?x=&y=&heading=`. The default start is (100, -60) facing east. Hold W to drive into the fixture scarp at x ~180: the rover slows above 15 deg and stops with `blocked_slope` before 20 deg.
+Query params: `?base=<tiles+manifest URL>` (for example `http://localhost:8000` once the API serves `/tiles`), `?api=`, `?level=`, `?x=&y=&heading=`, `?world=projection` (Navcam drape, frozen heights), `?world=vision` (vision-loop edits; `llm` is the same). With no `world`, the server's site is unchanged: the playground when `api/fixtures/playground/manifest.json` exists, otherwise `contracts/fixtures`. The page links in the top right switch worlds. The default start is (100, -60) facing east. Hold W to drive into the fixture scarp at x ~180: the rover slows above 15 deg and stops with `blocked_slope` before 20 deg.
 
 Keys: W/S or Up/Down drive, A/D or Left/Right turn, mouse wheel zooms, R resets.
 
