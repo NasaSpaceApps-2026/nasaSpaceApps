@@ -96,6 +96,8 @@ def create_app(site: Site | None = None, synthetic: bool | None = None, traverse
     from .routes_envelope import router as _eva_router
     app.include_router(_lake_router)    # /lake/*
     app.include_router(_eva_router)     # /eva/*
+    from .routes_overlay import make_router as _overlay_router
+    app.include_router(_overlay_router(site, traverse))   # /overlay/*, /traverse.geojson
 
     # ---- errors ---------------------------------------------------------------------------------
     @app.exception_handler(AtlasError)
