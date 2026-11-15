@@ -12,8 +12,9 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-# Assumed mean chromaticity of the Jezero surface relative to green (typical tan-orange Mars dust).
-ANCHOR = np.array([1.00, 0.76, 0.58], dtype=np.float32)
+# Assumed mean chromaticity of the Jezero surface relative to green (rusty Mars dust, globe-matched).
+STREET_ANCHOR = np.array([1.00, 0.42, 0.28], dtype=np.float32)
+ANCHOR = STREET_ANCHOR
 VARIATION = 0.6   # strength of the redness variation taken from Viking (z-score of R/B, clipped)
 AXIS = np.array([0.10, 0.0, -0.14], dtype=np.float32)  # redder = more R, less B; never green/magenta
 BRIGHTEN = 1.3    # HiRISE ortho DN are dark (mean about 0.4); lift for display only
