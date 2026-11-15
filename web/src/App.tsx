@@ -26,6 +26,13 @@ function ensureRover(v: Cesium.Viewer, s: Site): CesiumRover {
   return roverCtl
 }
 
+function releaseRover() {
+  if (!roverCtl) return
+  roverCtl.dispose()
+  roverCtl = null
+  delete (window as unknown as { __rover?: CesiumRover }).__rover
+}
+
 function pickMarsLatLon(viewer: Cesium.Viewer, clientX: number, clientY: number): { latDeg: number; lonDeg: number } | null {
   const rect = viewer.canvas.getBoundingClientRect()
   const win = new Cesium.Cartesian2(clientX - rect.left, clientY - rect.top)
@@ -287,6 +294,7 @@ export default function App() {
       setStatus('No street view here')
       return
     }
+    releaseRover()
     setStreetDrop(drop)
     setSurfaceView('street')
     resetPegman(pegRef.current)
@@ -375,7 +383,8 @@ export default function App() {
 
 /** Mouse controls per camera mode. Ground = first-person look; orbit/site = rotate planet + tilt. */
 function applyControls(v: Cesium.Viewer, mode: Mode, s?: Site) {
-  if (mode === 'rover' && s) ensureRover(v, s)
+  if (mode === 'planet') releaseRover()
+  else if (s) ensureRover(v, s)
   roverCtl?.setChase(mode === 'rover')
   const c = v.scene.screenSpaceCameraController
   const T = Cesium.CameraEventType, K = Cesium.KeyboardEventModifier
