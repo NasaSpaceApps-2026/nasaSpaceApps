@@ -6,7 +6,7 @@ Optional Cesium ion token for the higher-resolution Mars tileset: put `VITE_CESI
 
 ## Planet and street view (one window)
 
-One command. The planet server also starts the rover sandbox on port 5174. Do not open that sandbox URL; it is the street-view page inside the globe. Bare `http://localhost:5173/` is the close-up Jezero site, not the planet. Use `?view=planet`.
+One command. Stop any dev server already running on port 5173 or 5174 first. An old process keeps the previous page, and the new one never takes the port. Do not start `web/src/rover/sandbox` yourself, and do not open `localhost:5174`. The planet server starts that sandbox, and street view is the page inside the globe. Bare `http://localhost:5173/` is the close-up Jezero site, not the planet. Use `?view=planet`.
 
 ```sh
 cd web && VITE_SITE_DIR=../contracts/fixtures npm run dev -- --open '/?view=planet'
@@ -15,15 +15,14 @@ cd web && VITE_SITE_DIR=../contracts/fixtures npm run dev -- --open '/?view=plan
 In that window:
 
 1. The globe is Mars, with **Jezero fan** and **Olympus Mons scarp** labels.
-2. **Drive** next to a name enters the rover on that patch. Or drag the yellow pegman onto the patch. A drop outside a patch stays on the planet.
-3. **Map** returns to the globe.
+2. Press **Drive** next to a name. That enters the rover on that patch in the same window. Or drag the yellow pegman onto the patch. A drop outside a patch stays on the planet.
+3. Drive with the arrow keys or W/S. Steer with the left and right arrows or A/D. Boost is Shift, brake is Space, reset is R.
+4. **Map** returns to the globe.
 
 | Place | Street-view world | Size |
 |---|---|---|
 | Jezero fan | `crater` | 1.8 km |
 | Olympus Mons scarp | `olympus` | ~2.2 km |
-
-Drive with the arrow keys or W/S. Steer with the left and right arrows or A/D. Boost is Shift, brake is Space, reset is R.
 
 ## Rover sandbox alone (port 5174)
 
