@@ -19,6 +19,7 @@ let roverCtl: CesiumRover | null = null // set once the viewer is up; used by fl
 let placesCtl: PlacesLayer | null = null
 let marsTileset: Cesium.Cesium3DTileset | null = null
 let bubblePrimitives: Cesium.GroundPrimitive[] = []
+let siteImageryShown: boolean[] | null = null
 let roverPoseHud: ((p: DriverPose) => void) | null = null
 
 function ensureRover(v: Cesium.Viewer, s: Site): CesiumRover {
@@ -99,7 +100,8 @@ export default function App() {
         selectionIndicator: false,
       })
       const scene = v.scene
-      scene.globe.baseColor = Cesium.Color.TRANSPARENT // outside the site the Mars tileset shows
+      // Rust, not transparent: with no ion token this is the whole planet. The tileset hides the globe.
+      scene.globe.baseColor = Cesium.Color.fromCssColorString('#8c3d28')
       scene.globe.showGroundAtmosphere = false
       // Sky: Cesium's atmosphere shader doesn't draw below the sphere surface (the Jezero floor is
       // ~2.5 km under it), so tint the background directly: dusty tan at the ground, black in space.
@@ -301,6 +303,7 @@ export default function App() {
     releaseRover()
     setStreetDrop(drop)
     setSurfaceView('street')
+    setStatus(`Street view · ${drop.world}`)
     resetPegman(pegRef.current)
   }
 
@@ -435,6 +438,24 @@ function applySiteTilesetClip(ts: Cesium.Cesium3DTileset, s: Site) {
   })
 }
 
+function hideSiteImagery(v: Cesium.Viewer) {
+  if (siteImageryShown) return
+  siteImageryShown = []
+  const layers = v.imageryLayers
+  for (let i = 0; i < layers.length; i++) {
+    const layer = layers.get(i)
+    siteImageryShown.push(layer.show)
+    layer.show = false
+  }
+}
+
+function restoreSiteImagery(v: Cesium.Viewer) {
+  if (!siteImageryShown) return
+  const layers = v.imageryLayers
+  for (let i = 0; i < layers.length; i++) layers.get(i).show = siteImageryShown[i] ?? false
+  siteImageryShown = null
+}
+
 function clearPlanetBubbles(v: Cesium.Viewer) {
   for (const prim of bubblePrimitives) {
     v.scene.primitives.remove(prim)
@@ -480,6 +501,7 @@ function fly(v: Cesium.Viewer, s: Site, mode: Mode, duration: number) {
     v.scene.globe.clippingPlanes = undefined as unknown as Cesium.ClippingPlaneCollection
     if (marsTileset) marsTileset.clippingPolygons = undefined as unknown as Cesium.ClippingPolygonCollection
     v.scene.globe.show = !marsTileset
+    hideSiteImagery(v)
     showPlanetBubbles(v)
     v.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(150, 18.65, 4_000_000, SPHERE),
@@ -490,6 +512,7 @@ function fly(v: Cesium.Viewer, s: Site, mode: Mode, duration: number) {
   }
   clearPlanetBubbles(v)
   v.scene.globe.show = true
+  restoreSiteImagery(v)
   applySiteGlobeClip(v.scene, s)
   if (marsTileset) applySiteTilesetClip(marsTileset, s)
   if (String(mode).startsWith('alt:')) {
