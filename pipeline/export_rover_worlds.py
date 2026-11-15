@@ -153,21 +153,38 @@ def export_worlds(repo: Path, out_root: Path) -> None:
         write_site(out_root / name, site, title, credit, elev, texture, grid)
 
 
+def _from_drive(drive: Path) -> tuple[np.ndarray, Image.Image, dict]:
+    header = json.loads((drive / "height.json").read_text())
+    raw = np.fromfile(drive / "height.u16", dtype="<u2")
+    elev = float(header["base"]) + 0.01 * raw.reshape(int(header["height"]), int(header["width"])).astype(np.float64)
+    texture = Image.open(drive / "texture.png").convert("RGB")
+    return elev, texture, header
+
+
 def export_crater(repo: Path, out_root: Path) -> None:
-    """The larger colourised HiRISE patch, when that bundle has been built."""
+    """The larger colourised HiRISE patch, when that bundle has been built.
+
+    A finished vision run in jezero_crater_vision replaces the baseline heights.
+    """
     bundle = repo / "contracts" / "fixtures" / "jezero_crater"
-    dem_path = bundle / "dem.npy"
-    if not dem_path.exists():
+    vision = repo / "contracts" / "fixtures" / "jezero_crater_vision" / "drive"
+    if not (bundle / "dem.npy").exists() and not (vision / "height.u16").exists():
         return
-    dem = np.load(dem_path)
-    texture = Image.open(bundle / "ortho.png").convert("RGB")
     grid = json.loads((bundle / "grid.json").read_text())
+    credit = "HiRISE brightness and dirt pattern, Mars orange from the anchored Viking tint"
+    if (vision / "height.u16").exists():
+        dem, texture, header = _from_drive(vision)
+        grid = {**grid, "x0": float(header["x0"]), "y0": float(header["y0"]), "res_m": float(header["res_m"])}
+        credit = credit + ", plus the vision-loop crest bumps"
+    else:
+        dem = np.load(bundle / "dem.npy")
+        texture = Image.open(bundle / "ortho.png").convert("RGB")
     size_m = (dem.shape[1] - 1) * float(grid["res_m"])
     write_site(
         out_root / "crater",
         "jezero_crater",
         "Jezero fan front",
-        "HiRISE brightness and dirt pattern, Mars orange from the anchored Viking tint",
+        credit,
         dem,
         texture,
         grid,
