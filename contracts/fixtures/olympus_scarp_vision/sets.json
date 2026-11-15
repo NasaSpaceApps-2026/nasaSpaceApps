@@ -1,0 +1,25 @@
+{
+  "max_images": 4,
+  "max_position_m": 40.0,
+  "max_direction_deg": 35.0,
+  "sets": [
+    {
+      "id": "set_01",
+      "cameras": [
+        "01_scarp"
+      ],
+      "focus_order": [
+        "01_scarp"
+      ]
+    },
+    {
+      "id": "set_02",
+      "cameras": [
+        "04_overview"
+      ],
+      "focus_order": [
+        "04_overview"
+      ]
+    }
+  ]
+}
