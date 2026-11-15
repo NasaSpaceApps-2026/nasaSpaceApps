@@ -18,29 +18,37 @@ cd web && VITE_SITE_DIR=../contracts/fixtures npm run dev
 
 Default site (playground if present, else the 1 km fixture). Top-right links also switch worlds.
 
+| Link / `?world=` | What you get |
+|---|---|
+| *(omit / default)* | Playground or 1 km fixture |
+| `projection` | 80 m Jezero sol 9 Navcam drape on frozen heights |
+| `vision` (alias `llm`) | 80 m sol 9 vision-loop refine |
+| `crater` | 1.8 km Jezero fan front (HiRISE + vision-loop crest bumps) |
+| `olympus` | ~2.2 km Olympus Mons scarp (HiRISE, Mars orange, vision-loop layer bumps) |
+
 ```sh
 cd web/src/rover/sandbox && npm run dev
 ```
 
-Photo projection (`?world=projection` — 80 m, Navcam drape on frozen heights):
+Photo projection:
 
 ```sh
 cd web/src/rover/sandbox && npm run dev -- --open '/?world=projection'
 ```
 
-Vision loop (`?world=vision` — 80 m sol 9 vision refine; `?world=llm` is the same):
+Vision loop:
 
 ```sh
 cd web/src/rover/sandbox && npm run dev -- --open '/?world=vision'
 ```
 
-Crater / Jezero fan front (`?world=crater` — 1.8 km, HiRISE + vision-loop crest bumps):
+Crater / Jezero fan front:
 
 ```sh
 cd web/src/rover/sandbox && npm run dev -- --open '/?world=crater'
 ```
 
-Olympus Mons scarp (`?world=olympus` — ~2.2 km layered scarp, Mars orange + vision-loop bumps):
+Olympus Mons scarp (explore this one):
 
 ```sh
 cd web/src/rover/sandbox && npm run dev -- --open '/?world=olympus'
