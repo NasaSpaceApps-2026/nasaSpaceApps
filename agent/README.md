@@ -3,6 +3,11 @@
 FastAPI service (port 8766) that runs Claude's tool-calling loop against the Atlas MCP server and streams
 text and tool events as Server-Sent Events. Spec: `docs/scope-c-d.md` (Sameer: tasks 4, 5, 7, 8).
 
+## Quick start
+
+`stack/up.sh` runs the whole chain (API :8000, devapi :8001, MCP :8765, this agent :8766, chat page :5199); the provider
+and key come from the git-ignored `.env`. See `stack/README.md`. The manual steps are below.
+
 ## Run
 
 ```bash

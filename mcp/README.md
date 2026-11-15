@@ -44,6 +44,12 @@ site every text result starts with `[SYNTHETIC TEST SITE - not Mars data]` (stru
 `"synthetic": true`). The `find_sites` description lists the API's search targets if the API is up when the
 server starts.
 
+## Quick start: everything at once
+
+`stack/up.sh` starts Yousef's API (:8000, our real site exported), our `devapi` (:8001), this server over HTTP (:8765),
+the agent (:8766) and the chat page with a live minimap (:5199); `stack/down.sh` stops them. See `stack/README.md`. Which
+site frame each teammate component uses, and which combinations the chatbot can control consistently: `docs/frames.md`.
+
 ## Against Yousef's real API (split backends)
 
 `devapi` stays the query engine on `ATLAS_API_URL`; Yousef's `ares_api` drives the rover. Both must load the same site,

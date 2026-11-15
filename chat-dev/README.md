@@ -8,4 +8,8 @@ Standalone dev page for `web/src/panels/chat/` (the chat panel), so it can be bu
     npm test        # vitest: SSE parser, reducer, formatters
     npm run build   # typecheck + production build
 
-To use the real agent instead of the mock: `.venv/bin/python -m agent` (port 8766).
+The page is the standalone copilot UI: chat on the right; on the left the rover state (API WebSocket `?api=http://localhost:8000`),
+a hillshade minimap with rover, trail, markers, places and the agent's latest results, and a tool-call log. It uses only our
+APIs (`:8000/rover/state`, `/ws`, `/markers`, `:8766`), nothing from `web/` except the chat panel. The default agent is the
+real one on :8766 (`stack/up.sh` starts everything, see `stack/README.md`); `npm run mock` is the offline stand-in on the same port.
+The minimap image comes from `python -m devapi.render_minimap <site_dir> chat-dev/public/minimap` (done by `stack/up.sh`).
