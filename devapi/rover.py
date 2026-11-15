@@ -50,6 +50,7 @@ class Rover:
         self.profile = "rover_scout"
         self.fsd_armed = False
         self.policy = {"replan_on_block": True, "caution_slowdown": True}
+        self.filled_policy = "caution"   # stand-in terrain has no interpolated cells; accepted for API parity
         self.replans_used = 0
         self.last_hazard: dict | None = None
         self.running = False
@@ -83,8 +84,16 @@ class Rover:
             "odometer_m": round(self.odometer, 1), "route_id": self.route_id, "status": self.status,
             "last_event": self.last_event, "fsd_armed": self.fsd_armed,
             "remaining_m": round(self.remaining_m, 1), "profile": self.profile,
-            "sim_elapsed_s": round(self.sim_s, 1),
+            "sim_elapsed_s": round(self.sim_s, 1), **self._limits(),
         }
+
+    def _limits(self) -> dict:
+        """Active vehicle's caution / no-go slopes (the real API reports both in /rover/state and /fsd/status)."""
+        try:
+            prm, _ = R.route_params(self.w.site, self.profile)
+            return {"caution_slope_deg": prm["caution_slope_deg"], "nogo_slope_deg": prm["max_slope_deg"]}
+        except Exception:  # noqa: BLE001
+            return {}
 
     async def _emit(self) -> None:
         await self.w.hub.broadcast("rover.state", self.state())
@@ -96,8 +105,8 @@ class Rover:
         if self.fsd_armed and not self.route_id:
             blockers.append("no active route (plan_route, then follow_route)")
         return {
-            "armed": self.fsd_armed, "mode": self.mode, "policy": dict(self.policy),
-            "replans_used": self.replans_used,
+            "armed": self.fsd_armed, "mode": self.mode, "policy": {**self.policy, "filled": self.filled_policy},
+            **self._limits(), "replans_used": self.replans_used,
             "replans_allowed": 1 if self.policy.get("replan_on_block") else 0,
             "last_hazard": self.last_hazard, "remaining_route_m": round(self.remaining_m, 1),
             "route_id": self.route_id, "latest_planned_route": self.w.last_planned,
@@ -237,7 +246,7 @@ class Rover:
         await self._emit()
         res = {"state": self.state(), "stop_reason": reason, "detail": detail,
                "distance_m": round(travelled, 1), "elapsed_sim_min": round((self.sim_s - sim_s0) / 60.0, 1),
-               "route_id": self.route_id}
+               "route_id": self.route_id, "filled_crossed_m": 0.0}
         if reason.startswith("blocked"):
             res["hint"] = ("Arm FSD (fsd_enable) so a blocked route is replanned once, or plan_route to the same "
                            "goal with a lower max_slope_deg, or pick another direction.")
@@ -326,6 +335,12 @@ class Rover:
             self.replans_used = 0
             pol = body.get("policy")
             if isinstance(pol, dict):
+                pol = dict(pol)
+                if "filled" in pol:
+                    f = pol.pop("filled")
+                    if f not in ("block", "caution", "allow"):
+                        raise AtlasError("policy.filled must be one of block, caution, allow.")
+                    self.filled_policy = f
                 unknown = set(pol) - set(self.policy)
                 if unknown:
                     raise AtlasError(f"Unknown FSD policy key(s): {', '.join(sorted(unknown))}.",

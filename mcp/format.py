@@ -647,7 +647,10 @@ def fmt_rover_state(s: dict) -> str:
             f" Route {s['route_id']}, {num(s['remaining_m'], 0)} m remaining." if s.get("route_id") and s.get("remaining_m")
             else (" No route is being driven (this does not mean none was planned: follow_route and fsd_enable use "
                   "the latest planned route)." if not s.get("route_id") else "")),
-        f"Profile {s['profile']}. Simulated time driven {num(s['sim_elapsed_s'] / 60)} min.")
+        f"Profile {s['profile']}"
+        + (f" (caution above {num(s['caution_slope_deg'])} deg, no-go above {num(s['nogo_slope_deg'])} deg)"
+           if s.get("caution_slope_deg") is not None and s.get("nogo_slope_deg") is not None else "")
+        + f". Simulated time driven {num(s['sim_elapsed_s'] / 60)} min.")
 
 
 _REASON_TEXT = {
@@ -678,6 +681,8 @@ def fmt_command(d: dict) -> str:
         (f"New route {nr['route_id']}: {num(nr['distance_m'], 0)} m, {num(nr['duration_min'])} min, max slope "
          f"{num(nr['max_slope_deg'])} deg. Next: follow_route(\"{nr['route_id']}\").") if nr else None,
         ("Replan failed: " + d["replan_failed"]) if d.get("replan_failed") else None,
+        (f"Crossed {num(d['filled_crossed_m'], 0)} m of interpolated (filled, not measured) terrain.")
+        if d.get("filled_crossed_m") else None,
         ("Note: " + d["note"]) if d.get("note") else None,
         ("Hint: " + d["hint"]) if d.get("hint") else None)
 
@@ -685,10 +690,14 @@ def fmt_command(d: dict) -> str:
 def fmt_fsd(d: dict) -> str:
     """Compact text summary of the FSD policy and last hazard (key numbers first; coordinates rounded to the metre, metres and minutes). The structured result keeps full precision."""
     h = d.get("last_hazard")
-    pol = ", ".join(f"{k}={'on' if v else 'off'}" for k, v in d["policy"].items())
+    pol = ", ".join(f"{k}={v}" if isinstance(v, str) else f"{k}={'on' if v else 'off'}" for k, v in d["policy"].items())
+    cn = (f"Slope limits of {d.get('vehicle') or d.get('profile') or 'the vehicle'}: caution above "
+          f"{num(d['caution_slope_deg'])} deg, no-go above {num(d['nogo_slope_deg'])} deg."
+          if d.get("caution_slope_deg") is not None and d.get("nogo_slope_deg") is not None else None)
     return _lines(
         f"FSD {'ARMED' if d['armed'] else 'off'}; mode {d['mode']}; policy {pol}; replans used {d['replans_used']} of "
         f"{d['replans_allowed']}; route {d.get('route_id') or 'none'}, {num(d['remaining_route_m'], 0)} m remaining.",
+        cn,
         (f"Latest planned route {d['latest_planned_route']} (the default for follow_route / fsd_enable)."
          if d.get("latest_planned_route") and not d.get("route_id") else None),
         ("Last hazard: " + h["detail"] + f" at {xy(h['x'], h['y'])} m.") if h else "No hazard recorded.",

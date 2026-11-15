@@ -130,7 +130,8 @@ def vehicle_table(vehicles: dict, profiles: dict, current: str | None) -> dict:
     for name, v in (vehicles or {}).items():
         p = (profiles or {}).get(name, {})
         out[name] = {"title": v.get("title", name), "flat_speed_mps": v.get("flat_speed_mps"),
-                     "max_slope_deg": v.get("nogo_slope_deg"), "caution_slope_deg": p.get("caution_slope_deg"),
+                     "max_slope_deg": v.get("nogo_slope_deg"),
+                     "caution_slope_deg": v.get("caution_slope_deg", p.get("caution_slope_deg")),
                      "eva_limit_min": p.get("eva_limit_min"), "source": v.get("source", "assumed"),
                      "active": name == current}
     return {"current": current, "vehicles": out}
@@ -145,6 +146,9 @@ def is_set_ref(s: Any) -> bool:
     return isinstance(s, str) and bool(_SET_REF.match(s.strip()))
 
 
+FILLED_POLICIES = ("block", "caution", "allow")
+
+
 def policy_to_rover(policy: dict | None) -> dict | None:
     """Our FSD policy booleans -> his policy fields. Unknown keys raise ValueError (never dropped silently)."""
     if not policy:
@@ -155,11 +159,15 @@ def policy_to_rover(policy: dict | None) -> dict | None:
             out["replan"] = bool(v)
         elif k == "caution_slowdown":
             out["caution_speed_factor"] = 0.5 if v else 1.0
+        elif k == "filled":
+            if v not in FILLED_POLICIES:
+                raise ValueError(f"FSD policy filled must be one of {', '.join(FILLED_POLICIES)}, got {v!r}.")
+            out[k] = v
         elif k in ("max_slope_deg", "caution_slope_deg", "caution_speed_factor", "replan", "max_replans"):
             out[k] = v
         else:
             raise ValueError(f"Unknown FSD policy key {k!r}. Valid: replan_on_block, caution_slowdown "
-                             "(booleans), or the rover backend's own max_slope_deg, caution_slope_deg, "
+                             "(booleans), filled (block|caution|allow: interpolated terrain), or the rover backend's own max_slope_deg, caution_slope_deg, "
                              "caution_speed_factor, replan, max_replans.")
     return out
 
@@ -294,7 +302,8 @@ def adapt_fsd(f: dict, info: dict | None = None) -> dict:
         blockers.append("no active route (plan_route, then follow_route)")
     return {**f, "armed": bool(f.get("armed")), "mode": f.get("mode", "idle"),
             "policy": {"replan_on_block": bool(pol.get("replan")),
-                       "caution_slowdown": float(pol.get("caution_speed_factor", 0.5)) < 1.0},
+                       "caution_slowdown": float(pol.get("caution_speed_factor", 0.5)) < 1.0,
+                       "filled": pol.get("filled", "caution")},
             "rover_policy": pol,
             "replans_used": "unknown (the rover backend only reports replans in drive results)",
             "replans_allowed": int(pol.get("max_replans", 1)) if pol.get("replan") else 0,
@@ -797,8 +806,8 @@ class Backends:
                     b[k] = await self.norm_for_rover(b[k])
             if "via" in b:
                 b["via"] = await self.norm_for_rover(b["via"], many=False)
-            # no profile given: plan for the vehicle that will drive it (his default would be the walker)
-            b["profile"] = map_profile(b.get("profile")) or await self._vehicle()
+            if b.get("profile"):     # no profile: his /route defaults to the active vehicle
+                b["profile"] = map_profile(b["profile"])
             st, d = await raw("rover", "POST", "/route", b, None, timeout)
             if st >= 400:
                 e = adapt_error(st, d)

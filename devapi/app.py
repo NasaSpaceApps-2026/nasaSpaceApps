@@ -316,10 +316,15 @@ def create_app(site: Site | None = None, synthetic: bool | None = None, traverse
     # ---- routes ---------------------------------------------------------------------------------
     @app.post("/route")
     async def post_route(body: dict = Body(...)):
-        b = take(body, ("start", "goal", "via", "profile", "max_slope_deg", "time_budget_min"), ("goal",))
+        b = take(body, ("start", "goal", "via", "profile", "max_slope_deg", "time_budget_min", "filled"), ("goal",))
+        filled = b.get("filled", "caution")
+        if filled not in ("block", "caution", "allow"):
+            raise AtlasError(f"Unknown filled policy '{filled}'.", hint="Options: block, caution, allow.")
         res = R.plan_route(site, store, b.get("start", "rover"), b["goal"], b.get("via"),
                            b.get("profile") or rover.profile, b.get("max_slope_deg"), b.get("time_budget_min"))
         if res["feasible"]:
+            # the stand-in's terrain has no interpolated cells: same fields as the real API, zero crossing
+            res.update(filled_policy=filled, filled_cells=0, filled_length_m=0.0)
             res["route_id"] = world.new_route_id()
             await world.add_route(res)
             world.last_planned = res["route_id"]

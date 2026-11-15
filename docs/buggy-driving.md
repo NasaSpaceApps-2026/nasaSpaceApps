@@ -83,10 +83,21 @@ stopped_by_user, timeout`. **FSD** (`fsd_enable`) adds caution slowdown, one in-
   When the chosen point is within 10% of the radius edge, a note says higher ground may lie outside.
 * **Limits are never typed in our code.** They come from `GET /rover/vehicle` (his `profiles.yaml`, or the stand-in's
   copy), printed with the API's source label ("assumed" or the citation). `max_slope_deg` can only tighten the limit.
-* **FSD is off by default in `drive_to`** (`fsd=true` arms it for the drive and disarms after). Reason, found live: his
-  FSD stops with `blocked_hazard` at the first interpolated cell, and his planner does not avoid or warn about such cells
-  (base to Delta Front: stopped after 148 m, replan hit it again). Without FSD the same route arrives. This matches
-  `goto_location`, which also runs without FSD.
+* **FSD is ON by default in `drive_to`** (updated Nov 15 after the API's final pass, `api/CHANGES-final-pass.md`):
+  `fsd=true` arms it for the drive (caution slowdown, one replan) and disarms it after; `fsd=false` keeps the old
+  slope-checks-only drive. The first live run (below, section 4, last row) stopped with `blocked_hazard` on interpolated
+  terrain; the API now has a `filled` policy, so `drive_to(filled="block"|"caution"|"allow")` (default `caution`) is passed to
+  `POST /route` and to `fsd_enable` (`policy.filled`). `caution` crosses filled cells at half speed; `block` avoids them
+  in the plan and stops FSD at them; `allow` ignores them. Results carry `filled_crossed_m` and the route's filled warning
+  (text and structured: `route.filled_cells`, `filled_length_m`, `filled_warning`).
+* **`plan_route` profile workaround dropped:** `/route` now defaults to the active vehicle, so we send no profile unless
+  one was given (explicit `profile` still works, aliases mapped).
+* **Slopes from the API:** `caution_slope_deg` / `nogo_slope_deg` are read from `/rover/vehicles`, `/rover/state` and
+  `/fsd/status` and shown in `select_vehicle`, `get_rover_state` and `fsd_status` (the `/site` profile is a fallback).
+* **Agent:** the SSE `tool_call_result` event carries `structured` (the MCP structuredContent, up to 300 kB) for the
+  viewer dock; the model still sees only the text.
+* devapi stand-in: accepts `filled` on `/route` and `policy.filled` on `fsd_enable`, reports the same fields (its terrain has
+  no interpolated cells, so crossings are 0), and shows caution/no-go slopes in state and FSD status.
 
 ## 4. Live results (real Jezero, Yousef's API on :8000, our devapi on :8001)
 
@@ -109,6 +120,14 @@ DeepSeek agent (3 prompts, `stack/up.sh`): "Drive the buggy from base to the del
 summit being at the edge of the radius; "Switch to the scout rover and drive to marker X" -> `list_markers`, then said there is no
 marker X (none was placed), correctly not driving. Screenshots: `docs/buggy_delta_front.png`, `docs/buggy_highest.png`
 (copilot page, rover and trail on the minimap after each drive).
+
+### Live re-check after the final pass (real Jezero, API :8060, devapi :8061, MCP :8062)
+
+| Call | Result |
+|---|---|
+| `drive_to(target="poi:region_delta_front", start="base", vehicle="buggy")` (FSD on, filled=caution) | arrived, 2939 m, 2.1 min; route warning "12 of 596 points (76 m) interpolated"; `filled_crossed_m` 59.7 |
+| `drive_to(vehicle="buggy", highest_within_m=1000, start="base")` | arrived at (1177, -291), z -2545 m, 733 m; 16 m of filled terrain crossed |
+| agent SSE, "find the 3 flattest spots" (DeepSeek) | `tool_call_result` events carry `structured` (e.g. `set_id, results, ...` for find_locations) |
 
 ## 5. What Yousef could add on his side
 

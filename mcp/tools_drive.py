@@ -79,9 +79,17 @@ def fmt_drive_to(d: dict) -> str:
                      f"ascent {num(rt.get('ascent_m'), 0)} m, max slope {num(rt.get('max_slope_deg'))} deg"
                      f" (limit {num(rt.get('limit_deg'))} deg)"
                      f"{', ' + rt['verdict'] if rt.get('verdict') else ''}.")
+        if rt.get("filled_warning"):
+            lines.append("Warning: " + rt["filled_warning"])
+        elif rt.get("filled_length_m"):
+            lines.append(f"Route crosses {num(rt['filled_length_m'], 0)} m of interpolated (filled) terrain "
+                         f"(policy {rt.get('filled_policy')}).")
     if d.get("driven"):
         st = d.get("state") or {}
         el = d.get("elapsed_sim_min")
+        if d.get("filled_crossed_m"):
+            lines.append(f"Crossed {num(d['filled_crossed_m'], 0)} m of interpolated (filled, not measured) terrain "
+                         f"(FSD {'on' if d.get('fsd') else 'off'}, policy {d.get('filled_policy')}).")
         lines.append(f"Drove {dist_text(d.get('distance_driven_m'))}"
                      f"{' in ' + dur_text(el) + ' of simulated time' if el is not None else ''}; rover now at "
                      f"{xy(st.get('x'), st.get('y'))} m, z {num(st.get('z'), 0)} m, vehicle {d['vehicle']}.")
@@ -170,21 +178,23 @@ def register(ctx: dict) -> None:
         "within that radius that the vehicle can reach under its slope limit, plans to it and drives. When the true "
         "summit of that radius is steeper than the limit or cut off, the result says so, gives the summit's "
         "coordinates and elevation and drives to the highest REACHABLE point instead: tell the user that plainly. "
-        "max_slope_deg can only tighten the vehicle's limit. fsd=true arms the stop-and-replan autopilot for this "
-        "drive (and disarms it again): it also refuses interpolated (filled, not measured) terrain, so it can stop with "
-        "blocked_hazard where the default (slope checks only) drives on; report such a stop and offer fsd=false or "
-        "another goal. Use plan_route + assess_route + follow_route instead when the user "
+        "max_slope_deg can only tighten the vehicle's limit. fsd (default true) arms the autopilot for this "
+        "drive (and disarms it again): caution slowdown on steep or interpolated ground and one replan; fsd=false "
+        "checks slopes only. filled = block|caution|allow (default caution) is the policy for interpolated (filled, "
+        "not measured) terrain: caution crosses it at half speed and the result reports filled_crossed_m and the "
+        "route's filled warning (tell the user how much was interpolated); block avoids it and stops FSD at it "
+        "(blocked_hazard); allow ignores it. Use plan_route + assess_route + follow_route instead when the user "
         "wants to review first. " + ctx["drive_note"] + " " + LOC + " " + UNITS + " "
         "Examples: drive_to(target=\"poi:region_delta_front\", start=\"base\", vehicle=\"buggy\"); "
         "drive_to(vehicle=\"buggy\", highest_within_m=1000); drive_to(target=\"marker:m1\", vehicle=\"scout\")"), act)
     async def drive_to(target: Any = None, vehicle: str | None = None, start: Any = None,
                        highest_within_m: float | None = None, reposition: str = "teleport",
-                       max_slope_deg: float | None = None, fsd: bool = False, animate: bool = False,
-                       speed_factor: float | None = None):
+                       max_slope_deg: float | None = None, fsd: bool = True, animate: bool = False,
+                       speed_factor: float | None = None, filled: str = "caution"):
         notes: list[str] = []
         try:
             data = await _drive_to(target, vehicle, start, highest_within_m, reposition, max_slope_deg, fsd,
-                                   animate, speed_factor, notes)
+                                   animate, speed_factor, notes, filled)
         except DriveFail as e:
             return await err(e.message, e.hint)
         data["notes"] = notes
@@ -192,7 +202,10 @@ def register(ctx: dict) -> None:
 
     # ---- the orchestration -----------------------------------------------------------------------
     async def _drive_to(target, vehicle, start, highest_m, reposition, max_slope, use_fsd, animate, speed_factor,
-                        notes: list[str]) -> dict:
+                        notes: list[str], filled: str = "caution") -> dict:
+        if filled not in ("block", "caution", "allow"):
+            raise DriveFail(f'filled must be "block", "caution" or "allow", got {filled!r}.',
+                            "block avoids interpolated terrain, caution (default) crosses it slowly and reports it, allow ignores it.")
         if reposition not in ("teleport", "drive", "none"):
             raise DriveFail(f'reposition must be "teleport", "drive" or "none", got {reposition!r}.')
         target, start = coerce(target), coerce(start)
@@ -216,7 +229,7 @@ def register(ctx: dict) -> None:
                 eff = max_slope
         out: dict = {"vehicle": name, "vehicle_title": lim.get("title"), "vehicle_switched": switched,
                      "limits": {k: lim.get(k) for k in ("max_slope_deg", "caution_slope_deg", "flat_speed_mps", "source")},
-                     "slope_limit_used_deg": eff, "feasible": False, "driven": False}
+                     "slope_limit_used_deg": eff, "fsd": bool(use_fsd), "filled_policy": filled, "feasible": False, "driven": False}
         if switched:
             notes.append(f"Vehicle switched to {name}.")
 
@@ -227,7 +240,7 @@ def register(ctx: dict) -> None:
         highest = None
         if highest_m is not None:
             center = target if target is not None else origin_ref
-            route, goal_ref, highest = await _highest_reachable(center, origin_ref, float(highest_m), name, eff, notes)
+            route, goal_ref, highest = await _highest_reachable(center, origin_ref, float(highest_m), name, eff, notes, filled)
             out["highest"] = highest
             if route is None:
                 out["reason"] = highest["text"]
@@ -235,7 +248,7 @@ def register(ctx: dict) -> None:
                 return out
         else:
             goal_ref = target
-            body = {"start": origin_ref, "goal": goal_ref, "profile": name}
+            body = {"start": origin_ref, "goal": goal_ref, "profile": name, "filled": filled}
             if max_slope is not None:
                 body["max_slope_deg"] = eff
             route = await rq("POST", "/route", body, timeout=120.0)
@@ -250,7 +263,10 @@ def register(ctx: dict) -> None:
                         "duration_min": route.get("duration_min"), "ascent_m": route.get("ascent_m"),
                         "max_slope_deg": route.get("max_slope_deg"), "limit_deg": route.get("max_slope_limit_deg", eff),
                         "verdict": ("GO" if a.get("go") else "NO-GO") if "go" in a else None,
-                        "reasons": a.get("reasons")}
+                        "reasons": a.get("reasons"),
+                        "filled_policy": route.get("filled_policy"), "filled_cells": route.get("filled_cells"),
+                        "filled_length_m": route.get("filled_length_m"),
+                        "filled_warning": next((w for w in route.get("warnings") or [] if "interpolated" in w), None)}
         out["feasible"] = True
         if pts:
             out["start"] = {"x": pts[0]["x"], "y": pts[0]["y"]}
@@ -286,15 +302,16 @@ def register(ctx: dict) -> None:
 
         # 3. drive
         armed_before = bool((await rq("GET", "/fsd/status")).get("armed"))
-        if use_fsd and not armed_before:
-            await rq("POST", "/rover/command", {"cmd": "fsd_enable"})
+        if use_fsd:     # (re)arm with the filled policy for this drive; disarmed again below unless it was armed before
+            await rq("POST", "/rover/command", {"cmd": "fsd_enable", "policy": {"filled": filled}})
         sim0 = (await rq("GET", "/rover/state")).get("sim_elapsed_s") or 0.0
-        rid, total, res, rounds = route["route_id"], 0.0, {}, 0
+        rid, total, res, rounds, filled_m = route["route_id"], 0.0, {}, 0, 0.0
         try:
             while True:
                 res = await rq("POST", "/rover/command", {"cmd": "follow_route", "route_id": rid,
                                                           **_speed(animate, speed_factor)}, timeout=330.0)
                 total += float(res.get("distance_m") or 0.0)
+                filled_m += float(res.get("filled_crossed_m") or 0.0)
                 rounds += 1
                 nr = res.get("new_route")
                 if res.get("stop_reason") == "replanned" and nr and rounds < MAX_REPLAN_ROUNDS:
@@ -310,14 +327,14 @@ def register(ctx: dict) -> None:
                     pass
         st = res.get("state") or await rq("GET", "/rover/state")
         out.update(driven=True, stop_reason=res.get("stop_reason"), detail=res.get("detail"),
-                   distance_driven_m=round(total, 1), state=st, final_route_id=rid,
+                   distance_driven_m=round(total, 1), filled_crossed_m=round(filled_m, 1), state=st, final_route_id=rid,
                    elapsed_sim_min=round(((st.get("sim_elapsed_s") or 0.0) - sim0) / 60.0, 2))
         if res.get("note"):
             notes.append(res["note"])
         if res.get("stop_reason") not in ("arrived", None):
-            out["hint"] = ("FSD refuses interpolated (filled, not measured) terrain; retry with fsd=false to drive on with "
-                           "slope checks only, or choose another goal." if use_fsd and res.get("stop_reason") == "blocked_hazard"
-                           else res.get("hint"))
+            out["hint"] = ("Interpolated (filled, not measured) terrain or no-data ground stopped FSD; retry with "
+                           "filled=\"caution\" (cross it slowly), fsd=false (slope checks only), or choose another goal."
+                           if use_fsd and res.get("stop_reason") == "blocked_hazard" else res.get("hint"))
         return out
 
     def _speed(animate: bool, speed_factor: float | None) -> dict:
@@ -329,7 +346,7 @@ def register(ctx: dict) -> None:
         return b
 
     async def _highest_reachable(center, origin_ref, radius: float, name: str, eff: float | None,
-                                 notes: list[str]) -> tuple[dict | None, Any, dict]:
+                                 notes: list[str], filled: str = "caution") -> tuple[dict | None, Any, dict]:
         """Highest ground within `radius` of `center` that a route for `name` reaches from `origin_ref`."""
         within = {"from": center, "max": radius, "metric": "straight_m"}
         spacing = max(50.0, radius / 10.0)
@@ -353,7 +370,7 @@ def register(ctx: dict) -> None:
         for c in cands:
             info["tried"] += 1
             goal = {"x": c["x"], "y": c["y"]}
-            body = {"start": origin_ref, "goal": goal, "profile": name}
+            body = {"start": origin_ref, "goal": goal, "profile": name, "filled": filled}
             if eff is not None:
                 body["max_slope_deg"] = eff
             r = await rq("POST", "/route", body, timeout=120.0)

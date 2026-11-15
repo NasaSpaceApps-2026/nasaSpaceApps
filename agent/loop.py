@@ -145,8 +145,10 @@ async def run_turn(*, model: ModelClient, bridge: McpBridge, system: list[dict],
                 for fut in done:
                     tid, out = fut.result()
                     results[tid] = (out.text, out.is_error)
-                    yield {"event": "tool_call_result", "data": {"id": tid, "summary": summarize(out.text),
-                                                                 "is_error": out.is_error, "result": out.text}}
+                    data = {"id": tid, "summary": summarize(out.text), "is_error": out.is_error, "result": out.text}
+                    if out.structured is not None:
+                        data["structured"] = out.structured  # for the viewer (markers, routes); not sent to the model
+                    yield {"event": "tool_call_result", "data": data}
         finally:
             for fut in pending:
                 fut.cancel()

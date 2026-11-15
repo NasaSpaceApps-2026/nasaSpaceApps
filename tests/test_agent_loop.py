@@ -320,3 +320,16 @@ def test_bad_messages():
 def test_summarize_keeps_synthetic_flag():
     s = summarize("[SYNTHETIC TEST SITE — not Mars data]\nFound 3 spots.\nsecond\nthird")
     assert s.startswith("[synthetic site] Found 3 spots.")
+
+
+def test_tool_result_event_carries_structured_for_viewer_but_model_sees_text(tmp_path):
+    model = ScriptedModel([[tool("t1", "get_site_overview")], [text("done")]])
+
+    async def go(bridge):
+        return await collect(model, bridge, settings(tmp_path))
+    ev = run(go)
+    res = next(e for e in ev if e["event"] == "tool_call_result")["data"]
+    assert isinstance(res.get("structured"), dict) and res["structured"]
+    # the model's tool_result block is text only: no structured payload is sent back to it
+    blk = model.calls[-1]["messages"][-1]["content"][0]
+    assert set(blk) <= {"type", "tool_use_id", "content", "is_error"} and isinstance(blk["content"], str)

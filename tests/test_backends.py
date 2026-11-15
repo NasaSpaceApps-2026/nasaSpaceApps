@@ -186,13 +186,13 @@ def test_fsd_adapt_policy_hazard_and_format():
                                  "replan": True, "max_replans": 1},
                       "route_id": None, "remaining_route_m": 12,
                       "last_hazard": {"x": 183, "y": 463, "slope_deg": 20.5, "reason": "blocked_slope"}})
-    assert f["policy"] == {"replan_on_block": True, "caution_slowdown": True}
+    assert f["policy"] == {"replan_on_block": True, "caution_slowdown": True, "filled": "caution"}
     assert f["last_hazard"]["detail"] == "20.5 degree slope" and f["replans_allowed"] == 1
     assert len(f["blockers"]) == 2
     text = fmt.fmt_fsd(f)
     assert "FSD ARMED" in text and "20.5 degree slope at (183, 463)" in text
     off = bk.adapt_fsd({"armed": False, "policy": {"replan": False, "caution_speed_factor": 1.0}})
-    assert off["policy"] == {"replan_on_block": False, "caution_slowdown": False} and off["replans_allowed"] == 0
+    assert off["policy"] == {"replan_on_block": False, "caution_slowdown": False, "filled": "caution"} and off["replans_allowed"] == 0
 
 
 def test_command_arrived_blocked_and_teleport():

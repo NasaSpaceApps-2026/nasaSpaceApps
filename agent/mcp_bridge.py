@@ -19,6 +19,7 @@ from .config import ROOT, Settings
 
 MAX_RESULT_CHARS = 12000
 SMALL_STRUCTURED_CHARS = 800
+MAX_STRUCTURED_FOR_UI_CHARS = 300_000
 
 
 class McpUnavailable(RuntimeError):
@@ -31,6 +32,7 @@ class ToolOutcome:
     """Result of one tool call: the text the model sees and whether the server flagged an error."""
     text: str
     is_error: bool
+    structured: Any = None  # full MCP structuredContent, forwarded to the browser only (never to the model)
 
 
 def result_to_text(result: Any) -> str:
@@ -185,4 +187,7 @@ class McpBridge:
         except Exception as e:  # protocol-level failure (unknown tool, invalid args, dead link)
             self._broken = isinstance(e, (OSError, EOFError, ConnectionError)) or self._broken
             return ToolOutcome(f"Tool call failed ({type(e).__name__}): {str(e)[:400]}", True)
-        return ToolOutcome(result_to_text(res), bool(getattr(res, "is_error", False)))
+        sc = getattr(res, "structured_content", None)
+        if sc is not None and len(json.dumps(sc, default=str)) > MAX_STRUCTURED_FOR_UI_CHARS:
+            sc = None
+        return ToolOutcome(result_to_text(res), bool(getattr(res, "is_error", False)), sc)

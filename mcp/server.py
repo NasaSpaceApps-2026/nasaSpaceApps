@@ -606,7 +606,7 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
 
     @tool("get_rover_state", (
         "Current rover pose and status: position and elevation, heading, pitch and roll, mode (idle, manual, auto, "
-        "fsd), speed, odometer, active route, status, last event, FSD armed. Use before planning from the rover or "
+        "fsd), speed, odometer, active route, status, last event, FSD armed, and the vehicle's caution and no-go slopes. Use before planning from the rover or "
         "after any drive to confirm where it is. " + UNITS + " Example: get_rover_state()"))
     async def get_rover_state() -> CallToolResult:
         return await call("GET", "/rover/state", fmt.fmt_rover_state)
@@ -694,8 +694,9 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
     @tool("fsd_enable", (
         "Arm FSD (full self-driving) mode: the rover follows routes with the slope policy (halved speed on caution "
         "slopes, stop at no-go slopes or unknown ground, one automatic replan with a 10% lower slope limit when "
-        "blocked). Optionally bind a route_id (it then becomes the default for follow_route). policy keys (booleans): "
-        "replan_on_block, caution_slowdown. Arming does not move the rover. Use before follow_route when scouting; "
+        "blocked). Optionally bind a route_id (it then becomes the default for follow_route). policy keys: booleans "
+        "replan_on_block, caution_slowdown, and filled = \"block\"|\"caution\"|\"allow\" (interpolated, not measured "
+        "terrain: caution, the default, crosses it at half speed and reports filled_crossed_m; block stops at it). Arming does not move the rover. Use before follow_route when scouting; "
         "fsd_status shows blockers; fsd_disable disarms. "
         "Example: fsd_enable(route_id=\"route-3\", policy={\"replan_on_block\": true})"), act_idem)
     async def fsd_enable(route_id: str | None = None, policy: dict | None = None) -> CallToolResult:

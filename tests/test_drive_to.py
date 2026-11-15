@@ -102,7 +102,8 @@ def test_router_vehicle_get_and_switch_with_alias():
 def test_router_route_without_profile_uses_active_vehicle():
     b, calls = _router(_his)
     _arun(b.request("POST", "/route", json_body={"goal": "base"}))
-    assert next(c for c in calls["rover"] if c[1] == "/route" and c[0] == "POST")[3]["profile"] == "crew_buggy"
+    # no workaround any more: his /route defaults to the active vehicle, so no profile is sent
+    assert "profile" not in next(c for c in calls["rover"] if c[1] == "/route" and c[0] == "POST")[3]
     b, calls = _router(_his)
     _arun(b.request("POST", "/route", json_body={"goal": "base", "profile": "buggy"}))
     assert next(c for c in calls["rover"] if c[1] == "/route" and c[0] == "POST")[3]["profile"] == "crew_buggy"
@@ -228,3 +229,80 @@ def test_plan_route_default_profile_follows_active_vehicle():
     assert r.structured_content["profile"] == "crew_buggy"
     r2 = _call("plan_route", goal="poi:landing")
     assert r2.structured_content["profile"] == "rover_scout"
+
+
+# ---- filled terrain policy, structured limits (final-pass API) -----------------------------------------
+
+def test_policy_filled_passes_through_and_is_validated():
+    assert bk.policy_to_rover({"filled": "block"}) == {"filled": "block"}
+    with pytest.raises(ValueError, match="filled"):
+        bk.policy_to_rover({"filled": "maybe"})
+
+
+def test_vehicle_table_prefers_api_caution_field():
+    t = bk.vehicle_table({"crew_buggy": {"title": "B", "nogo_slope_deg": 25, "caution_slope_deg": 14}},
+                         {"crew_buggy": {"caution_slope_deg": 15}}, "crew_buggy")
+    assert t["vehicles"]["crew_buggy"]["caution_slope_deg"] == 14
+
+
+def test_get_rover_state_shows_slope_limits_from_api_fields():
+    s = {**STATE, "vehicle": "crew_buggy", "caution_slope_deg": 15, "nogo_slope_deg": 25}
+    from format import fmt_rover_state
+    assert "caution above 15 deg, no-go above 25 deg" in fmt_rover_state(bk.adapt_state(s, INFO))
+
+
+def test_fsd_status_shows_limits_and_filled_policy():
+    from format import fmt_fsd
+    f = bk.adapt_fsd({"armed": True, "mode": "idle", "caution_slope_deg": 15, "nogo_slope_deg": 25,
+                      "policy": {"filled": "block", "replan": True}, "profile": "crew_buggy"})
+    t = fmt_fsd(f)
+    assert f["policy"]["filled"] == "block" and "filled=block" in t and "caution above 15 deg, no-go above 25 deg" in t
+
+
+def test_drive_to_defaults_to_fsd_caution_and_reports_filled_fields():
+    r, st = _seq(("drive_to", {"target": "poi:landing", "vehicle": "buggy"}), ("get_rover_state", {}))
+    sc = r.structured_content
+    assert sc["fsd"] is True and sc["filled_policy"] == "caution" and sc["driven"]
+    assert sc["filled_crossed_m"] == 0 and sc["route"]["filled_policy"] == "caution"
+    assert st.structured_content["fsd_armed"] is False and st.structured_content["caution_slope_deg"] is not None
+
+
+@pytest.mark.parametrize("pol", ["block", "allow"])
+def test_drive_to_filled_option_and_fsd_false(pol):
+    r = _call("drive_to", target="poi:landing", vehicle="buggy", filled=pol, fsd=False)
+    assert r.structured_content["filled_policy"] == pol and r.structured_content["fsd"] is False
+    assert r.structured_content["stop_reason"] == "arrived"
+
+
+def test_drive_to_bad_filled_is_an_error():
+    r = _call("drive_to", target="poi:landing", filled="sometimes")
+    assert r.is_error
+
+
+def test_drive_to_split_mode_sends_filled_and_reports_crossing():
+    def h(method, path, params, body):
+        if path == "/route" and method == "POST":
+            pts = [{"x": 0, "y": 0, "z": 0}, {"x": 100, "y": 0, "z": 0}]
+            return httpx.Response(200, json={
+                "route_id": "route-1", "profile": "crew_buggy", "points": pts, "distance_m": 100, "duration_min": 1,
+                "ascent_m": 0, "max_slope_deg": 3, "slope_limit_deg": 25, "filled_policy": body.get("filled"),
+                "filled_cells": 4, "filled_length_m": 40.0, "warnings": [
+                    "Route crosses 4 of 25 points (40 m) of interpolated (filled) DEM terrain: elevation there is estimated."],
+                "start": "rover", "goal": "x", "legs": [], "stops": []})
+        if path == "/rover/command" and body.get("cmd") == "follow_route":
+            return httpx.Response(200, json={"ok": True, "cmd": "follow_route", "stop_reason": "arrived",
+                                             "message": "ok", "distance_m": 100, "filled_crossed_m": 38.0,
+                                             "state": {**STATE, "vehicle": "crew_buggy"}})
+        return _his(method, path, params, body)
+    b, calls = _router(h)
+    # adapter level: the filled policy reaches his /route and fsd_enable, his crossing comes back
+    _arun(b.request("POST", "/rover/command", json_body={"cmd": "fsd_enable", "policy": {"filled": "block"}}))
+    cmd = [c for c in calls["rover"] if c[1] == "/rover/command"][-1][3]
+    assert cmd["policy"] == {"filled": "block"}
+    st, d = _arun(b.request("POST", "/route", json_body={"goal": "base", "filled": "block"}))
+    assert next(c for c in calls["rover"] if c[1] == "/route" and c[0] == "POST")[3]["filled"] == "block"
+    assert d["filled_cells"] == 4 and d["filled_policy"] == "block"
+    st, d = _arun(b.request("POST", "/rover/command", json_body={"cmd": "follow_route", "route_id": "route-1"}))
+    assert d["filled_crossed_m"] == 38.0
+    from format import fmt_command
+    assert "Crossed 38 m of interpolated" in fmt_command(d)

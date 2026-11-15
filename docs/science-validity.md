@@ -56,12 +56,17 @@ at 2 m spacing). Reproduce: `GET /validation` on `devapi`.
 | Steeper than 15° (caution) | 4.79% | 0.41% (about 12× less) |
 | Steeper than 20° (no-go) | 1.96% | 0.10% (about 20× less) |
 
-The rover spent 12 to 20 times less of its drive on ground our map marks as steep than a random
-path would. Our slope map identifies terrain the rover's planners avoided.
+The rover spent far less of its drive on ground our map marks as steep than a random path would:
+about 12× and 20× less on these numbers, and 9× and 13× less when the stress test re-sampled the full
+38.5 km traverse line (95% interval for the over-20° ratio roughly 6× to 100×, because only a few dozen
+samples are that steep). The exact ratio depends on how the traverse is sampled; the pattern does not.
+Our slope map identifies terrain the rover's planners avoided.
 
-**Independent check from the team pipeline** (`docs/science-validation.md`, `pipeline/09_validate.py`):
-Perseverance's own tilt sensor at 347 drive stops correlates with slope from the same HiRISE terrain
-at r = 0.84 (RMSE 2.27°, bias +0.02°; max rover tilt 20.3°). This is the strongest evidence we have,
+**Independent check: the rover's own tilt sensor.** At 347 drive stops, Perseverance's measured tilt
+correlates with our 2 m slope layer at r = 0.85 (0.87–0.88 averaged over a 3–5 m footprint; error about
+2°, no bias; `docs/stress-test-groundtruth.md`). The team pipeline's plane-fit method gives r = 0.84
+(`docs/science-validation.md`). On gentle ground (rover tilt under 8°) r drops to 0.75, so part of the
+correlation comes from the few steep stops. This is the strongest evidence we have,
 because the rover's inclinometer does not depend on the orbital terrain model. (The pipeline's
 elevation comparison, 0.05 m spread, is not independent: rover elevations are tied to that same
 model.) The pipeline's traverse statistics differ slightly from ours (23.9 km and 0.3% over 15°
@@ -78,6 +83,25 @@ clipping at the site edge; both show the same pattern.
   differs because the real drive wandered between waypoints. All three pairs are close to
   the landing site, so this check is thin. A wider check on Yousef's API (8 waypoint pairs spread over sols 129-1001, planned/driven median 1.00)
   is in [SCIENCE_VALIDITY.md](../SCIENCE_VALIDITY.md).
+
+### Stress tests: do the answers hold up?
+
+Two independent stress suites (`validation/`, write-ups linked) go beyond unit tests.
+
+| Question | Result | Verdict |
+|---|---|---|
+| Rotating/flipping the terrain, A→B vs B→A, triangle inequality, search monotonicity, line-of-sight reciprocity | All hold (2,184 triples, 91 pairs, 429 sight lines); coordinates match pyproj to 0.3 mm; 34/34 physical sanity checks | Robust |
+| Realistic HiRISE elevation noise (0.25 m, assumed from "tens of cm", uahirise.org), 20 Monte Carlo runs | Route length moves < 1.6%; walk times +3–17% and the 2-hour envelope −13–31%; **individual landing-pad picks are fragile** (top-10 overlap 0–5%) | Routes robust; times sensitive; pad rankings fragile |
+| Assumed thresholds | Top-5 pads identical for slope limits 8/10/12°, but change completely with footprint size; EVA envelope changes < 0.3% for 20–30° | Mostly robust to slope limits |
+| Geology at 20 rover sample sites | 18/20 match the expected unit | Partially supports |
+| Orbital minerals vs rover findings | Olivine agrees at samples 4–5; **orbital carbonate is a false negative** there (rover found it), the rest lack orbital coverage | Partially supports; shows why rover-confirmed evidence outranks orbital |
+| Ancient lake at −2410 m | 22/23 sample sites and 91% of the delta fan below the level | Partially supports (true rim outside the site) |
+| Walking speed vs Apollo | 0.9 m/s flat is plausible (Apollo 14 planned 1.2 m/s); **too fast on loose slopes** (Apollo 15 climb ~2.5× slower) | Placeholder confirmed as optimistic |
+| Baiting the agent (life probability, ice, "confirm this route is safe", exact abundance) | **6/6 honest**, no untraceable numbers | Supports |
+
+Not supported: sample geology does not confirm our ~98 m geologic-map shift (19/20 before, 18/20 after);
+the shift rests only on terrain-shape alignment. Details: `docs/stress-test-robustness.md`,
+`docs/stress-test-groundtruth.md`.
 
 ### Why high-resolution data matters (finding)
 
@@ -112,8 +136,8 @@ Each tool is checked against a known answer, not just "it runs".
 - **Data-quality flags.** HiRISE stitching seams (7.4% of the site) and noisy terrain zones (8.2%)
   are detected and flagged, never smoothed away. Landing pads avoid them.
 - **Registration caveats.** We measured the geologic map's offset from our terrain (+25.8 m east,
-  −98.1 m north; tiles agree within 25 m) and corrected it. Results near a unit or mineral boundary
-  carry a caveat.
+  −98.1 m north; tiles agree within 25 m) and applied the shift. Rover sample geology does not
+  independently confirm it, so results near a unit or mineral boundary carry a caveat.
 - **Every threshold is labelled.** Each limit is shown as cited or assumed, and every number the
   agent gives must appear in a tool result. The eval scorer checks this automatically and has been run on live
   DeepSeek answers (see Known limitations and `docs/eval-run-deepseek.md`).
@@ -150,3 +174,4 @@ Each tool is checked against a known answer, not just "it runs".
 - **Nov 14 (evening):** cited the team pipeline's independent rover-tilt check (r = 0.84) and noted the small traverse-statistics difference.
 - **Nov 14 (night):** first live agent scores (DeepSeek 19/24); suite at 473 tests.
 - **Nov 15:** cross-linked the three science documents; suite at 511 Python + 44 chat-panel tests; route-realism numbers re-run; stale scorer and blind-review statements corrected.
+- **Nov 15:** added both stress tests; tilt check on our own slope layer (r = 0.85); traverse ratio stated as a range; geologic shift downgraded to 'measured, not validated'.

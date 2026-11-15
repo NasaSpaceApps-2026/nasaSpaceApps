@@ -271,7 +271,7 @@ def profiles():
                 "caution_slope_deg": {"value": 15, "source": A},
                 "max_slope_deg": {"value": 25, "source": A},
                 "speed_curve": "tobler_placeholder",
-                "speed_curve_note": "Earth-derived hiking function speed = flat*exp(-k*|tan(slope)+c|); placeholder shape, not Mars/suit data.",
+                "speed_curve_note": "Earth-derived Tobler-shaped hiking curve as implemented in atlas_core/travel.py: speed = flat*exp(-3.5*tan(slope)), isotropic (uphill = downhill); placeholder shape, not Mars/suit data.",
                 "eva_limit_h": {"value": 8, "source": A},
                 "reserve_margin": {"value": 0.2, "source": A},
             },
