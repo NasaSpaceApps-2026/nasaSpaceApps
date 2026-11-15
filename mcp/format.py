@@ -586,7 +586,8 @@ def fmt_profile(d: dict) -> str:
         "Next: plan_route to get a drivable route; slope is per 2 m cell, so small rocks are not resolved.")
 
 
-def fmt_pois(d: dict) -> str:
+def fmt_pois(d: dict, origin: dict | None = None) -> str:
+    """origin: {label, x, y} the distances are measured from (straight line), stated in the header."""
     ps = d["pois"]
     if not ps:
         ids = d.get("known_ids") or []
@@ -611,7 +612,9 @@ def fmt_pois(d: dict) -> str:
             if p.get("source_url"):
                 rows.append(f"  source: {p['source_url']}")
     more = f" (showing {len(ps[:12])})" if d["count"] > 12 else ""
-    return _lines(f"{d['count']} POI(s){more}:", *rows,
+    frm = (f"Distances are straight-line from {origin['label']} at {xy(origin['x'], origin['y'])} m "
+           "(walking time: plan_route to the POI)." if origin and any(p.get("distance_m") is not None for p in ps) else "")
+    return _lines(f"{d['count']} POI(s){more}:", frm, *rows,
                   "Next: goto_location(target=\"poi:<id>\"), plan_route(goal=...), or fly_camera(target=...).")
 
 
@@ -625,7 +628,9 @@ def fmt_rover_state(s: dict) -> str:
         f"{' (FSD armed)' if s['fsd_armed'] else ''}, speed {num(s['speed_mps'], 2)} m/s, odometer "
         f"{num(s['odometer_m'], 0)} m.",
         f"Status: {s['status']}. Last event: {s['last_event']}." + (
-            f" Route {s['route_id']}, {num(s['remaining_m'], 0)} m remaining." if s.get("route_id") and s.get("remaining_m") else ""),
+            f" Route {s['route_id']}, {num(s['remaining_m'], 0)} m remaining." if s.get("route_id") and s.get("remaining_m")
+            else (" No route is being driven (this does not mean none was planned: follow_route and fsd_enable use "
+                  "the latest planned route)." if not s.get("route_id") else "")),
         f"Profile {s['profile']}. Simulated time driven {num(s['sim_elapsed_s'] / 60)} min.")
 
 

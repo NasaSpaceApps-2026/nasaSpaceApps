@@ -88,7 +88,7 @@ cases:
     prompt: "What is the terrain like at the Perseverance landing site?"
     tool_path:
       required: [describe_location]
-      allowed: [describe_location, sample_terrain]
+      allowed: [describe_location, sample_terrain, search_pois]   # a harmless extra lookup of the landing-site POI is fine
     checks:
       reply_contains_any: ["HiRISE", "baseline", "slope"]
 
@@ -97,7 +97,7 @@ cases:
     prompt: "Find 3 flat spots big enough for a 50 m pad within a 1 hour walk of the landing site."
     tool_path:
       required: [find_locations]
-      allowed: [find_locations, describe_location, nearest]
+      allowed: [find_locations, describe_location, nearest, set_view]   # set_view: highlighting the answer set is intended
     checks:
       reply_contains_any: ["assumed", "cited", "walk", "approximate"]
 
@@ -106,7 +106,7 @@ cases:
     prompt: "Find good landing spots."
     tool_path:
       required: [find_locations]
-      allowed: [find_locations, describe_location, nearest]
+      allowed: [find_locations, describe_location, nearest, set_view]   # set_view: highlighting the answer set is intended
     checks:
       reply_contains_any: ["pad", "not a landing ellipse", "footprint"]
 

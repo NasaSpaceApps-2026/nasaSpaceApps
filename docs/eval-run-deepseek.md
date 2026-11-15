@@ -112,3 +112,65 @@ Full run, all 24 cases, real Jezero site. **19/24 pass**, the same score as `dee
 
 Conclusion: swapping in the larger model does not raise the score; it trades failures. The one failure both models
 share is a tool gap (no stated round-trip time). Recordings: `agent/replays/run4-v4pro/`.
+
+## Run 5 (tool gaps closed)
+
+Reran only the cases that failed in run 3 or run 4 (7 cases), once per model, real Jezero site, devapi on :8000, MCP over stdio.
+Recordings: `agent/replays/run5-deepseek-chat/`, `agent/replays/run5-deepseek-v4-pro/`. Full suite: 478 tests pass.
+
+### Tool gaps closed (principle: when a user asks for a number, some tool result states it)
+
+- `check_eva_return` (`mcp/tools_lake.py`): a `Totals:` line right after the verdict states route distance (m and km), one-way walk, round trip
+  (out and back to the haven), budget, usable budget after reserve, margin at the route end, and the point of no return (distance along
+  and elapsed time, or "none" with the tightest margin), all in min and h. Closes the "2 x 62 = 124 min" violation (run 3, run 3 rerun, run 4).
+- `eva_envelope`: `Totals:` line with budget, usable budget, max radius (m and km), one-way walk at that radius, the round trip at the max radius
+  (single haven) and the one-way time limit.
+- `search_pois`: without `near`, distances are now measured from the rover pose and the header says "Distances are straight-line from the rover
+  at (x, y) m"; an explicit `near` is labelled too ("from the given point at (x, y)"). Walking time is not added (not cheap: needs a routing field per
+  POI; the header points to plan_route).
+- `teleport_rover` and `goto_location`: after arrival the result adds "Straight-line distances from the rover now: base ..., nearest 4 POIs ...".
+  Closes the model-computed numbers in the delta-front case ("2.7 km west of the base", "250 m NE", "200-400 m", run 1 and run 3).
+- `get_rover_state` and the app-state block: `route_id null` now says it only means no route is being driven, not that none was planned (see demo_scout).
+
+### Scan of ungrounded numbers in failing replies, runs 1, 3, 4 (and the run 2/3 targeted reruns)
+
+| Number (case) | Source | Decision |
+|---|---|---|
+| 124 min (eva_route, runs 3, 4) | model doubled 62 min | tool now states round trip (done) |
+| 2.7 km, 250 m (take_me_to_delta, run 1); ~200-400 m (runs 3) | model-computed distances between POIs / base | teleport/goto result states distance to base and nearest POIs (done) |
+| 600 m, 400 m (take_me_to_delta, camera) | model's own camera argument | fixed in run 3 (set_view/fly_camera echo distance) |
+| 43 m (sample_near_me, run 1) | "+-43 m" uncertainty quoted differently | fixed in run 3 (scorer) |
+| 0.36, 0.33, 0.047, 0.63 km2 (q08, vantage) | m2 to km2 conversions | fixed in run 3 (both units printed) |
+| 1.7 m (los_radio, runs 1, 2) | assumed eye height not in a result | fixed in run 3 (case setup, prompt) |
+| 1,460 m2 (q01, run 3) | result said 1464 m2; model rounded | no tool gap; prompt now says quote numbers exactly as printed |
+| 205 (sample_near_me, run 3 rerun) | result said 215.7 m; model misquoted a range | same prompt line |
+| 0.2 deg (q04, run 3 rerun) | model-invented relaxation threshold | no tool gap (hint already gives the real range); prompt already restricts relaxations to hint values |
+
+### Eval and prompt consistency
+
+- demo_carbonates vs prompt: the prompt said "do not call set_view after a plain search" while the case required set_view/fly_camera. The intended
+  behaviour is now stated once, in the prompt and in the `set_view` tool description: when the answer IS a set of places the user asked to find,
+  highlight them with `set_view(highlights=[set])`; otherwise do not move the camera unprompted. q02 and q03 (both "find places" questions) now allow
+  `set_view` in their tool whitelists (fly_camera still not allowed).
+- q01: `search_pois` added to the allowed tools (harmless lookup of the landing-site POI).
+- demo_scout (real cause: wording/state, not the eval): the case `setup` plans a route, but the app-state block and `get_rover_state` show
+  `route_id: null` (the route being driven), and v4-pro read that as "no route exists" and asked the user. Fixed in the state block text,
+  `get_rover_state` output and the scout prompt line (do not check state first).
+- q05 (real cause: prompt): "Is this crater rim safe to walk?" has no marker; v4-pro asked which rim instead of acting. The prompt now says "this X" with
+  no marker means the rover position: call describe_location there, say which position was used, report the max slope. Eval unchanged.
+
+### Results (the 7 cases that failed in run 3 or 4)
+
+| Case | deepseek-chat | deepseek-v4-pro |
+|---|---|---|
+| demo_carbonates | PASS (set_view called) | FAIL (answered after 1 find_sites call, no set_view despite the new prompt line) |
+| demo_take_me_to_delta | FAIL (skipped search_pois, went straight to teleport; numbers now grounded) | PASS |
+| demo_scout | PASS | PASS |
+| q01_terrain_at_landing_site | PASS | PASS |
+| q05_crater_rim_walk | PASS | PASS |
+| vantage_overlook_outcrop | PASS (7 calls) | PASS (5 calls) |
+| eva_route_point_of_no_return | PASS (quotes the tool's round trip) | PASS |
+
+Both models 6/7. Remaining failures are tool-path compliance, not numbers: flash skipped the "search_pois first" rule once (it passed in run 3), v4-pro
+skipped the set_view highlight on demo_carbonates. Number-provenance: 0 violations in all 14 sessions. Each rerun was a single sample, so
+these two are best read as flaky until sampled more.

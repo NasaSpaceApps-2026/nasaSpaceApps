@@ -429,7 +429,7 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
         "type (sample sites also give region, in-situ minerals and the full description with its source for up to 3 hits), science value (0 to 1, null if not recorded) and distance. Use to resolve a name such as 'the delta "
         "front' to coordinates. Use this for NAMED places; use find_sites for a mineral or geologic unit, "
         "find_locations for flat pads, find_regions for areas matching conditions. near accepts {x, y} (or the "
-        "string \"x,y\"), a POI id, a marker or 'rover'; radius_m needs near. A miss lists the known POI ids. " + UNITS + " "
+        "string \"x,y\"), a POI id, a marker or 'rover'; radius_m needs near. Without near, every hit still gets its straight-line distance from the rover (\"from the rover at (x, y)\"). A miss lists the known POI ids. " + UNITS + " "
         'Example: search_pois(query="delta", type="science_target", near="rover", radius_m=500, limit=5)'))
     async def search_pois(query: str | None = None, type: str | None = None, near: Any = None,
                           radius_m: float | None = None, limit: int = 10) -> CallToolResult:
@@ -438,8 +438,25 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
             near = f"{near['x']},{near['y']}"
         elif near is not None and not isinstance(near, str):
             return await err("near must be {x, y}, a POI id, a marker id or 'rover'.")
+        origin = None
+        if near is None or near == "rover":
+            # distances are always reported; without an explicit centre they are from the rover (when its pose is known)
+            try:
+                st, rs = await request("GET", "/rover/state")
+            except Unreachable:
+                st, rs = 599, None
+            if st < 400 and isinstance(rs, dict) and rs.get("x") is not None and rs.get("y") is not None:
+                origin = {"label": "the rover", "x": rs["x"], "y": rs["y"]}
+                near = f"{rs['x']:.1f},{rs['y']:.1f}"
+        elif isinstance(near, str):
+            try:
+                a, b = near.split(",")
+                origin = {"label": "the given point", "x": float(a), "y": float(b)}
+            except ValueError:
+                pass
         params = {"q": query, "type": type, "near": near, "radius": radius_m, "limit": limit}
-        return await call("GET", "/pois", fmt.fmt_pois, params={k: v for k, v in params.items() if v is not None})
+        return await call("GET", "/pois", lambda d: fmt.fmt_pois(d, origin),
+                          params={k: v for k, v in params.items() if v is not None})
 
     # ---- search ----
 
@@ -597,6 +614,29 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
             body["speed_factor"] = speed_factor
         return await call("POST", "/rover/command", fmt.fmt_command, body=body)
 
+    async def with_nearby(res: CallToolResult) -> CallToolResult:
+        """After a placement/drive, state where the rover now is relative to the base and the nearest POIs, so the
+        reply never has to estimate those distances itself."""
+        sc = res.structured_content
+        if res.is_error or not isinstance(sc, dict) or sc.get("feasible") is False or not isinstance(sc.get("state"), dict):
+            return res
+        st = sc["state"]
+        try:
+            code, d = await request("GET", "/pois", params={"near": f"{st['x']:.1f},{st['y']:.1f}", "limit": 100})
+        except Unreachable:
+            return res
+        if code >= 400 or not isinstance(d, dict) or not d.get("pois"):
+            return res
+        pois = d["pois"]
+        base = next((p for p in pois if p.get("type") == "base"), None)
+        near = [p for p in pois if p.get("type") != "base" and p.get("distance_m") is not None][:4]
+        bits = ([f"base {fmt.dist_text(base['distance_m'])}"] if base and base.get("distance_m") is not None else []) + \
+               [f"{p.get('name') or p['id']} ({p['ref']}) {fmt.dist_text(p['distance_m'])}" for p in near]
+        if bits and res.content and hasattr(res.content[0], "text"):
+            res.content[0].text += "\nStraight-line distances from the rover now: " + "; ".join(bits) + "."
+            sc["nearby"] = [{"ref": p["ref"], "distance_m": p["distance_m"]} for p in ([base] if base else []) + near]
+        return res
+
     @tool("drive_rover", (
         "Drive the rover in a straight line for distance_m along heading_deg (degrees clockwise from north: 0 north, "
         "90 east; default current heading). It stops on slopes above the no-go limit (stop_reason blocked_slope) or "
@@ -625,7 +665,7 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
         else:
             return await err("goto_location needs a target, or x and y.",
                              'Example: goto_location(target="poi:landing") or goto_location(x=50, y=-50).')
-        return await command(body, animate, speed_factor)
+        return await with_nearby(await command(body, animate, speed_factor))
 
     @tool("follow_route", (
         "Drive the rover along a stored route (route_id from plan_route). The rover must be within 3 m of the route "
@@ -698,15 +738,15 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
                              'Example: teleport_rover(target="poi:landing") or teleport_rover(x=50, y=-50).')
         if heading_deg is not None:
             body["heading_deg"] = heading_deg
-        return await call("POST", "/rover/command", fmt.fmt_command, body=body)
+        return await with_nearby(await call("POST", "/rover/command", fmt.fmt_command, body=body))
 
     # ---- view and markers ----
 
     @tool("set_view", (
         "Control the viewer: camera mode (globe, orbit, chase, ground), the camera target (any location), layer "
         "visibility ({layer_id: true|false}, ids from list_layers) and highlights (POIs, markers, set members or "
-        "whole sets such as a find_sites result). Use it to show results when the user asks where something is or to see it ('highlights=[\"set:2\"]'), "
-        "not after every search. "
+        "whole sets such as a find_sites result). Use it to highlight the result set when the answer IS a set of places the user asked to find or see ('highlights=[\"set:2\"]'); "
+        "do not move the camera unprompted otherwise. "
         "Use set_view when you need layers or highlights or several things at once; use fly_camera instead for a "
         "plain 'show me X' (camera only). Highlighting a whole set shows at most the first 50 members. The reply says whether a viewer is connected. "
         "Example: set_view(mode=\"orbit\", target=\"poi:landing\", layers={\"carbonate\": true}, highlights=[\"set:2\"])"), act)

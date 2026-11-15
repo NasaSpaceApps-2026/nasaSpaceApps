@@ -71,9 +71,18 @@ def fmt_envelope(d: dict) -> str:
              _values_line(d["values"])]
     if not d.get("area_m2"):
         return "\n".join(lines + ["Nothing is reachable and recoverable. " + d.get("hint", "")])
+    from format import dist_text, dur_text
     lines.append(f"Reachable and recoverable area {_n(d['area_km2'], 2)} km2; max one-way radius {d['max_one_way_radius_m']:.0f} m "
                  f"(walk {d['max_one_way_walk_min']:.0f} min); set {d['set_id']}."
                  + (f" One-way limit {d['one_way_limit_min']:g} min." if "one_way_limit_min" in d else ""))
+    head = (f"Totals: budget {dur_text(d['budget_min'])}; usable after {d['reserve_fraction'] * 100:.0f}% reserve "
+            f"{dur_text(d['usable_min'])}; max radius {dist_text(d['max_one_way_radius_m'])} one-way, "
+            f"{dur_text(d['max_one_way_walk_min'])} one-way walk")
+    if "one_way_limit_min" in d:
+        rt = 2 * d["max_one_way_walk_min"]
+        head += (f"; round trip (out and back) at the max radius {dur_text(rt)}; "
+                 f"one-way time limit {dur_text(d['one_way_limit_min'])}")
+    lines.insert(1, head + ".")
     far = [f"{s['sector']} {s['farthest_straight_m']:.0f} m" if s["reachable"] else f"{s['sector']} none" for s in d["sectors"]]
     lines.append("Farthest reach by direction: " + ", ".join(far) + ".")
     lines += d["notes"]
@@ -84,6 +93,27 @@ def fmt_check(d: dict) -> str:
     lines = [d["verdict"], _values_line(d["values"]),
              f"Route: {d['route_distance_m']:.0f} m, {d['route_walk_min']:.0f} min walking; havens: {d['havens']}; "
              f"budget {d['budget_min']:g} min, reserve {d['reserve_fraction'] * 100:.0f}%, usable {d['usable_min']:g} min."]
+    from format import dist_text, dur_text
+    last = (d.get("samples") or [None])[-1]
+    stops = d.get("stops_min") or 0
+    tot = (f"Totals: route {dist_text(d['route_distance_m'])}; one-way walk {dur_text(d['route_walk_min'])}")
+    if last and last.get("walk_back_min") is not None:
+        rt = last["elapsed_min"] + last["walk_back_min"]
+        tot += (f"; round trip (out and back to the haven) {dur_text(rt)}"
+                + (f" plus stops {dur_text(stops)}" if stops else "")
+                + f"; budget {dur_text(d['budget_min'])}; usable after {d['reserve_fraction'] * 100:.0f}% reserve "
+                f"{dur_text(d['usable_min'])}; margin at the route end {dur_text(d['usable_min'] - rt - stops)}")
+    else:
+        tot += (f"; budget {dur_text(d['budget_min'])}; usable after {d['reserve_fraction'] * 100:.0f}% reserve "
+                f"{dur_text(d['usable_min'])}; no walkable path back from the route end")
+    mm = d.get("min_margin")
+    if d["ok"]:
+        tot += (f"; point of no return: none (tightest margin {dur_text(mm['margin_min'])} at {dist_text(mm['distance_m'])} along)"
+                if mm else "; point of no return: none")
+    else:
+        p0 = d["point_of_no_return"]
+        tot += f"; point of no return at {dist_text(p0['distance_m'])} along the route (elapsed {dur_text(p0['elapsed_min'])})"
+    lines.insert(1, tot + ".")
     if not d["ok"]:
         p, s = d["point_of_no_return"], d.get("last_safe_point")
         lines.append(f"Point of no return: ({p['x']:.0f}, {p['y']:.0f}) m, {p['distance_m']:.0f} m along, elapsed "
