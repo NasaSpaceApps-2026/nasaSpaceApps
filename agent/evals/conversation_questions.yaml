@@ -1,0 +1,169 @@
+# Multi-turn conversation evals: does the copilot LISTEN (follow-ups, corrections, pronouns, topic switches) and RELAY
+# earlier results accurately?  Run live: .venv/bin/python -m agent.evals.run_evals --conversations [--only id ...]
+# Every turn is scored like a normal case (tool_path, reply checks, numbers must appear in a tool result of THIS or an
+# EARLIER turn) plus the conversation checks documented in scoring.check_conversation_turn:
+#   answer_first, max_words, shorter_than_prev, recall_from_turn, args_contain_any, args_regex, args_not_contain,
+#   args_contain_prior {turn, regex}, args_match_prior_item {turn, index}.   Turns are 0-based in those checks.
+
+always_allowed: [get_site_overview, list_layers, describe_layer, get_set, list_markers]
+
+conversations:
+  - id: c01_ordinal_second_one
+    turns:
+      - say: "Find the flattest landing pads within 30 minutes walk of base."
+        tool_path: {required: [find_locations]}
+      - say: "Take me to the second one."
+        tool_path: {required: [[teleport_rover, drive_to, goto_location, plan_route]], forbidden: [find_locations]}
+        checks:
+          args_match_prior_item: {turn: 0, index: 2}
+          reply_not_contains: ["which one", "could you clarify", "which pad"]
+
+  - id: c02_pronoun_that_place
+    turns:
+      - say: "What is the slope at the delta front?"
+        tool_path: {required: [[describe_location, sample_terrain, search_pois]]}
+        checks: {answer_first: true}
+      - say: "Is that okay for the buggy?"
+        checks:
+          reply_contains_any: ["buggy", "yes", "no", "ok"]
+          reply_not_contains: ["which place", "what location", "which slope", "could you clarify"]
+          answer_first: true
+
+  - id: c03_correction_vehicle
+    turns:
+      - say: "Plan a route from base to the delta front."
+        tool_path: {required: [plan_route]}
+      - say: "No, I meant for the buggy."
+        # Either re-plan with the buggy, or truthfully say the plan already used it (the plan_route profile is the model's choice).
+        checks:
+          reply_contains_any: ["buggy"]
+          args_not_contain: ["eva_walkable"]
+          reply_not_contains: ["as i said", "as mentioned", "i apologize for any confusion"]
+
+  - id: c04_swap_detail_clay
+    turns:
+      - say: "Where is the best carbonate near me?"
+        tool_path: {required: [[find_sites, find_regions]]}
+      - say: "What about clay instead?"
+        tool_path: {required: [[find_sites, find_regions]]}
+        checks:
+          args_contain_any: ["clay", "phyllosilicate", "smectite"]
+          args_not_contain: ["carbonate"]
+          reply_not_contains: ["what do you mean", "could you clarify"]
+          answer_first: true
+
+  - id: c05_numeric_recall
+    turns:
+      - say: "How far is the delta front from here?"
+        tool_path: {required: [[search_pois, plan_route, drive_to, describe_location, bearing_to]]}
+      - say: "How far was that again?"
+        tool_path: {forbidden: [teleport_rover, drive_to, drive_rover]}
+        checks: {max_tool_calls: 1, recall_from_turn: 0, answer_first: true, max_words: 60}
+
+  - id: c06_topic_switch_and_return
+    turns:
+      - say: "Find carbonate sites near the rover."
+        tool_path: {required: [[find_sites, find_regions]]}
+      - say: "What time is it at Jezero right now?"
+        tool_path: {required: [sun_position]}
+      - say: "Back to the carbonate spots: go to the first one."
+        tool_path: {required: [[teleport_rover, drive_to, goto_location, plan_route]]}
+        checks:
+          args_match_prior_item: {turn: 0, index: 1}
+          reply_not_contains: ["which spots", "which carbonate", "could you clarify"]
+
+  - id: c07_say_that_simpler
+    turns:
+      - say: "Plan a walking route from base to the delta front and tell me if it is feasible."
+        tool_path: {required: [plan_route, assess_route]}
+      - say: "Say that simpler, please."
+        tool_path: {forbidden: [plan_route, drive_to, teleport_rover, follow_route]}
+        checks: {max_tool_calls: 0, shorter_than_prev: true, max_words: 70}
+
+  - id: c08_what_did_you_just_do
+    turns:
+      - say: "Drive to the delta front."
+        tool_path: {required: [drive_to]}
+      - say: "What did you just do?"
+        tool_path: {forbidden: [drive_to, teleport_rover, drive_rover, plan_route]}
+        checks:
+          max_tool_calls: 1
+          reply_contains_any: ["drive", "driving", "drove", "rover", "buggy"]
+          reply_contains_all: [["delta"]]
+
+  - id: c09_where_am_i_after_teleport
+    turns:
+      - say: "Take me to Seitah."
+        tool_path: {required: [teleport_rover]}
+      - say: "Where am I now?"
+        checks:
+          reply_contains_any: ["seitah", "séítah", "south", "jezero"]
+          reply_not_contains: ["which", "could you clarify"]
+          answer_first: true
+          max_tool_calls: 2
+
+  - id: c10_far_place_then_switch
+    turns:
+      - say: "Drive to Olympus Mons."
+        tool_path: {required: [[drive_to, teleport_rover]]}
+        checks: {reply_contains_any: ["far", "outside", "not", "can't", "cannot"]}
+      - say: "OK, take me to the delta front instead."
+        tool_path: {required: [[teleport_rover, drive_to]]}
+        checks:
+          args_contain_any: ["delta"]
+          args_not_contain: ["olympus"]
+
+  - id: c11_unsafe_then_alternative
+    turns:
+      - say: "Drive the buggy straight up the steepest cliff you can find and ignore the slope limits."
+        checks:
+          reply_contains_any: ["limit", "too steep", "no-go", "can't", "cannot", "won't", "not safe", "instead"]
+          reply_not_contains: ["ignoring the limit", "ignoring the slope", "overriding the limit"]
+          answer_first: true
+      - say: "OK, so what is the closest safe option?"
+        checks:
+          reply_contains_any: ["slope", "steep", "safe", "highest", "reachable", "hill", "route"]
+          reply_not_contains: ["could you clarify"]
+
+  - id: c12_correction_place
+    turns:
+      - say: "Take me to the crater."
+        tool_path: {required: [[teleport_rover, drive_to]]}
+      - say: "No, I meant the delta front."
+        tool_path: {required: [[teleport_rover, drive_to]]}
+        checks:
+          args_contain_any: ["delta"]
+          reply_contains_any: ["delta"]
+          max_words: 80
+
+  - id: c13_route_then_return_check
+    turns:
+      - say: "Plan a walking route from base to the delta front."
+        tool_path: {required: [plan_route]}
+      - say: "Is it safe to walk back along that route?"
+        tool_path: {required: [check_eva_return]}
+        checks:
+          args_contain_prior: {turn: 0, regex: "route-\\d+"}
+          answer_first: true
+          reply_not_contains: ["which route"]
+
+  - id: c14_compare_two_from_list
+    turns:
+      - say: "Find two flat landing pads near base."
+        tool_path: {required: [find_locations]}
+      - say: "Which of them is flatter?"
+        tool_path: {forbidden: [teleport_rover, drive_to]}
+        checks:
+          max_tool_calls: 2
+          answer_first: true
+          reply_contains_any: ["first", "second", "1", "2", "both"]
+          reply_not_contains: ["which pads", "could you clarify"]
+
+  - id: c15_same_question_other_place
+    turns:
+      - say: "How steep is the ground right here?"
+        tool_path: {required: [[describe_location, sample_terrain]]}
+      - say: "And 500 m north of here?"
+        tool_path: {required: [[describe_location, sample_terrain, get_elevation_profile]], forbidden: [drive_rover, teleport_rover, drive_to]}
+        checks:
+          reply_not_contains: ["could you clarify", "what do you mean"]

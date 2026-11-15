@@ -60,3 +60,9 @@ Extra panel behaviour: header shows `provider · model` and agent status from `G
 fix (`friendly.ts`), text deltas are rendered once per animation frame, long tool results are collapsed and truncated with "Show all",
 Enter sends, Shift+Enter adds a line, Esc stops, focus returns to the box after a send. The agent does not forward MCP
 `structuredContent`; `features.ts` parses the result text instead and prefers `structured` when present.
+
+## Conversation memory
+
+`useChat` keeps one session id (`session.ts`, new on Clear) and POSTs `{message, session_id, history?, context?}`; the
+agent holds the full transcript including tool results, so follow-ups ("the second one", "how far was that?") resolve
+against real results. `history` is a text-only fallback used only when the agent has forgotten the session.

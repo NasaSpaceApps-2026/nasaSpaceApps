@@ -65,7 +65,7 @@ http
       let msgs = [];
       try {
         const parsed = JSON.parse(body);
-        msgs = parsed.messages ?? [];
+        msgs = parsed.messages ?? (parsed.message ? [{ role: 'user', content: parsed.message }] : []);
         console.log('chat request, context:', JSON.stringify(parsed.context ?? null));
       } catch {
         return res.writeHead(400, cors).end('bad json');

@@ -56,6 +56,14 @@ def normalize_messages(messages: list[dict]) -> list[dict]:
     return out
 
 
+def normalize_history(messages: list[dict]) -> list[dict]:
+    """Text-only earlier turns -> API messages (alternating, starting with user, ending with assistant)."""
+    out = normalize_messages(list(messages) + [{"role": "user", "content": "x"}])[:-1]
+    if out and out[-1]["role"] != "assistant":
+        out = out[:-1]
+    return out
+
+
 def validate_args(schema: dict, args: Any) -> str | None:
     """Minimal guard so truncated/odd streamed tool input never reaches a tool."""
     if not isinstance(args, dict):
@@ -68,7 +76,7 @@ def validate_args(schema: dict, args: Any) -> str | None:
 
 async def run_turn(*, model: ModelClient, bridge: McpBridge, system: list[dict], messages: list[dict],
                    max_tool_calls: int = 12, tool_timeout_s: float = 180.0,
-                   tools: list[dict] | None = None) -> AsyncIterator[dict]:
+                   tools: list[dict] | None = None, transcript: list[dict] | None = None) -> AsyncIterator[dict]:
     """Run one user turn: stream model text, execute requested tools through the MCP bridge (at most `max_tool_calls`, `tool_timeout_s` each) and yield SSE-ready event dicts; failures become an "error" event, never an exception."""
     if tools is None:
         try:
@@ -77,7 +85,10 @@ async def run_turn(*, model: ModelClient, bridge: McpBridge, system: list[dict],
             yield {"event": "error", "data": {"message": f"Tool server unavailable: {e}"}}
             return
     schemas = {t["name"]: t["input_schema"] for t in tools}
-    msgs = list(messages)
+    # `transcript`, when given, is used in place so the caller keeps every assistant / tool_result message of the turn.
+    if transcript is not None:
+        transcript[:] = list(messages)
+    msgs = transcript if transcript is not None else list(messages)
     calls = 0
     cap_reached = False
 

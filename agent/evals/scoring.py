@@ -150,6 +150,7 @@ class Session:
     error: str | None = None
     tools_available: list[str] | None = None
     model: str | None = None
+    extra_sources: list[str] = field(default_factory=list)  # tool results of earlier turns (multi-turn conversations)
 
     @property
     def tool_names(self) -> list[str]:
@@ -266,6 +267,7 @@ class Score:
     tool_names: list[str] = field(default_factory=list)
     n_tool_calls: int = 0
     warnings: list[str] = field(default_factory=list)   # soft checks (do not affect `passed`)
+    reply: str = ""                                     # the reply text (filled by the conversation runner)
 
 
 def score_session(case: dict, s: Session, always_allowed: Iterable[str] = (),
@@ -300,6 +302,7 @@ def score_session(case: dict, s: Session, always_allowed: Iterable[str] = (),
         sources = [c.result or "" for c in s.calls if c.result is not None]
         if allow_prompt_numbers:
             sources += [s.prompt, s.context_block]
+        sources += s.extra_sources
         sc.ungrounded = ungrounded_numbers(s.reply, sources)
         sc.numbers_ok = not sc.ungrounded
         if sc.ungrounded:
@@ -309,3 +312,85 @@ def score_session(case: dict, s: Session, always_allowed: Iterable[str] = (),
         sc.warnings.append("jargon in reply (raw ids): " + ", ".join(jg))
     sc.passed = sc.tool_ok and sc.numbers_ok and sc.checks_ok and not s.error and s.stop_reason is not None
     return sc
+
+
+
+# ---------------------------------------------------------------------------------------------
+# Conversation (multi-turn) checks
+# ---------------------------------------------------------------------------------------------
+
+FILLER_RE = re.compile(r"^\W*(i['’]ll|i will|let me|sure|great|certainly|of course|okay,? let|one moment|first,? i)\b", re.I)
+LIST_ITEM_RE = re.compile(r"^\s*(\d+)\.\s+(\S+)(?:\s+(?:->\s+\S+\s+)?(?:at\s+)?(\(-?[\d.]+, -?[\d.]+\)))?", re.M)
+
+
+def first_sentence(reply: str) -> str:
+    """The reply's first sentence (markdown stripped), split on . ! ? or a newline."""
+    t = reply.strip().replace("*", "").replace("`", "")
+    m = re.search(r"(?<=[.!?])\s|\n", t)
+    return t[: m.start()] if m else t
+
+
+def prior_item_handles(results: list[str], index: int) -> list[str]:
+    """Id token and coordinates of item `index` in the last numbered list printed in `results` (earlier turns)."""
+    for text in reversed(results):
+        for m in LIST_ITEM_RE.finditer(text):
+            if int(m.group(1)) == index:
+                return [h for h in (m.group(2).rstrip(":,"), (m.group(3) or "").strip("()")) if h]
+    return []
+
+
+def check_conversation_turn(checks: dict, s: Session, prior: list[Session]) -> list[str]:
+    """Checks that need the earlier turns: answer-first, recall of a prior number, right referent in tool arguments.
+    answer_first: true            first sentence <= 45 words and no filler opener ("I'll check...")
+    max_words: N                  whole reply
+    shorter_than_prev: true       reply has fewer words than the previous turn's reply
+    recall_from_turn: N           reply has a number and every number is in turn N's tool results (0-based)
+    args_contain_any: [..]        some tool call of THIS turn has one of these substrings in its arguments
+    args_regex: pattern           same, as a regex
+    args_contain_prior: {turn, regex}   args contain what the regex finds in turn's tool results (e.g. a route id)
+    args_match_prior_item: {turn, index}  args contain the id or coordinates of item N of the list shown in that turn
+    args_not_contain: [..]        no tool call of this turn has these in its arguments"""
+    import json
+    fails: list[str] = []
+    args_all = " ".join(json.dumps(c.args, ensure_ascii=False) for c in s.calls).lower()
+    if checks.get("answer_first"):
+        fs = first_sentence(s.reply)
+        if FILLER_RE.search(fs):
+            fails.append(f"not answer-first: opens with filler: {fs[:60]!r}")
+        if len(fs.split()) > 45:
+            fails.append(f"not answer-first: first sentence is {len(fs.split())} words (max 45)")
+    mw = checks.get("max_words")
+    if mw and len(s.reply.split()) > mw:
+        fails.append(f"reply is {len(s.reply.split())} words > {mw}")
+    if checks.get("shorter_than_prev") and prior and len(s.reply.split()) >= len(prior[-1].reply.split()):
+        fails.append("reply is not shorter than the previous one")
+    if "recall_from_turn" in checks:
+        src = [c.result or "" for c in prior[checks["recall_from_turn"]].calls]
+        nums = extract_numbers(s.reply)
+        if not nums:
+            fails.append("recall: reply quotes no number")
+        bad = ungrounded_numbers(s.reply, src)
+        if bad:
+            fails.append("recall: numbers not in that earlier result: " + ", ".join(bad))
+    if "args_contain_any" in checks and not any(a.lower() in args_all for a in checks["args_contain_any"]):
+        fails.append(f"no tool call mentions any of: {checks['args_contain_any']} (wrong referent or no action)")
+    if "args_regex" in checks and not re.search(checks["args_regex"], args_all, re.I):
+        fails.append(f"no tool call matches /{checks['args_regex']}/")
+    for a in checks.get("args_not_contain", []):
+        if a.lower() in args_all:
+            fails.append(f"tool call must not mention: {a}")
+    spec = checks.get("args_contain_prior")
+    if spec:
+        found = {m.group(0).lower() for c in prior[spec["turn"]].calls for m in re.finditer(spec["regex"], c.result or "")}
+        if not found:
+            fails.append("setup problem: nothing to refer back to in the earlier turn")
+        elif not any(f in args_all for f in found):
+            fails.append(f"tool call does not use the earlier {sorted(found)}")
+    spec = checks.get("args_match_prior_item")
+    if spec:
+        hs = prior_item_handles([c.result or "" for c in prior[spec["turn"]].calls], spec["index"])
+        if not hs:
+            fails.append("setup problem: earlier turn showed no numbered list")
+        elif not any(h.lower() in args_all for h in hs):
+            fails.append(f"tool call does not target item {spec['index']} of the earlier list ({hs})")
+    return fails

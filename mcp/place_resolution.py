@@ -20,12 +20,14 @@ LOC_ARGS: dict[str, tuple[str, ...]] = {
     "set_view": ("target",), "fly_camera": ("target",), "place_marker": ("at",), "drive_to": ("target", "start"),
     "viewshed": ("at",), "line_of_sight": ("a", "b"), "find_vantage_points": ("target",), "sun_position": ("at",),
     "illumination_at": ("at",), "find_lit_windows": ("target",), "eva_envelope": ("base",),
+    "eva_start": ("base", "crew_at"), "return_route": ("to",), "check_path_ahead": ("toward",), "comm_check": ("to",),
+    "log_sample": ("at",), "bearing_to": ("target",), "rendezvous": ("rover",), "daylight_check": ("at",),
 }
 # ... and arguments that hold a list of locations
 LOC_LIST_ARGS: dict[str, tuple[str, ...]] = {
-    "plan_route": ("via",), "get_elevation_profile": ("points",), "describe_location": ("at",),
+    "eva_start": ("havens",), "plan_route": ("via",), "get_elevation_profile": ("points",), "describe_location": ("at",),
 }
-STRUCTURED = re.compile(r"^(poi:|marker:|set:)|^(rover|base|here|me)$|^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$|^\d+(\.\d+)?$", re.I)
+STRUCTURED = re.compile(r"^(poi:|marker:|set:)|^((the|my) )?rover$|^(base|here|me)$|^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$|^\d+(\.\d+)?$", re.I)
 GENERIC_KINDS = ("crater", "rim", "highest", "flat")
 
 # the places chosen during the current tool call, for the tools that want a label ("Driving to the crater ...")

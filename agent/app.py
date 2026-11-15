@@ -11,17 +11,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
+from .conversation import ConversationStore
 from .config import Settings, has_key, load_dotenv
 from .mcp_bridge import McpBridge
 from .model import ModelClient, make_model
+from .loop import normalize_history
 from .replay import replay_events
 from .session import run_session
 
 
 class ChatRequest(BaseModel):
     """POST /chat body: the conversation `messages` (Anthropic message dicts) and optional client `context` (viewer state such as the selected markers)."""
-    messages: list[dict[str, Any]]
+    messages: list[dict[str, Any]] | None = None   # legacy/stateless: the whole conversation, ends with a user turn
     context: dict[str, Any] | None = None
+    # Stateful: only the new user message plus a session id. The server keeps the full transcript (tool results too).
+    message: str | None = None
+    session_id: str | None = None
+    # Text-only earlier turns; used only to seed a session the server does not know (restart, expiry).
+    history: list[dict[str, Any]] | None = None
 
 
 def create_app(*, model: ModelClient | None = None, bridge: McpBridge | None = None,
@@ -32,6 +39,7 @@ def create_app(*, model: ModelClient | None = None, bridge: McpBridge | None = N
         settings = Settings.from_env()
     bridge = bridge or McpBridge(settings=settings)
     state: dict[str, Any] = {"model": model, "http": None}
+    store = ConversationStore()
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -83,9 +91,26 @@ def create_app(*, model: ModelClient | None = None, bridge: McpBridge | None = N
             except Exception as e:  # noqa: BLE001
                 yield sse({"event": "error", "data": {"message": str(e)}})
                 return
-            async for ev in run_session(model=m, bridge=bridge, settings=settings, messages=req.messages,
-                                        client_context=req.context, http=state["http"]):
-                yield sse(ev)
+            if req.message is None:  # legacy: stateless, the client sent the whole conversation
+                if not req.messages:
+                    yield sse({"event": "error", "data": {"message": "Bad request: send `message` or `messages`"}})
+                    return
+                async for ev in run_session(model=m, bridge=bridge, settings=settings, messages=req.messages,
+                                            client_context=req.context, http=state["http"]):
+                    yield sse(ev)
+                return
+            conv, existed = store.get(req.session_id)
+            yield sse({"event": "session", "data": {"session_id": conv.sid, "resumed": existed}})
+            async with conv.lock:
+                if not existed and not conv.messages and req.history:
+                    try:  # server lost the session: rebuild from the client's text turns
+                        conv.messages = normalize_history(req.history)
+                    except ValueError:
+                        pass
+                async for ev in run_session(model=m, bridge=bridge, settings=settings,
+                                            messages=[{"role": "user", "content": req.message}],
+                                            client_context=req.context, http=state["http"], conversation=conv):
+                    yield sse(ev)
 
         return EventSourceResponse(stream(), ping=15)
 

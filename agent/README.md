@@ -25,8 +25,13 @@ first chat and re-made if it drops; missing REST context is reported to the mode
 
 `GET /health` -> `{ok, model, api_key_present, mcp_connected, tools, mcp_target, rest_api, replay, max_tool_calls}`.
 
-`POST /chat` body `{messages: [{role, content}], context?: {...}}` (messages must start and end with `user`;
-send history as plain text turns). Response is `text/event-stream`:
+`POST /chat` has two modes. **Stateful (the panel):** `{message, session_id?, context?, history?}`; the agent keeps the
+full transcript per session (tool calls and results included, `agent/conversation.py`: in-memory LRU, 6 h TTL, old
+tool results shortened and oldest turns dropped over a ~90k-char budget with tool pairs kept whole) and the first SSE
+event is `session {session_id, resumed}`. `history` (plain text turns) only seeds a session the server does not know
+(restart). The context block carries "conversation memory" handles (last set and its top items, last route, last place,
+recent calls) so follow-ups still resolve after trimming. **Stateless (legacy):** `{messages: [{role, content}], context?}`
+(messages must start and end with `user`). Response is `text/event-stream`:
 
 | event | data |
 |---|---|
@@ -64,6 +69,8 @@ send history as plain text turns). Response is `text/event-stream`:
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | OpenAI-compatible endpoint |
 | `ATLAS_MODEL` | `claude-opus-5-5` / `deepseek-chat` | model id per provider (Anthropic: use a 4.6+ model; `deepseek-chat` is currently an alias of `deepseek-flash`) |
 | `ATLAS_EFFORT` | `medium` | `low`..`max`; empty string omits it |
+| `ATLAS_DEEPSEEK_TEMPERATURE` | `0.3` | DeepSeek sampling temperature (`none` = API default); low keeps tool use and number quoting steady |
+| `ATLAS_SYSTEM_PROMPT` | | path to an alternative system prompt (A/B runs) |
 | `ATLAS_MAX_TOKENS` | `32000` | per model call |
 | `ATLAS_FALLBACKS` | `0` | opt-in server-side refusal fallbacks (beta; unverified, off by default) |
 | `ATLAS_MCP_URL` | `http://localhost:8765/mcp` | streamable HTTP MCP endpoint |

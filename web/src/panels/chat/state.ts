@@ -102,7 +102,7 @@ export function toWireMessages(messages: ChatMessage[]): { role: 'user' | 'assis
   for (const m of messages) {
     if (m.role === 'user') out.push({ role: 'user', content: m.text });
     else {
-      const text = m.parts.filter((p): p is Extract<Part, { kind: 'text' }> => p.kind === 'text').map((p) => p.text).join('').trim();
+      const text = m.parts.filter((p): p is Extract<Part, { kind: 'text' }> => p.kind === 'text').map((p) => p.text.trim()).filter(Boolean).join('\n\n');  // text split by tool calls stays readable
       if (text) out.push({ role: 'assistant', content: text });
     }
   }

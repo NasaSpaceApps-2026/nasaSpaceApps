@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { HttpError, streamChat } from './sse';
-import { initialState, reducer, toWireMessages } from './state';
+import { buildChatBody, newSessionId } from './session';
+import { initialState, reducer } from './state';
 import type { ToolEvent } from './types';
 
 export const DEFAULT_AGENT_URL = 'http://localhost:8766';
@@ -25,6 +26,8 @@ export function useChat(opts: UseChatOptions) {
   const abortRef = useRef<AbortController | null>(null);
   const stateRef = useRef(state);
   const optsRef = useRef(opts);
+  const sessionRef = useRef<string>('');
+  if (!sessionRef.current) sessionRef.current = newSessionId();
   useEffect(() => {
     stateRef.current = state;
     optsRef.current = opts;
@@ -37,7 +40,8 @@ export function useChat(opts: UseChatOptions) {
     if (!text || stateRef.current.streaming) return;
     const { agentUrl = DEFAULT_AGENT_URL, getContext, onToolEvent } = optsRef.current;
     const base = agentUrl.replace(/\/+$/, '');
-    const history = [...toWireMessages(stateRef.current.messages), { role: 'user' as const, content: text }];
+    const earlier = stateRef.current.messages;
+    const sessionId = sessionRef.current;
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     dispatch({ type: 'send', text, userId: uid(), assistantId: uid() });
@@ -62,7 +66,7 @@ export function useChat(opts: UseChatOptions) {
     };
     streamChat(
       `${base}/chat`,
-      context ? { messages: history, context } : { messages: history },
+      buildChatBody(sessionId, earlier, text, context),
       (event) => {
         if (ctrl.signal.aborted) return;
         if (event.event === 'text') {
@@ -115,6 +119,7 @@ export function useChat(opts: UseChatOptions) {
 
   const clear = useCallback(() => {
     abortRef.current?.abort();
+    sessionRef.current = newSessionId(); // a cleared chat is a new conversation on the agent too
     dispatch({ type: 'clear' });
   }, []);
 

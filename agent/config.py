@@ -81,6 +81,13 @@ def _flag(name: str, default: bool) -> bool:
     return v.strip().lower() in ("1", "true", "yes", "on")
 
 
+def _opt_float(raw: str | None, default: float | None) -> float | None:
+    if raw is None:
+        return default
+    raw = raw.strip().lower()
+    return None if raw in ("", "none", "default") else float(raw)
+
+
 @dataclass
 class Settings:
     """Agent configuration (provider, model, effort, token cap, MCP target), built from environment variables by Settings.from_env at call time."""
@@ -104,6 +111,7 @@ class Settings:
     replay_max_gap_s: float = 3.0
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_thinking: bool = False       # ATLAS_DEEPSEEK_THINKING=1 enables DeepSeek thinking mode
+    deepseek_temperature: float | None = 0.3  # ATLAS_DEEPSEEK_TEMPERATURE (empty or "none" = API default); low = steadier tool use and quoting
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -130,4 +138,5 @@ class Settings:
             replay_max_gap_s=float(e("ATLAS_REPLAY_MAX_GAP", "3")),
             deepseek_base_url=(e("DEEPSEEK_BASE_URL") or "https://api.deepseek.com").rstrip("/"),
             deepseek_thinking=_flag("ATLAS_DEEPSEEK_THINKING", False),
+            deepseek_temperature=_opt_float(e("ATLAS_DEEPSEEK_TEMPERATURE"), 0.3),
         )

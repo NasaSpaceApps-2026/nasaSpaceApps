@@ -962,6 +962,9 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
     import tools_lake  # mcp/tools_lake.py: flood_at_level, eva_envelope, check_eva_return
     tools_lake.register(tool, call, _coerce, LOCATION_REFS, SCHEMA_PATCH, _loc)
 
+    import tools_mission  # mcp/tools_mission.py: eva_start/end/status, return_route, nearest_haven, check_path_ahead, comm_check, samples...
+    tools_mission.register(tool, call, _coerce, SCHEMA_PATCH, _loc, act, err)
+
     import tools_drive  # mcp/tools_drive.py: select_vehicle, drive_to (buggy or scout, highest point)
     tools_drive.register({"tool": tool, "act": act, "act_idem": act_idem, "request": request, "ok": ok, "err": err,
                           "Unreachable": Unreachable, "coerce": _coerce, "location_refs": LOCATION_REFS,

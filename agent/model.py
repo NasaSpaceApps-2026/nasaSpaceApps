@@ -291,6 +291,8 @@ class DeepSeekModel:
             p["tools"] = tools_to_openai(tools)
             if no_tools:
                 p["tool_choice"] = "none"
+        if self._s.deepseek_temperature is not None and not self._s.deepseek_thinking:  # ignored/rejected in thinking mode
+            p["temperature"] = self._s.deepseek_temperature
         p["thinking"] = {"type": "enabled" if self._s.deepseek_thinking else "disabled"}
         return p
 
