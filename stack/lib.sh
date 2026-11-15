@@ -29,3 +29,6 @@ stop_service() {
   fi
   rm -f "$(pidfile "$name")"
 }
+
+# Cesium viewer tile tree for our real Jezero frame (built by stack/build_viewer_site.sh, gitignored under stack/cache).
+VIEWER_SITE="$CACHE/work/data/build"

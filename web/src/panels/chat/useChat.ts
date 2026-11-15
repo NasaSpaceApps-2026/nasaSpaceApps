@@ -24,9 +24,11 @@ export function useChat(opts: UseChatOptions) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const abortRef = useRef<AbortController | null>(null);
   const stateRef = useRef(state);
-  stateRef.current = state;
   const optsRef = useRef(opts);
-  optsRef.current = opts;
+  useEffect(() => {
+    stateRef.current = state;
+    optsRef.current = opts;
+  });
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -47,11 +49,28 @@ export function useChat(opts: UseChatOptions) {
       context = undefined;
     }
     const names = new Map<string, { name: string; args: Record<string, unknown> }>();
+    // Smooth streaming: coalesce text deltas into one render per animation frame (tool/done events flush first, order kept).
+    let pendingText = '';
+    let raf = 0;
+    const flush = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0;
+      if (!pendingText || ctrl.signal.aborted) { pendingText = ''; return; }
+      const delta = pendingText;
+      pendingText = '';
+      dispatch({ type: 'event', event: { event: 'text', data: { delta } } });
+    };
     streamChat(
       `${base}/chat`,
       context ? { messages: history, context } : { messages: history },
       (event) => {
         if (ctrl.signal.aborted) return;
+        if (event.event === 'text') {
+          pendingText += event.data.delta;
+          if (!raf) raf = requestAnimationFrame(flush);
+          return;
+        }
+        flush();
         dispatch({ type: 'event', event });
         try {
           if (event.event === 'tool_call_start') {
@@ -67,6 +86,7 @@ export function useChat(opts: UseChatOptions) {
               summary: event.data.summary,
               isError: event.data.is_error,
               result: event.data.result,
+              structured: event.data.structured,
             });
           }
         } catch (e) {
@@ -76,10 +96,12 @@ export function useChat(opts: UseChatOptions) {
       ctrl.signal,
     ).then(
       () => {
+        flush();
         // Stream closed without a done/error event: finalize so the UI never hangs.
         if (!ctrl.signal.aborted && stateRef.current.streaming) dispatch({ type: 'event', event: { event: 'done', data: {} } });
       },
       (err) => {
+        flush();
         if (ctrl.signal.aborted) return;
         dispatch({ type: 'fail', message: describeFailure(err, base) });
       },
@@ -87,7 +109,7 @@ export function useChat(opts: UseChatOptions) {
   }, []);
 
   const stop = useCallback(() => {
-    abortRef.current?.abort();
+    abortRef.current?.abort(); // pending (unflushed) text is dropped by flush()
     dispatch({ type: 'stop' });
   }, []);
 

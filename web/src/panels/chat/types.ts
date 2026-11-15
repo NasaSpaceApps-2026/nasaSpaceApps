@@ -2,7 +2,7 @@
 export type AgentEvent =
   | { event: 'text'; data: { delta: string } }
   | { event: 'tool_call_start'; data: { id: string; name: string; args: Record<string, unknown> } }
-  | { event: 'tool_call_result'; data: { id: string; summary: string; is_error: boolean; result?: string } }
+  | { event: 'tool_call_result'; data: { id: string; summary: string; is_error: boolean; result?: string; structured?: unknown } }
   | { event: 'done'; data: { stop_reason?: string; tool_calls?: number } }
   | { event: 'error'; data: { message: string } };
 
@@ -15,6 +15,8 @@ export interface ToolCall {
   status: ToolCallStatus;
   summary?: string;
   result?: string;
+  /** MCP structuredContent when the agent forwards it; lets the card list clickable result rows. */
+  structured?: unknown;
 }
 
 /** An assistant turn is an ordered list of text and tool-call parts, as they arrived. */
@@ -38,4 +40,6 @@ export interface ToolEvent {
   summary?: string;
   isError?: boolean;
   result?: string;
+  /** Full MCP structuredContent of the result, when the agent forwards it (agent >= this change). */
+  structured?: unknown;
 }

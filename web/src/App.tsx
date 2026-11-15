@@ -8,6 +8,7 @@ import type { DriverPose } from './rover/driver'
 import { PlacesLayer, type Place } from './places'
 import { BUBBLES } from './bubbles'
 import { dropOnBubbles, type StreetDrop } from './pegman'
+import { AtlasDock } from './panels/chat/AtlasDock'
 import './App.css'
 
 type SurfaceView = 'planet' | 'street'
@@ -447,7 +448,6 @@ export default function App() {
         {cameraMode !== 'planet' && <div className="row">
           {(['orbit', 'site', 'ground', 'rover', 'planet'] as Mode[]).map((m) => (
             <button key={m} disabled={!viewer} onClick={() => {
-              if (surfaceView === 'street') leaveStreet()
               fly(viewer!, site!, m, 2)
               setCameraMode(m)
             }}>
@@ -496,6 +496,18 @@ export default function App() {
         <small>{status}</small>
         <small>{hud}</small>
       </div>}
+      <AtlasDock
+        viewer={viewer}
+        site={site}
+        getRover={() => roverCtl}
+        cameraMode={cameraMode}
+        onEnterSite={() => {
+          if (!viewer || !site) return
+          fly(viewer, site, 'site', 0)
+          setCameraMode('site')
+        }}
+        street={surfaceView === 'street' && streetDrop ? { world: streetDrop.world, frame: streetFrame } : null}
+      />
     </div>
   )
 }

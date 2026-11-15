@@ -51,17 +51,12 @@ The agent already drives the viewer through the REST API/WebSocket (teleport, ca
 - Requires CORS on the agent (already enabled with `*`).
 - Tests live next to the source (`*.test.ts`); run them from `chat-dev/` with `npm test`. Dev page: `cd chat-dev && npm run mock` (terminal 1), `npm run dev` (terminal 2), open http://localhost:5199.
 
-## Mounting it in the viewer later
+## Mounted in the viewer
 
-The panel needs only a 380 px wide, full-height slot and the agent URL; it does not touch the viewer's state. Checklist:
+Done: `AtlasDock.tsx` wraps `ChatPanel` for the Cesium viewer (highlights, camera flights, rover follow, street-view mirroring, frame
+check). What changed in other people's files, and how to revert: `web/INTEGRATION.md`. Run: `stack/up.sh --with-viewer`.
 
-1. Import `ChatPanel` and render it in the right-hand slot with `agentUrl` (default `http://localhost:8766`, start the
-   backend with `stack/up.sh`). Make sure the parent has a definite height.
-2. Pass `getContext` to send the viewer's rover pose, camera and selected marker in site-frame metres.
-3. The viewer and the agent must share one site frame. The agent moves the rover through Yousef's API, so use the same
-   `ARES_DATA_DIR` the viewer renders (see `docs/frames.md`); with `VITE_SITE_DIR=../contracts/fixtures` the viewer shows
-   a synthetic 1 km site, not the real Jezero the query engine answers from.
-4. Optional: `onToolEvent` to flash search hits or destinations. `chat-dev/src/highlights.ts` shows how to turn
-   `find_*`, `teleport_rover`, `goto_location` and `plan_route` results into map points; `chat-dev/src/Minimap.tsx` is a working example.
-5. If the viewer already has a WebSocket to the API, do not open a second one just for the chat; the agent has no
-   viewer-side channel of its own.
+Extra panel behaviour: header shows `provider · model` and agent status from `GET /health` (polled), friendly error cards with the exact
+fix (`friendly.ts`), text deltas are rendered once per animation frame, long tool results are collapsed and truncated with "Show all",
+Enter sends, Shift+Enter adds a line, Esc stops, focus returns to the box after a send. The agent does not forward MCP
+`structuredContent`; `features.ts` parses the result text instead and prefers `structured` when present.

@@ -339,6 +339,14 @@ async function main() {
     }));
   });
   const driver = new RoverDriver({ sampler, profile, params: BUGGY_PARAMS, controls, link, start: START });
+  // Copilot dock (web/src/panels/chat/AtlasDock.tsx): mirrors the API rover (the one the AI drives) into this embedded
+  // street view as world-local metres. Same-origin postMessage only; see web/INTEGRATION.md.
+  addEventListener('message', (e: MessageEvent) => {
+    if (e.origin !== location.origin) return;
+    const d = e.data as { type?: string; x?: number; y?: number; heading_deg?: number } | null;
+    if (!d || d.type !== 'ares-atlas-pose' || !Number.isFinite(d.x) || !Number.isFinite(d.y)) return;
+    driver.teleport(d.x as number, d.y as number, Number.isFinite(d.heading_deg) ? (d.heading_deg as number) : 0);
+  });
 
   const buggy = createBuggyModel({ castShadow: true });
   const rover = buggy.group;

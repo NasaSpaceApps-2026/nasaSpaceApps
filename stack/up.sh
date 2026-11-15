@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Start the Ares Atlas copilot stack (idempotent). See stack/README.md.
-#   stack/up.sh [--frame jezero|crater] [--with-viewer] [--rebuild]
+#   stack/up.sh [--frame jezero|crater] [--with-viewer] [--rebuild]   (--with-viewer: viewer + sandbox, prints one URL)
 set -u
 . "$(cd "$(dirname "$0")" && pwd)/lib.sh"
 cd "$ROOT"
@@ -75,29 +75,32 @@ start chat   5199 http://127.0.0.1:5199/ -- sh -c "cd '$ROOT/chat-dev' && exec n
 grep -h "frame check\|FRAME MISMATCH" "$LOGS/mcp.log" | tail -1
 
 VIEWER_MSG=""
+VP=""; SP=""
 if [ "$VIEWER" = 1 ]; then
-  echo "teammates' viewer (usage.md commands, unmodified):"
-  # exact commands from usage.md; ports 5173/5174 are fixed there (street view iframes :5174)
-  for spec in "5173:web:viewer" "5174:web/src/rover/sandbox:sandbox"; do
-    port="${spec%%:*}"; rest="${spec#*:}"; dir="${rest%%:*}"; name="${rest#*:}"
-    owner="$(port_pid "$port")"
-    pid="$(our_pid "$name")"
-    if [ -n "$owner" ] && pid_alive "$pid"; then echo "  $name: already running (:$port)"; continue; fi
-    if [ -n "$owner" ]; then
-      echo "  $name: SKIPPED, :$port is held by pid $owner in $(pid_cwd "$owner") (another project?). Stop it or open the URL there only if it is this repo."
-      continue
-    fi
-    if [ ! -d "$ROOT/$dir/node_modules" ]; then echo "  $name: SKIPPED, run npm install in $dir first"; continue; fi
-    if [ "$name" = viewer ]; then
-      nohup sh -c "cd '$ROOT/web' && VITE_SITE_DIR=../contracts/fixtures exec npm run dev" >"$LOGS/viewer.log" 2>&1 &
-    else
-      nohup sh -c "cd '$ROOT/web/src/rover/sandbox' && exec npm run dev" >"$LOGS/sandbox.log" 2>&1 &
-    fi
-    echo $! > "$(pidfile "$name")"
-    for i in $(seq 1 30); do [ -n "$(port_pid "$port")" ] && break; sleep 1; done
-    echo "  $name: started on :$port"
-  done
-  [ "$FRAME" = jezero ] && VIEWER_MSG="NOTE: sandbox worlds and the 1 km fixture viewer are NOT in the real-Jezero frame; the rover will not show there. Use: stack/up.sh --frame crater --with-viewer and open the sandbox with ?world=crater (docs/frames.md)."
+  echo "viewer (Rithvik's Cesium app with the copilot dock) + street-view sandbox:"
+  [ -d "$ROOT/web/node_modules" ] || die "web/node_modules missing: cd web && npm install"
+  [ -d "$ROOT/web/src/rover/sandbox/node_modules" ] || die "sandbox node_modules missing: cd web/src/rover/sandbox && npm install"
+  # The viewer must show the SAME frame the backend uses (lat0/lon0/size), so it serves tiles built from our real
+  # Jezero DTM, not contracts/fixtures. Built once into stack/cache (about 2 minutes), gitignored.
+  if [ "$REBUILD" = 1 ]; then "$ROOT/stack/build_viewer_site.sh" --rebuild || die "viewer site build failed"
+  else "$ROOT/stack/build_viewer_site.sh" || die "viewer site build failed"; fi
+  # Ports: 5173 / 5174 when free, else the next free ones (another project may hold them). web/vite.config.ts and the
+  # sandbox config read VIEWER_PORT / SANDBOX_PORT.
+  free_port() { local p="$1"; while [ -n "$(port_pid "$p")" ]; do p=$((p+1)); done; echo "$p"; }
+  if [ -f "$LOGS/viewer.ports" ] && pid_alive "$(our_pid viewer)"; then read -r VP SP < "$LOGS/viewer.ports"; echo "  viewer: already running (:$VP, sandbox :$SP)"
+  else
+    VP="$(free_port 5173)"; SP="$(free_port 5174)"; [ "$SP" = "$VP" ] && SP="$(free_port $((VP+1)))"
+    [ "$VP" != 5173 ] && echo "  :5173 is taken by another process, using :$VP"
+    [ "$SP" != 5174 ] && echo "  :5174 is taken by another process, using :$SP"
+    nohup sh -c "cd '$ROOT/web' && VIEWER_PORT=$VP SANDBOX_PORT=$SP VITE_SITE_DIR='$VIEWER_SITE' BROWSER=none exec npx vite --host 127.0.0.1 --port $VP --strictPort" >"$LOGS/viewer.log" 2>&1 &
+    echo $! > "$(pidfile viewer)"
+    echo "$VP $SP" > "$LOGS/viewer.ports"
+    for i in $(seq 1 60); do curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$VP/" && break; pid_alive "$(our_pid viewer)" || die "viewer exited; see stack/logs/viewer.log"; sleep 1; done
+    for i in $(seq 1 40); do [ -n "$(port_pid "$SP")" ] && break; sleep 1; done  # the viewer starts the sandbox itself
+    [ -n "$(port_pid "$SP")" ] || echo "  WARNING: sandbox not listening on :$SP (street view will not load); see stack/logs/viewer.log"
+    echo "  viewer: up on :$VP, sandbox on :$SP"
+  fi
+  [ "$FRAME" = jezero ] || VIEWER_MSG="NOTE: --frame $FRAME is a different frame than the viewer's Jezero tiles; the dock will show a red frame-mismatch warning. Use the default frame with --with-viewer."
 fi
 
 echo
@@ -108,10 +111,8 @@ echo "  MCP (HTTP)     : http://localhost:8765/mcp"
 echo "  rover API      : http://localhost:8000/site   (Yousef's ares_api)"
 echo "  query engine   : http://localhost:8001/site   (our devapi)"
 if [ "$VIEWER" = 1 ]; then
-  mine() { o="$(port_pid "$1")"; [ -n "$o" ] && case "$(pid_cwd "$o")" in "$ROOT"*) return 0 ;; esac; return 1; }
-  mine 5173 && echo "  planet viewer  : http://localhost:5173/?view=planet" || echo "  planet viewer  : not running from this repo (see SKIPPED above)"
-  if mine 5174; then [ "$FRAME" = crater ] && echo "  sandbox        : http://localhost:5174/?world=crater" || echo "  sandbox        : http://localhost:5174/"
-  else echo "  sandbox        : not running from this repo (see SKIPPED above)"; fi
   [ -n "$VIEWER_MSG" ] && echo "$VIEWER_MSG"
+  echo
+  echo "  OPEN THIS : http://localhost:$VP/        (site viewer + copilot dock; planet globe and street view: add ?view=planet)"
 fi
 echo "logs: stack/logs/*.log   stop: stack/down.sh"

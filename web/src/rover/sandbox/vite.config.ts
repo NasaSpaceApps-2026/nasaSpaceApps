@@ -66,6 +66,10 @@ function roverWorlds(): Plugin {
   return { name: 'rover-worlds', configureServer: attach, configurePreviewServer: attach };
 }
 
+// The planet viewer proxies /sandbox here; its port is 5173 unless stack/up.sh moved it (VIEWER_PORT, SANDBOX_PORT).
+const viewerPort = Number(process.env.VIEWER_PORT ?? 5173);
+const sandboxPort = Number(process.env.SANDBOX_PORT ?? 5174);
+
 export default defineConfig({
   root: here,
   // Served through the planet app at /sandbox so the street view is same-origin.
@@ -79,10 +83,10 @@ export default defineConfig({
     alias: { three: path.resolve(here, 'node_modules/three') },
   },
   server: {
-    port: 5174,
+    port: sandboxPort,
     strictPort: true,
-    origin: 'http://127.0.0.1:5173',
-    hmr: { clientPort: 5173 },
+    origin: `http://127.0.0.1:${viewerPort}`,
+    hmr: { clientPort: viewerPort },
     fs: { allow: [roverDir, siteDir] },
   },
   build: {

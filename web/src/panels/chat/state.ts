@@ -80,7 +80,7 @@ function applyEvent(state: ChatState, e: AgentEvent): ChatState {
           p.kind === 'tool' && p.call.id === e.data.id
             ? {
                 kind: 'tool',
-                call: { ...p.call, status: e.data.is_error ? 'error' : 'ok', summary: e.data.summary, result: e.data.result },
+                call: { ...p.call, status: e.data.is_error ? 'error' : 'ok', summary: e.data.summary, result: e.data.result, structured: e.data.structured },
               }
             : p,
         ),

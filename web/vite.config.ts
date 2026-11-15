@@ -10,6 +10,10 @@ import type { Connect, PreviewServer } from 'vite'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const repo = path.resolve(here, '..')
+// Ports: 5173 (viewer) and 5174 (street-view sandbox) by default. stack/up.sh sets VIEWER_PORT / SANDBOX_PORT when another
+// project holds them (see web/INTEGRATION.md).
+const VIEWER_PORT = Number(process.env.VIEWER_PORT ?? 5173)
+const SANDBOX_PORT = Number(process.env.SANDBOX_PORT ?? 5174)
 
 // vite-plugin-cesium is CommonJS; unwrap its default export under ESM.
 const cesium = ((cesiumPlugin as unknown as { default?: () => unknown }).default ?? cesiumPlugin) as unknown as () => never
@@ -77,10 +81,10 @@ function sandboxDev(): Plugin {
   return {
     name: 'sandbox-dev',
     async configureServer(server) {
-      if (await portOpen(5174)) return
+      if (await portOpen(SANDBOX_PORT)) return
       const sandboxDir = path.resolve(here, 'src/rover/sandbox')
       const viteBin = path.join(sandboxDir, 'node_modules/vite/bin/vite.js')
-      child = spawn(process.execPath, [viteBin, '--host', '127.0.0.1', '--port', '5174', '--strictPort'], {
+      child = spawn(process.execPath, [viteBin, '--host', '127.0.0.1', '--port', String(SANDBOX_PORT), '--strictPort'], {
         cwd: sandboxDir,
         stdio: 'inherit',
         env: { ...process.env, BROWSER: 'none' },
@@ -89,8 +93,8 @@ function sandboxDev(): Plugin {
         if (child && !child.killed) child.kill()
       }
       server.httpServer?.once('close', stop)
-      if (!(await waitForPort(5174, 20000))) {
-        server.config.logger.warn('Rover sandbox did not start on port 5174')
+      if (!(await waitForPort(SANDBOX_PORT, 20000))) {
+        server.config.logger.warn(`Rover sandbox did not start on port ${SANDBOX_PORT}`)
       }
     },
   }
@@ -106,10 +110,10 @@ export default defineConfig(() => {
     envDir: '..',
     publicDir: process.env.VITE_SITE_DIR ?? '../data/build',
     server: {
-      port: 5173,
+      port: VIEWER_PORT,
       fs: { allow: [repo] },
       proxy: {
-        '/sandbox': { target: 'http://127.0.0.1:5174', changeOrigin: true, ws: true },
+        '/sandbox': { target: `http://127.0.0.1:${SANDBOX_PORT}`, changeOrigin: true, ws: true },
       },
     },
   }

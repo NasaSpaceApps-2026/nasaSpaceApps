@@ -98,6 +98,7 @@ export function toAgentEvent(m: SseMessage): import('./types').AgentEvent | null
           summary: typeof d.summary === 'string' ? d.summary : '',
           is_error: d.is_error === true,
           result: typeof d.result === 'string' ? d.result : d.result == null ? undefined : JSON.stringify(d.result, null, 2),
+          structured: d.structured,
         },
       };
     case 'done':
@@ -150,7 +151,11 @@ export async function streamChat(
 }
 
 export class HttpError extends Error {
-  constructor(public status: number, public detail: string) {
+  status: number;
+  detail: string;
+  constructor(status: number, detail: string) {
     super(`Agent returned HTTP ${status}${detail ? `: ${detail}` : ''}`);
+    this.status = status;
+    this.detail = detail;
   }
 }
