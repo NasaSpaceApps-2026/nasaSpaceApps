@@ -1,0 +1,27 @@
+{
+  "site": "jezero_sol9_vision",
+  "fixture": true,
+  "lat0": 18.44462715,
+  "lon0": 77.45088572,
+  "radius_m": 3396190,
+  "size_m": 80.0,
+  "elev_min": -2570.05,
+  "elev_max": -2567.78,
+  "center_x": 1849.0763871785864,
+  "center_y": -437.0234536348851,
+  "height": {
+    "max_level": 0,
+    "tile_px": 257
+  },
+  "layers": [
+    {
+      "id": "ortho",
+      "title": "Vision refine",
+      "mission": "Mars 2020",
+      "instrument": "Navcam",
+      "max_level": 0,
+      "kind": "base",
+      "credit": "Jezero sol 9 heights and texture edited by the vision loop"
+    }
+  ]
+}

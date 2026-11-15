@@ -32,6 +32,16 @@ def test_paint_changes_color_and_not_height():
     assert color[0, 0].tolist() == [20, 20, 20]
 
 
+def test_paint_on_a_finer_texture_stays_on_the_same_ground():
+    dem = np.full((9, 9), 3, np.float32)
+    texture = np.full((17, 17, 3), 20, np.uint8)
+    _height, color = apply_ops(dem, texture, grid(), [
+        {"op": "paint", "x": 0, "y": 0, "radius_m": 1.2, "rgb": [200, 120, 70], "strength": 1},
+    ])
+    assert color[8, 8].tolist() == [200, 120, 70]
+    assert color[0, 0].tolist() == [20, 20, 20]
+
+
 def test_oversized_bump_is_rejected():
     dem = np.zeros((5, 5), np.float32)
     texture = np.zeros((5, 5, 3), np.uint8)

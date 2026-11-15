@@ -79,7 +79,9 @@ PYTHONPATH=pipeline python3 -m vision_loop render --work data/vision/fixture_mou
 
 ## When to leave an image
 
-Leave the image when a new tick would only be fussing, or after 8 ticks on that image. Then take the next name in `focus_order`. After the last image in the set, take the next set. Do not start a new image in the same tick you finish one.
+Leave the image when a new tick would only be fussing, or after 8 ticks on that image. If `viewpoints.json` sets `ticks_per_image`, use that number instead of 8. Then take the next name in `focus_order`. After the last image in the set, take the next set. Do not start a new image in the same tick you finish one.
+
+The sand ridges (the transverse whoops) already follow the bright and dark bands in the satellite picture. Bumps go on those crests. Do not slide a ridge sideways to a new place.
 
 ## Gap pass
 
@@ -102,7 +104,30 @@ PYTHONPATH=pipeline python3 -m vision_loop render --work data/vision/fixture_mou
 
 `check` fails if an inferred op is centered on ground that already has two photos. Revert those ops.
 
-Stop after the gap pass, or after 6 inferred ops. Write a final `LOOP_STATE.md` section that says the bubble is ready to compare with the projection loop.
+Stop the gap pass after it is logged, or after 6 inferred ops.
+
+## Enhance pass
+
+Run this after the gap pass when `viewpoints.json` contains `enhance_targets`. This pass does not move the terrain. It adds the grain of real close-up photographs onto the colour already on the mesh.
+
+```bash
+PYTHONPATH=pipeline python3 -m vision_loop enhance --work data/vision/jezero_crater
+```
+
+That writes `compare/enhance_<name>.png`: a Mastcam-Z close-up on the left, a zoomed render of that spot on the right. The two pictures are not the same rocks. The left one is the kind of sand, pebbles, and rock skin this ground should have. The right one should grow that kind of detail while keeping its own orange colour and its own ridge lines.
+
+Add at most 3 `paint` ops per tick, `"inferred": false`, `strength` at most 0.35, `radius_m` at most 2. Colours are tan, rust, brown, and dark sand taken from the render, not gray. Four ticks is enough. Then stop. Write a final `LOOP_STATE.md` section that says the bubble is ready to compare with the projection loop.
+
+## Satellite colour
+
+Some bundles start from a colourised HiRISE picture. The brightness and the dirt pattern are that satellite image. The orange is Mars dust: HiRISE is greyscale, and the hue is the anchored Mars tone in `pipeline/colorize.py`, with only the broad redder-or-darker variation taken from Viking.
+
+On those bundles:
+
+- Do not paint the gray of a rover camera over the ground.
+- Paint only to nudge a rock or streak toward a dirt colour already in the baseline texture: tan, rust, brown, dark sand.
+- Keep paint strength at or below 0.45, and keep the disk on the rock or streak. A broad flat paint wipes the satellite speckles.
+- Bumps follow ridges, scarps, and bright rocks visible in the satellite reference. The large shape is already the HiRISE elevation model. Do not try to rebuild it with bumps.
 
 ## Hard rules
 

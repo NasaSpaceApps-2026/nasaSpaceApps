@@ -5,6 +5,7 @@
  * Query params: ?base=<tile/manifest base URL, default same origin>
  *               &api=<API base, default http://localhost:8000>
  *               &level=<height level to load>  &x=&y=&heading=  (start pose)
+ *               &world=projection | vision   (omit world for the server default site)
  */
 
 import * as THREE from 'three';
@@ -27,10 +28,53 @@ import {
 } from '../index';
 
 const q = new URLSearchParams(location.search);
-const BASE = q.get('base') ?? '';
+// No `world` keeps the site the dev server was started with. projection is the
+// Navcam drape on frozen heights; vision (alias llm) is the edited model.
+const WORLD_BASE: Record<string, string> = {
+  projection: '/worlds/projection',
+  image: '/worlds/projection',
+  vision: '/worlds/vision',
+  llm: '/worlds/vision',
+  crater: '/worlds/crater',
+};
+const rawWorld = (q.get('world') ?? '').trim().toLowerCase();
+const worldBase = rawWorld ? WORLD_BASE[rawWorld] : undefined;
+const worldName: 'projection' | 'vision' | 'crater' | null =
+  worldBase === '/worlds/vision' ? 'vision' : worldBase === '/worlds/projection' ? 'projection' : worldBase === '/worlds/crater' ? 'crater' : null;
+const worldError = rawWorld && !worldBase ? `Unknown world "${q.get('world')}". Use projection, vision, or crater.` : '';
+const BASE = worldBase ?? q.get('base') ?? '';
 const API = (q.get('api') ?? 'http://localhost:8000').replace(/\/$/, '');
 const WS = API.replace(/^http/, 'ws') + '/ws';
-const START = { x: Number(q.get('x') ?? 100), y: Number(q.get('y') ?? -60), heading_deg: Number(q.get('heading') ?? 90) };
+const START = {
+  x: Number(q.get('x') ?? (worldName ? 0 : 100)),
+  y: Number(q.get('y') ?? (worldName ? 0 : -60)),
+  heading_deg: Number(q.get('heading') ?? (worldName ? 0 : 90)),
+};
+
+function worldHref(name: 'projection' | 'vision' | 'crater' | null): string {
+  const next = new URLSearchParams(location.search);
+  next.delete('base');
+  next.delete('x');
+  next.delete('y');
+  next.delete('heading');
+  if (name) next.set('world', name);
+  else next.delete('world');
+  const s = next.toString();
+  return s ? `?${s}` : location.pathname;
+}
+
+function renderWorldSwitch() {
+  const items: Array<['default' | 'photo projection' | 'vision loop' | 'crater', 'projection' | 'vision' | 'crater' | null]> = [
+    ['default', null],
+    ['photo projection', 'projection'],
+    ['vision loop', 'vision'],
+    ['crater', 'crater'],
+  ];
+  $('worlds').innerHTML = items.map(([label, name]) => {
+    const on = name === worldName;
+    return `<a href="${worldHref(name)}" class="${on ? 'on' : ''}">${label}</a>`;
+  }).join('');
+}
 
 /** Start at the site's base POI unless x/y are given in the URL. */
 async function resolveStart(): Promise<void> {
@@ -130,6 +174,11 @@ function buildTerrain(manifest: Manifest, sampler: TileHeightSampler, level: num
 const f = (v: number, d = 1) => (Number.isFinite(v) ? v.toFixed(d) : '-');
 
 async function main() {
+  renderWorldSwitch();
+  if (worldError) {
+    $('msg').textContent = worldError;
+    return;
+  }
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(innerWidth, innerHeight);
@@ -173,7 +222,7 @@ async function main() {
     `<b>Imagery</b>: ${ortho ? `${ortho.title} - ${ortho.credit ?? ''}` : 'none'}`;
 
   const profile = await fetchProfile();
-  await resolveStart();
+  if (!worldName) await resolveStart();
   const controls = new KeyboardControls();
   const link = new RoverLink({ url: WS });
   const driver = new RoverDriver({ sampler, profile, params: BUGGY_PARAMS, controls, link, start: START });
