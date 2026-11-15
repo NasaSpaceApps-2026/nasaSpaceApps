@@ -36,3 +36,7 @@
 .nogl__card p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
 .nogl__card a { color: var(--accent); }
 .atlas-dock__note .atlas-dock__clear { white-space: nowrap; }
+
+/* Pegman drag feedback: ring on the pin under the cursor and a hint. */
+.peg-ring { position: fixed; z-index: 9; width: 56px; height: 56px; border-radius: 50%; pointer-events: none; border: 3px solid var(--accent); background: rgba(224, 121, 74, 0.2); box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.35), 0 0 18px var(--accent); animation: pulse 1s ease-in-out infinite; }
+.peg-hint { position: absolute; top: var(--s3); left: calc((100% - var(--dock-w, 0px)) / 2); transform: translateX(-50%); z-index: 9; padding: var(--s2) var(--s4); border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--accent); box-shadow: var(--shadow); font-weight: 600; pointer-events: none; }

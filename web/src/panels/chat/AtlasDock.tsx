@@ -12,7 +12,8 @@ import { BUBBLES } from '../../bubbles';
 import { RoverLink } from '../../rover/link';
 import { ChatPanel } from './ChatPanel';
 import type { ToolEvent } from './types';
-import { extractFromResult, focusFromCamera, thin, xyOf, type Extracted, type Feature } from './features';
+import { listMarkers } from '../../interact/api';
+import { extractFromResult, focusFromCamera, thin, xyOf, type Extracted, type Feature, type RouteLine } from './features';
 import { CopilotOverlay } from './overlay';
 import './dock.css';
 
@@ -33,7 +34,25 @@ export interface AtlasDockProps {
   onWatch?: () => void;
   agentUrl?: string;
   apiWsUrl?: string;
+  /** A highlight (copilot pad/region/route/POI/marker) was hovered or clicked on the map. Canvas px. */
+  onHighlight?: (h: { feature?: Feature; route?: RouteLine } | null, kind: 'click' | 'hover', sx: number, sy: number) => void;
+  /** Backend `view.camera` with mode "planet" and lat/lon: the viewer flies the globe there. */
+  onPlanetCamera?: (c: { lat: number; lon: number; height_m?: number; label?: string }) => void;
+  /** The copilot started a drive (drive_to / goto / follow_route...): this tab should follow it. */
+  onOwnDrive?: () => void;
+  /** Imperative handle for the viewer's info cards. */
+  apiRef?: { current: DockApi | null };
 }
+
+export interface DockApi {
+  /** Open the dock and send a message. False when an answer is still streaming. */
+  ask: (text: string) => boolean;
+  showFeatures: (fs: Feature[]) => void;
+  hideFeature: (id: string) => void;
+  /** Is there a copilot highlight (marker or route) under this canvas point? */
+  hit: (pos: Cesium.Cartesian2) => boolean;
+}
+const DRIVE_TOOLS = new Set(['drive_to', 'goto_location', 'drive_rover', 'follow_route']);
 
 /** What the viewer needs to show a drive in progress (from the API's rover.state, 10 Hz). */
 export interface DriveInfo {
@@ -45,6 +64,8 @@ export interface DriveInfo {
   remaining_m: number | null;
   total_m: number | null;
   last_event: string | null;
+  /** Route being driven (site metres), for the overview flight after arrival. */
+  route_pts?: [number, number][];
 }
 
 const DOCK_W = 380;
@@ -75,7 +96,7 @@ async function checkFrame(site: Site, apiUrl: string): Promise<string | null> {
 
 const rad = (d: number) => (d * Math.PI) / 180;
 
-export function AtlasDock({ viewer, site, getRover, cameraMode, onEnterSite, street, onDrive, onWatch, agentUrl = DEFAULT_AGENT, apiWsUrl = DEFAULT_WS }: AtlasDockProps) {
+export function AtlasDock({ viewer, site, getRover, cameraMode, onEnterSite, street, onDrive, onWatch, agentUrl = DEFAULT_AGENT, apiWsUrl = DEFAULT_WS, onHighlight, onPlanetCamera, onOwnDrive, apiRef }: AtlasDockProps) {
   const [open, setOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 900);
   const asideRef = useRef<HTMLElement>(null);
   const getRoverRef = useRef(getRover);
@@ -102,7 +123,10 @@ export function AtlasDock({ viewer, site, getRover, cameraMode, onEnterSite, str
   const prevAuto = useRef(false);
   const lastEmit = useRef(0);
   const onDriveRef = useRef(onDrive);
-  useEffect(() => { onDriveRef.current = onDrive; });
+  const cbRef = useRef({ onHighlight, onPlanetCamera, onOwnDrive });
+  const sendRef = useRef<((t: string) => boolean) | null>(null);
+  const registerSend = useCallback((f: ((t: string) => boolean) | null) => { sendRef.current = f; }, []);
+  useEffect(() => { onDriveRef.current = onDrive; cbRef.current = { onHighlight, onPlanetCamera, onOwnDrive }; });
 
   const sync = useCallback(() => {
     const o = overlay.current;
@@ -149,13 +173,30 @@ export function AtlasDock({ viewer, site, getRover, cameraMode, onEnterSite, str
     overlay.current = o;
     const h = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
     h.setInputAction((ev: { position: Cesium.Cartesian2 }) => {
-      const id = o.featureIdFromPick(viewer.scene.pick(ev.position));
+      const picked = viewer.scene.pick(ev.position);
+      let id = o.featureIdFromPick(picked);
+      let route = id ? undefined : o.routeFromPick(picked);
+      if (!id && !route) {
+        const hit = o.hitAt(ev.position);
+        if (hit?.feature) id = hit.feature.id; else route = hit?.route;
+      }
       selectedRef.current = id ?? null;
       o.setSelected(id ?? null);
       setSelected(id ?? null);
+      const feature = id ? o.known(id) : undefined;
+      if (feature || route) cbRef.current.onHighlight?.({ feature, route }, 'click', ev.position.x, ev.position.y);
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
     h.setInputAction((ev: { endPosition: Cesium.Cartesian2 }) => {
-      o.setHover(o.featureIdFromPick(viewer.scene.pick(ev.endPosition)) ?? null);
+      const picked = viewer.scene.pick(ev.endPosition);
+      let id = o.featureIdFromPick(picked);
+      let route = id ? undefined : o.routeFromPick(picked);
+      if (!id && !route) {
+        const hit = o.hitAt(ev.endPosition);
+        if (hit?.feature) id = hit.feature.id; else route = hit?.route;
+      }
+      o.setHover(id ?? null);
+      const feature = id ? o.known(id) : undefined;
+      cbRef.current.onHighlight?.(feature || route ? { feature, route } : null, 'hover', ev.endPosition.x, ev.endPosition.y);
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
     return () => {
       h.destroy();
@@ -198,6 +239,11 @@ export function AtlasDock({ viewer, site, getRover, cameraMode, onEnterSite, str
       const o = overlay.current;
       if (!o || !m || typeof m.type !== 'string') return;
       if (m.type === 'view.camera') {
+        const pl = (m.payload && typeof m.payload === 'object' ? m.payload : m) as Record<string, unknown>;
+        if (pl.mode === 'planet' && typeof pl.lat === 'number' && typeof pl.lon === 'number') {
+          cbRef.current.onPlanetCamera?.({ lat: pl.lat, lon: pl.lon, height_m: typeof pl.height_m === 'number' ? pl.height_m : undefined, label: typeof pl.label === 'string' ? pl.label : undefined });
+          return;
+        }
         const f = focusFromCamera(m);
         if (f) {
           lastWsCamera.current = Date.now();
@@ -209,6 +255,9 @@ export function AtlasDock({ viewer, site, getRover, cameraMode, onEnterSite, str
           o.show([{ id: String(m.id ?? 'marker'), kind: 'marker', x: xy[0], y: xy[1], label: String(m.label ?? m.id ?? 'marker'), source: 'place_marker' }]);
           sync();
         }
+      } else if (m.type === 'marker.remove') {
+        o.hide(String(m.id ?? ''));
+        sync();
       } else if (m.type === 'route.set' && Array.isArray(m.points)) {
         const pts = (m.points as { x?: number; y?: number }[])
           .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y)).map((p) => [p.x as number, p.y as number] as [number, number]);
@@ -230,6 +279,18 @@ export function AtlasDock({ viewer, site, getRover, cameraMode, onEnterSite, str
       }
     });
     // The server owns the rover the agent drives: follow its pose (only when it changes, so manual driving is not overridden).
+    // Markers dropped earlier (this or another session) are loaded once when the link first opens.
+    let loadedMarkers = false;
+    const offStatus2 = l.onStatus((st) => {
+      if (st !== 'open' || loadedMarkers) return;
+      loadedMarkers = true;
+      void listMarkers().then((ms) => {
+        const o = overlay.current;
+        if (!o || !ms.length) return;
+        o.show(ms.filter((mk) => Number.isFinite(mk.x) && Number.isFinite(mk.y)).map((mk) => ({ id: String(mk.id), kind: 'marker' as const, x: mk.x, y: mk.y, label: mk.label || String(mk.id), source: 'place_marker' })));
+        sync();
+      }).catch(() => { /* markers are optional */ });
+    });
     const offState = l.onState((s) => {
       const prev = lastServer.current;
       lastServer.current = { x: s.x, y: s.y, h: s.heading_deg };
@@ -256,6 +317,7 @@ export function AtlasDock({ viewer, site, getRover, cameraMode, onEnterSite, str
         onDriveRef.current?.({
           active: auto, mode: s.mode, status: String(s.status ?? ''), speed_mps: typeof s.speed_mps === 'number' ? s.speed_mps : 0,
           remaining_m: remaining, total_m: total, last_event: (s.last_event as string | null | undefined) ?? null,
+          route_pts: rp ? thin(rp.pts) : undefined,
         });
       }
       if (auto) {
@@ -270,6 +332,7 @@ export function AtlasDock({ viewer, site, getRover, cameraMode, onEnterSite, str
     });
     return () => {
       offStatus();
+      offStatus2();
       offMsg();
       offState();
       l.close();
@@ -332,6 +395,7 @@ export function AtlasDock({ viewer, site, getRover, cameraMode, onEnterSite, str
   }, [apiWsUrl, sync]);
 
   const onToolEvent = useCallback((e: ToolEvent) => {
+    if (e.phase === 'start' && DRIVE_TOOLS.has(e.name)) cbRef.current.onOwnDrive?.();
     if (e.phase !== 'result' || e.isError) return;
     const x = extractFromResult(e);
     // fly_camera / set_view: the API WebSocket already moved the camera if it is up; otherwise do it from the result.
@@ -386,6 +450,17 @@ export function AtlasDock({ viewer, site, getRover, cameraMode, onEnterSite, str
     sync();
   };
 
+  useEffect(() => {
+    if (!apiRef) return;
+    apiRef.current = {
+      ask: (text) => { setOpen(true); return sendRef.current ? sendRef.current(text) : false; },
+      showFeatures: (fs) => { overlay.current?.show(fs); sync(); },
+      hideFeature: (id) => { overlay.current?.hide(id); sync(); },
+      hit: (pos) => !!overlay.current?.hitAt(pos),
+    };
+    return () => { apiRef.current = null; };
+  }, [apiRef, sync]);
+
   const lines = useMemo(() => (sources.length ? `from ${sources.join(', ')}` : ''), [sources]);
 
   return (
@@ -411,7 +486,7 @@ export function AtlasDock({ viewer, site, getRover, cameraMode, onEnterSite, str
           </div>
         )}
         <div className="atlas-dock__chat">
-          <ChatPanel agentUrl={agentUrl} getContext={getContext} onToolEvent={onToolEvent} onFocusPlace={focusPlace} />
+          <ChatPanel agentUrl={agentUrl} getContext={getContext} onToolEvent={onToolEvent} onFocusPlace={focusPlace} registerSend={registerSend} />
         </div>
       </div>
     </aside>

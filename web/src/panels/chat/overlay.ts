@@ -295,6 +295,43 @@ export class CopilotOverlay {
     this.routes = [];
   }
 
+  /**
+   * Screen-space hit test for our highlights: a marker within `px` pixels, else a route within 8 px. Used next to scene.pick,
+   * which misses thin or depth-test-free primitives on some GPUs/software renderers.
+   */
+  hitAt(pos: Cesium.Cartesian2, px = 16): { feature?: Feature; route?: RouteLine } | undefined {
+    const scene = this.viewer.scene;
+    let best: { f: Feature; d: number } | undefined;
+    for (const id of this.shown) {
+      const f = this.features.get(id);
+      const w = f && Cesium.SceneTransforms.worldToWindowCoordinates(scene, this.at(f.x, f.y, 3));
+      if (!f || !w) continue;
+      const d = Math.hypot(w.x - pos.x, w.y - pos.y);
+      if (d <= px && (!best || d < best.d)) best = { f, d };
+    }
+    if (best) return { feature: best.f };
+    for (const r of this.routes) {
+      let prev: Cesium.Cartesian2 | undefined;
+      const step = Math.max(1, Math.floor(r.points.length / 200));
+      for (let i = 0; i < r.points.length; i += step) {
+        const w = Cesium.SceneTransforms.worldToWindowCoordinates(scene, this.at(r.points[i][0], r.points[i][1], 1.2));
+        if (w && prev) {
+          const dx = w.x - prev.x, dy = w.y - prev.y, L2 = dx * dx + dy * dy;
+          const u = L2 ? Math.max(0, Math.min(1, ((pos.x - prev.x) * dx + (pos.y - prev.y) * dy) / L2)) : 0;
+          if (Math.hypot(pos.x - (prev.x + u * dx), pos.y - (prev.y + u * dy)) <= 8) return { route: r };
+        }
+        prev = w;
+      }
+    }
+    return undefined;
+  }
+
+  /** Route drawn under this entity id (`route:<id>`), when the picked object is one of ours. */
+  routeFromPick(picked: unknown): RouteLine | undefined {
+    const id = (picked as { id?: Cesium.Entity } | undefined)?.id?.id;
+    return typeof id === 'string' && id.startsWith('route:') ? this.routes.find((r) => `route:${r.id}` === id) : undefined;
+  }
+
   /** Entity id -> feature id when the picked object is one of ours. */
   featureIdFromPick(picked: unknown): string | undefined {
     const id = (picked as { id?: Cesium.Entity } | undefined)?.id?.id;

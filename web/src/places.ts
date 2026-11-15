@@ -1,7 +1,7 @@
 // Real NASA/USGS vectors in the viewer: the Perseverance traverse and waypoints (Mars 2020, NASA/JPL) and
 // official IAU place names (USGS Gazetteer). Built by pipeline/05_vectors.py and 05b_names.py.
 import * as Cesium from 'cesium'
-import { SPHERE, type Site } from './site'
+import { type Site } from './site'
 
 export interface Place {
   id: string
@@ -92,17 +92,11 @@ export class PlacesLayer {
         distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 220), disableDepthTestDistance: Number.POSITIVE_INFINITY })
     })
 
-    // official place names; those inside the site sit on the terrain, others on the Mars globe
-    this.nameLabels = scene.primitives.add(new Cesium.LabelCollection())
+    // official place names: data only. They are drawn as crisp HTML labels by interact/Interactions (with the POI names).
     for (const f of names.features) {
       const p = f.properties as Record<string, number & string>
-      const inSite = !Number.isNaN(site.elevationAtXY(p.x, p.y))
-      const pos = inSite ? site.position(p.x, p.y, 40) : Cesium.Cartesian3.fromDegrees(p.lon, p.lat, 0, SPHERE)
       this.places.push({ id: p.id, name: p.name, kind: 'name', x: p.x, y: p.y, lat: p.lat, lon: p.lon, diameterKm: p.diameter_km,
         source: String(p.source_url), detail: `${p.feature_type}, approved ${p.approved} by the IAU` })
-      this.nameLabels.add({ position: pos, text: p.name, font: '600 15px sans-serif', fillColor: Cesium.Color.WHITE,
-        outlineColor: Cesium.Color.BLACK, outlineWidth: 4, style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(3000, 8_000_000), disableDepthTestDistance: Number.POSITIVE_INFINITY })
     }
   }
 

@@ -95,3 +95,22 @@ Real-time agent drives: `AtlasDock` follows `rover.state`; in auto/fsd it calls 
 teleporting, draws `route.set` routes, and reports `DriveInfo` (remaining metres by projecting onto the route) to App. App auto-switches to the chase
 camera when a drive starts (dragging the map or the Follow rover toggle hands the camera back) and shows a progress chip. In street view with the rover
 outside the patch the dock shows one line plus "Watch in Jezero view".
+
+## Interactivity pass (Nov 15)
+
+All in `web/` (no changes to mcp/, agent/, devapi/, atlas_core/, api/). New: `src/interact/{Interactions.tsx,labels.ts,api.ts,words.ts,interact.css}`.
+
+| Interaction | How |
+|---|---|
+| **Pegman fix** | Root cause: the Jezero/Olympus patches are ~2 km on a 3,400 km planet, sub-pixel at globe zoom, so the exact lat/lon hit test almost never matched. The drop now snaps to the nearest pin within 48 px (visible side of the globe only), starting at the patch centre. While dragging: ring on the pin and "Drop here to drive: <patch>" hint; a miss says so. Verified with real mouse events in headless Brave for both pins |
+| Terrain click (Jezero) | Anchored info card: lat/lon, elevation, slope, geologic unit, data quality, minerals in plain words (confirmed by the rover at Sample N (citation), seen from orbit (strong/weak), inferred, no orbital data here). Actions Drive here / Ask the copilot / Drop marker. Esc or x closes |
+| Place labels | HTML labels over the canvas (crisp, clickable, declutter by priority and camera height): landing site (merged with the assumed base), named regions, sample sites (grouped by spot), IAU names (Belva...). The old Cesium name labels are gone; the Layers "Place names" toggle controls these. Click opens a place card with sample/region facts and suggested questions (sent to the copilot) |
+| Measure (button + M) | A then B: line on terrain, dashed cyan walking route, card with straight distance, walking time, steepest slope, climb, hoverable elevation sparkline. Esc cancels |
+| Highlights | Hover tooltip, click opens a card (kind, tool that found it, tier/radius, terrain facts; routes: length + elevation profile). Markers can be removed. Hit test is screen-space (`CopilotOverlay.hitAt`) because `scene.pick` missed the marker points in software rendering |
+| Globe pins | Pins are HTML labels + dots; click opens a card: Explore Jezero / Drive here (street view) / Fly in / Ask |
+| `view.camera` mode `planet` | WS message (flat or under `payload`) `{mode:"planet", lat, lon, height_m?, label?}`: switches to Mars, flies there, shows a pink labelled pin. Dev hook `window.__planetCamera({lat,lon,label})` |
+| Follow cam | Auto-follow only when this tab started the drive (chat drive tools `drive_to/goto_location/drive_rover/follow_route`, or Drive here); other clients' drives only show the chip. On arrival the camera flies out to an overview of the route; the Follow rover toggle stays |
+
+Endpoints used from the browser (both send CORS `*`): devapi :8001 `POST /describe`, `GET /pois?limit=100`, `POST /terrain/profile`, `POST /route` (profile `eva_walkable`; stores a route in devapi only); rover API :8000 `POST /rover/command {cmd:goto, wait:false}` (real time: 10 Hz `rover.state` over the WS), `GET/POST/DELETE /markers`, WS `/ws`.
+
+Gaps: no explicit `realtime` flag in the API (`wait:false` + display speed factor is the real-time path); `ViewReq.mode` does not accept `planet` yet (the other builder's emit path); `GET /pois` is capped at 100; walking route times use the assumed pace; `scene.pick` on thin entities is unreliable in SwiftShader (fallback added). Test markers created while verifying were removed again through the UI.

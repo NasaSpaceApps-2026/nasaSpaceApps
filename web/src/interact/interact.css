@@ -1,0 +1,74 @@
+/* Info cards, place labels, measure tool, tooltips. Tokens from index.css. */
+.interact { position: absolute; inset: 0 var(--dock-w, 0px) 0 0; z-index: 4; pointer-events: none; overflow: hidden; }
+.interact > * { pointer-events: auto; }
+.interact > .plabel { position: absolute; left: 0; top: 0; }
+.interact__hint { position: absolute; top: var(--s3); left: 50%; transform: translateX(-50%); padding: var(--s2) var(--s4); border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--accent); box-shadow: var(--shadow); font-weight: 600; pointer-events: none; }
+.interact__tip { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; gap: 2px; max-width: 260px; padding: var(--s2) var(--s3); border-radius: 6px; background: rgba(22, 18, 15, 0.95); border: 1px solid var(--border); box-shadow: var(--shadow); pointer-events: none; z-index: 7; }
+.interact__tip span { color: var(--muted); font-size: 12px; }
+
+/* place labels */
+.plabel { display: flex; align-items: center; gap: 6px; margin: -10px 0 0 -6px; padding: 0 6px 0 4px; height: 20px; background: none; border: 0; cursor: pointer; color: #fff; white-space: nowrap;
+  font: 600 12px/20px var(--font); letter-spacing: 0.01em; text-shadow: 0 0 3px #000, 0 0 3px #000, 0 1px 2px #000, 0 0 8px rgba(0, 0, 0, 0.8); will-change: transform; }
+.plabel__dot { width: 8px; height: 8px; border-radius: 50%; background: #fff; border: 2px solid #14100e; flex: none; box-sizing: content-box; }
+.plabel:hover, .plabel:focus-visible { color: var(--focus); }
+.plabel:hover .plabel__dot { transform: scale(1.25); }
+.plabel--region { text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; color: #ffe0a0; }
+.plabel--region .plabel__dot { background: #ffcf5a; border-radius: 2px; transform: rotate(45deg); }
+.plabel--landing .plabel__dot { background: #fff; border-color: var(--accent); }
+.plabel--landing { font-size: 13px; }
+.plabel--sample { font-weight: 500; color: #d4f1ff; }
+.plabel--sample .plabel__dot { background: #5cd6ff; width: 6px; height: 6px; }
+.plabel--iau { font-style: italic; font-weight: 500; color: #e9e1d8; }
+.plabel--iau .plabel__dot { background: none; border-color: #e9e1d8; width: 4px; height: 4px; }
+.plabel--pin { font-size: 13px; }
+.plabel--pin { margin-top: -30px; margin-left: 0; transform-origin: left; }
+.plabel--pin .plabel__dot { display: none; }
+.plabel--target { font-size: 13px; color: #ffd29a; }
+.plabel--target .plabel__dot { background: #ff7ad9; }
+
+/* info card */
+.icard { position: absolute; left: 0; top: 0; z-index: 8; width: 320px; max-width: calc(100% - 16px); max-height: calc(100% - 16px); display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow); outline: none; animation: icard-in 0.12s ease-out; }
+@keyframes icard-in { from { opacity: 0; } }
+.icard:focus-visible { border-color: var(--focus); }
+.icard__head { display: flex; align-items: flex-start; gap: var(--s2); padding: var(--s3) var(--s3) var(--s2); }
+.icard__head > div { flex: 1; min-width: 0; }
+.icard__title { margin: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.icard__sub { color: var(--muted); font: 11px var(--mono); margin-top: 2px; overflow-wrap: anywhere; }
+.icard__badge { flex: none; padding: 1px 6px; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.icard__x { flex: none; width: 24px; height: 24px; padding: 0; background: none; border: 0; border-radius: 6px; color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer; }
+.icard__x:hover { color: var(--text); background: var(--surface-2); }
+.icard__body { padding: 0 var(--s3) var(--s3); overflow-y: auto; min-height: 0; }
+.icard__p { margin: 0 0 var(--s2); }
+.icard__note { margin: var(--s1) 0 var(--s2); color: var(--muted); font-size: 12px; }
+.icard__warn { margin: var(--s2) 0; padding: var(--s2); border-radius: 6px; background: #3a1a15; color: #ffc9be; font-size: 12px; }
+.icard__skeleton { padding: var(--s3) 0; color: var(--muted); }
+.icard__h { margin: var(--s3) 0 var(--s1); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.icard__stats { display: grid; grid-template-columns: auto 1fr; gap: 2px var(--s3); margin: 0 0 var(--s2); }
+.icard__stats dt { color: var(--muted); white-space: nowrap; }
+.icard__stats dd { margin: 0; overflow-wrap: anywhere; }
+.icard__min { list-style: none; margin: 0 0 var(--s2); padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.icard__min li { display: flex; gap: var(--s2); align-items: flex-start; }
+.tier__dot { flex: none; width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--muted); }
+.tier--confirmed .tier__dot { background: var(--success); }
+.tier--strong .tier__dot { background: #5cd6ff; }
+.tier--weak .tier__dot { background: #5cd6ff; opacity: 0.5; }
+.tier--inferred .tier__dot { background: var(--warn); }
+.icard__chips { display: flex; flex-direction: column; gap: var(--s1); margin: var(--s2) 0; }
+.icard__chip { text-align: left; padding: var(--s1) var(--s2); background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+.icard__chip:hover { border-color: var(--accent); }
+.icard__link { display: inline-block; color: var(--accent); margin-bottom: var(--s1); }
+.icard__actions { display: flex; flex-wrap: wrap; gap: var(--s2); padding: var(--s2) var(--s3) var(--s3); border-top: 1px solid var(--border); }
+.icard__btn { padding: var(--s1) var(--s3); height: 28px; background: none; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-weight: 500; }
+.icard__btn:hover:not(:disabled) { background: var(--surface-2); }
+.icard__btn:disabled { opacity: 0.5; cursor: default; }
+.icard__btn--primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.icard__btn--primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.1); }
+
+/* sparkline */
+.spark svg { display: block; touch-action: none; }
+.spark__area { fill: rgba(224, 121, 74, 0.22); stroke: none; }
+.spark__line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+.spark__cur { stroke: var(--muted); stroke-width: 1; }
+.spark__dot { fill: var(--text); stroke: var(--bg); stroke-width: 1.5; }
+.spark__ax { display: flex; justify-content: space-between; color: var(--muted); font: 11px var(--mono); margin-top: 2px; min-height: 16px; }

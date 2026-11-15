@@ -14,9 +14,11 @@ export interface ChatPanelProps extends UseChatOptions {
   suggestedPrompts?: string[];
   /** When given, tool cards list their result rows and clicking one calls this (the dock flies the camera there). */
   onFocusPlace?: (f: Feature) => void;
+  /** Lets the host send a message as if typed (info-card "Ask the copilot"). Returns false when an answer is still streaming. */
+  registerSend?: (send: ((text: string) => boolean) | null) => void;
 }
 
-export function ChatPanel({ agentUrl, getContext, onToolEvent, suggestedPrompts = DEMO_PROMPTS, onFocusPlace }: ChatPanelProps) {
+export function ChatPanel({ agentUrl, getContext, onToolEvent, suggestedPrompts = DEMO_PROMPTS, onFocusPlace, registerSend }: ChatPanelProps) {
   const { state, send, stop, clear } = useChat({ agentUrl, getContext, onToolEvent });
   const { health, down } = useAgentHealth(agentUrl ?? DEFAULT_AGENT_URL);
   const status = describeHealth(health, down);
@@ -49,6 +51,20 @@ export function ChatPanel({ agentUrl, getContext, onToolEvent, suggestedPrompts 
       submit();
     }
   };
+
+  const sendRef = useRef<(text: string) => boolean>(() => false);
+  useEffect(() => {
+    sendRef.current = (text: string) => {
+      if (streaming || !text.trim()) return false;
+      stick.current = true;
+      send(text);
+      return true;
+    };
+  });
+  useEffect(() => {
+    registerSend?.((t) => sendRef.current(t));
+    return () => registerSend?.(null);
+  }, [registerSend]);
 
   const lastUser = [...messages].reverse().find((m) => m.role === 'user');
   const lastMsg = messages[messages.length - 1];

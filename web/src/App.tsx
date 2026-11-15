@@ -8,7 +8,8 @@ import type { DriverPose } from './rover/driver'
 import { PlacesLayer, type Place } from './places'
 import { BUBBLES, type Bubble } from './bubbles'
 import { dropOnBubbles, type StreetDrop } from './pegman'
-import { AtlasDock, type DriveInfo } from './panels/chat/AtlasDock'
+import { AtlasDock, type DriveInfo, type DockApi } from './panels/chat/AtlasDock'
+import { Interactions, type InteractionsHandle } from './interact/Interactions'
 import { TopBar, type LayerRow, type Mode as UiMode } from './ui/TopBar'
 import { StatusBar } from './ui/StatusBar'
 import { NoWebGL } from './ui/NoWebGL'
@@ -95,6 +96,27 @@ function pickMarsLatLon(viewer: Cesium.Viewer, clientX: number, clientY: number)
   return { latDeg: Cesium.Math.toDegrees(carto.latitude), lonDeg: Cesium.Math.toDegrees(carto.longitude) }
 }
 
+const PEG_SNAP_PX = 48
+
+/** Bubble pin nearest to a screen point (client px), if within PEG_SNAP_PX and on the visible side of the globe.
+ * The patches are ~2 km on a 3,400 km planet: at globe zoom they are sub-pixel, so the drop must snap to the pin. */
+function nearestBubble(viewer: Cesium.Viewer, clientX: number, clientY: number): { bubble: Bubble; sx: number; sy: number } | null {
+  const rect = viewer.canvas.getBoundingClientRect()
+  const cam = viewer.camera.positionWC
+  let best: { bubble: Bubble; sx: number; sy: number; d: number } | null = null
+  for (const b of BUBBLES) {
+    const pos = Cesium.Cartesian3.fromDegrees(eastLon(b.lon), b.lat, 0, SPHERE)
+    const dot = Cesium.Cartesian3.dot(Cesium.Cartesian3.normalize(cam, new Cesium.Cartesian3()), Cesium.Cartesian3.normalize(pos, new Cesium.Cartesian3()))
+    if (dot < R / Cesium.Cartesian3.magnitude(cam)) continue // behind the limb
+    const w = Cesium.SceneTransforms.worldToWindowCoordinates(viewer.scene, pos)
+    if (!w) continue
+    const sx = rect.left + w.x, sy = rect.top + w.y
+    const d = Math.hypot(sx - clientX, sy - clientY)
+    if (d <= PEG_SNAP_PX && (!best || d < best.d)) best = { bubble: b, sx, sy, d }
+  }
+  return best
+}
+
 function resetPegman(el: HTMLDivElement | null) {
   if (!el) return
   el.style.left = ''
@@ -126,7 +148,15 @@ export default function App() {
   const [streetDrop, setStreetDrop] = useState<StreetDrop | null>(null)
   const pegRef = useRef<HTMLDivElement>(null)
   const pegDrag = useRef(false)
+  const [pegOver, setPegOver] = useState<{ bubble: Bubble; sx: number; sy: number } | null>(null)
+  const [pegging, setPegging] = useState(false)
   const streetFrame = useRef<HTMLIFrameElement>(null)
+  const [measureOn, setMeasureOn] = useState(false)
+  const interRef = useRef<InteractionsHandle | null>(null)
+  const dockApi = useRef<DockApi | null>(null)
+  const ownDriveAt = useRef(0) // last time THIS tab asked for a drive (chat drive tool or "Drive here")
+  const autoFollowed = useRef(false)
+  const modeNow = useRef(initialMode)
 
   useEffect(() => {
     let dead = false
@@ -350,6 +380,8 @@ export default function App() {
 
   const search = (q: string) => { setQuery(q); setHits(placesCtl ? placesCtl.search(q) : []) }
 
+  useEffect(() => { modeNow.current = cameraMode }, [cameraMode])
+  useEffect(() => { flyPlanetRef.current = flyPlanet })
   const uiMode: UiMode = surfaceView === 'street' ? 'drive' : cameraMode === 'planet' ? 'mars' : 'jezero'
 
   const goMars = () => {
@@ -434,13 +466,50 @@ export default function App() {
   const followRef = useRef({ startFollow, stopFollow, autoFollow })
   useEffect(() => { followRef.current = { startFollow, stopFollow, autoFollow } })
 
-  // A drive started (rover.state went auto/fsd): follow it once. The chip shows progress, then the outcome.
+  // A drive started (rover.state went auto/fsd): follow it only when THIS tab asked for it (chat drive tool or "Drive here").
+  // When it ends, fly back out to an overview that shows the whole route.
   const onDrive = (d: DriveInfo) => {
     const was = wasActive.current
     wasActive.current = d.active
-    if (d.active && !was) followRef.current.autoFollow()
+    if (d.active && !was && Date.now() - ownDriveAt.current < 120000) {
+      autoFollowed.current = true
+      followRef.current.autoFollow()
+    }
+    if (d.route_pts && d.route_pts.length > 1) lastRoute.current = d.route_pts
+    if (!d.active && was && autoFollowed.current) {
+      autoFollowed.current = false
+      if (modeNow.current === 'rover') window.setTimeout(() => flyOverview(), 1200)
+    }
     if (d.active || was) setDriveInfo(d)
     if (!d.active && was) window.setTimeout(() => setDriveInfo((cur) => (cur && !cur.active ? null : cur)), 6000)
+  }
+  const lastRoute = useRef<[number, number][]>([])
+  useEffect(() => { if (import.meta.env.DEV) (window as unknown as { __planetCamera?: unknown }).__planetCamera = (c: Parameters<typeof flyPlanet>[0]) => flyPlanetRef.current(c) }, [])
+  /** Smoothly leave the chase camera and frame the route (plus the rover) from a site-overview angle. */
+  const flyOverview = () => {
+    if (!viewer || !site) return
+    const pts = lastRoute.current
+    const pose = roverCtl?.driver.pose
+    roverCtl?.setChase(false)
+    setCameraMode('site')
+    applyControls(viewer, 'site', site)
+    const world = [...pts.filter((_, i) => i % 5 === 0), ...(pose ? [[pose.x, pose.y] as [number, number]] : [])].map(([x, y]) => site.position(x, y, 0))
+    if (!world.length) return
+    const bs = Cesium.BoundingSphere.fromPoints(world)
+    viewer.camera.flyToBoundingSphere(bs, { offset: new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-45), Math.min(25000, Math.max(1200, bs.radius * 2.8 + 200))), duration: 3 })
+  }
+  const flyPlanetRef = useRef<(c: { lat: number; lon: number; height_m?: number; label?: string }) => void>(() => undefined)
+  const flyPlanet = (c: { lat: number; lon: number; height_m?: number; label?: string }) => {
+    if (!viewer || !site) return
+    if (surfaceView === 'street') leaveStreet()
+    if (modeNow.current !== 'planet') { fly(viewer, site, 'planet', 0); setCameraMode('planet') }
+    window.setTimeout(() => {
+      viewer.camera.flyTo({
+        destination: Cesium.Cartesian3.fromDegrees(eastLon(c.lon), c.lat, c.height_m ?? 3_500_000, SPHERE),
+        orientation: { heading: 0, pitch: Cesium.Math.toRadians(-90), roll: 0 }, duration: 3,
+      })
+      interRef.current?.planet({ lat: c.lat, lon: c.lon, label: c.label })
+    }, 80)
   }
 
   // Dragging the map while following hands the camera back to the user.
@@ -484,6 +553,7 @@ export default function App() {
     if (!showPegman) return
     e.preventDefault()
     pegDrag.current = true
+    setPegging(true)
     e.currentTarget.setPointerCapture(e.pointerId)
     const el = pegRef.current
     if (el) {
@@ -498,18 +568,25 @@ export default function App() {
     if (!pegDrag.current || !pegRef.current) return
     pegRef.current.style.left = `${e.clientX - 16}px`
     pegRef.current.style.top = `${e.clientY - 16}px`
+    setPegOver(viewer ? nearestBubble(viewer, e.clientX, e.clientY) : null)
   }
 
   const onPegPointerUp = (e: React.PointerEvent) => {
     if (!pegDrag.current) return
     pegDrag.current = false
-    e.currentTarget.releasePointerCapture(e.pointerId)
+    setPegging(false)
+    setPegOver(null)
+    try { e.currentTarget.releasePointerCapture(e.pointerId) } catch { /* already released */ }
     resetPegman(pegRef.current)
-    if (!viewer) return
+    if (!viewer || e.type === 'pointercancel') return
     const ll = pickMarsLatLon(viewer, e.clientX, e.clientY)
-    const drop = ll ? dropOnBubbles(ll.latDeg, ll.lonDeg) : null
+    let drop = ll ? dropOnBubbles(ll.latDeg, ll.lonDeg) : null
     if (!drop) {
-      note('No street view here. Drop the pegman on a marked patch.')
+      const near = nearestBubble(viewer, e.clientX, e.clientY)
+      if (near) drop = { world: near.bubble.id, x: 0, y: 0, heading: 0 }
+    }
+    if (!drop) {
+      note('Not on a drivable patch. Drop the pegman on the Jezero or Olympus pin (or click a pin).')
       return
     }
     releaseRover()
@@ -603,6 +680,9 @@ export default function App() {
             <button type="button" className="iconbtn" aria-label="Reset view" title="Reset view" onClick={resetView}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5" /></svg>
             </button>
+            <button type="button" className="iconbtn" aria-label="Measure distance" aria-pressed={measureOn} title="Measure: click A then B (M)" onClick={() => setMeasureOn(!measureOn)}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 17 17 3l4 4L7 21l-4-4ZM7 13l2 2M10 10l2 2M13 7l2 2" /></svg>
+            </button>
             <button type="button" className="iconbtn" aria-label="Ground view" aria-pressed={cameraMode === 'ground'} title="Ground-level view (drag to look around)" onClick={toggleGround}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="2" /><path d="M12 8v7M8 22l4-7 4 7M7 12h10" /></svg>
             </button>
@@ -620,6 +700,12 @@ export default function App() {
             onPointerUp={onPegPointerUp}
             onPointerCancel={onPegPointerUp}
           />
+        )}
+        {pegging && (
+          <div className="peg-hint" role="status">{pegOver ? `Drop here to drive: ${pegOver.bubble.title}` : 'Drag onto the Jezero or Olympus pin'}</div>
+        )}
+        {pegging && pegOver && (
+          <div className="peg-ring" style={{ left: pegOver.sx - 28, top: pegOver.sy - 28 }} aria-hidden="true" />
         )}
         {!loaded && !glFail && !loadErr && (
           <div className="overlay-msg" role="status"><div><span className="spinner" aria-hidden="true" />Loading Mars terrain…</div></div>
@@ -641,7 +727,16 @@ export default function App() {
           </div>
         )}
         {toast && <div className="toast" role="status">{toast}</div>}
+        {viewer && site && (
+          <Interactions viewer={viewer} site={site} mode={uiMode} cameraMode={cameraMode} namesOn={vec.names} measureOn={measureOn} setMeasureOn={setMeasureOn}
+            getPlaces={() => placesCtl?.places ?? []} dockApi={dockApi} note={note} onOwnDrive={() => { ownDriveAt.current = Date.now() }}
+            onJezero={() => goJezero()} onDriveBubble={(b) => driveAt(b.lat, b.lon, b.title)} handleRef={interRef} />
+        )}
         <AtlasDock
+          apiRef={dockApi}
+          onHighlight={(h, kind, sx, sy) => interRef.current?.highlight(h, kind, sx, sy)}
+          onPlanetCamera={flyPlanet}
+          onOwnDrive={() => { ownDriveAt.current = Date.now() }}
           viewer={viewer}
           site={site}
           getRover={() => roverCtl}
@@ -763,23 +858,14 @@ function showPlanetBubbles(v: Cesium.Viewer) {
     bubblePrimitives.push(prim)
     // Ortho patches are ~2 km; at planet distance they are sub-pixel. Labels mark the drops.
     bubbleMarkers.push(v.entities.add({
+      id: `bubble:${bubble.id}`,
       position: Cesium.Cartesian3.fromDegrees(lon, bubble.lat, 0, SPHERE),
       point: {
-        pixelSize: 10,
+        pixelSize: 12,
         color: Cesium.Color.fromCssColorString('#e0794a'),
         outlineColor: Cesium.Color.BLACK,
         outlineWidth: 2,
-      },
-      label: {
-        text: bubble.title,
-        font: '600 14px system-ui, sans-serif',
-        fillColor: Cesium.Color.WHITE,
-        outlineColor: Cesium.Color.BLACK,
-        outlineWidth: 4,
-        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-        pixelOffset: new Cesium.Cartesian2(0, -12),
-        scaleByDistance: new Cesium.NearFarScalar(5e4, 1.4, 1.2e7, 0.55),
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
       },
     }))
   }
