@@ -10,7 +10,7 @@
  "status": 200,
  "response": {
   "feasible": true,
-  "profile": "astronaut_walk",
+  "profile": "crew_buggy",
   "start": "Fixture base",
   "goal": "Core sample site 1",
   "stops": [],
@@ -244,34 +244,34 @@
     "slope": 2.9
    },
    {
-    "x": -245.3,
-    "y": -249.3,
-    "z": -2402.57,
-    "slope": 3.5
+    "x": -245.0,
+    "y": -250.0,
+    "z": -2402.55,
+    "slope": 3.7
    },
    {
-    "x": -241.7,
-    "y": -246.0,
-    "z": -2402.37,
+    "x": -240.0,
+    "y": -250.0,
+    "z": -2402.21,
+    "slope": 3.9
+   },
+   {
+    "x": -235.0,
+    "y": -250.0,
+    "z": -2401.91,
     "slope": 3.1
    },
    {
-    "x": -236.7,
-    "y": -246.0,
-    "z": -2402.12,
-    "slope": 3.2
+    "x": -230.1,
+    "y": -250.0,
+    "z": -2401.76,
+    "slope": 2.0
    },
    {
-    "x": -231.7,
-    "y": -246.0,
-    "z": -2401.94,
-    "slope": 2.9
-   },
-   {
-    "x": -226.8,
-    "y": -246.0,
-    "z": -2401.88,
-    "slope": 2.3
+    "x": -226.5,
+    "y": -246.5,
+    "z": -2401.86,
+    "slope": 2.1
    },
    {
     "x": -223.0,
@@ -617,25 +617,28 @@
    }
   ],
   "distance_m": 490,
-  "duration_min": 10.1,
+  "duration_min": 0.4,
   "stop_minutes": 0,
-  "ascent_m": 7.6,
-  "descent_m": 3.6,
-  "max_slope_deg": 3.5,
+  "ascent_m": 7.7,
+  "descent_m": 3.7,
+  "max_slope_deg": 3.9,
   "slope_limit_deg": 25,
   "hazard_cells": 0,
+  "filled_policy": "caution",
+  "filled_cells": 0,
+  "filled_length_m": 0,
   "legs": [
    {
     "from": "Fixture base",
     "to": "Core sample site 1",
     "distance_m": 490,
-    "duration_min": 10.1
+    "duration_min": 0.4
    }
   ],
   "consumables": {
-   "used_frac": 0.021,
+   "used_frac": 0.001,
    "reserve_frac": 0.2,
-   "margin_frac": 0.779,
+   "margin_frac": 0.799,
    "eva_limit_min": 480,
    "basis": "time-based: (drive + stop time) / EVA limit (assumed)"
   },
@@ -643,7 +646,7 @@
   "warnings": [],
   "sources": {
    "slope": "synthetic fixture",
-   "speeds": "assumed"
+   "speeds": "assumed performance-buggy concept; geometry, 25 deg slope rating and ~3 m turn radius from Apollo LRV (NASA)"
   },
   "direct_line": {
    "distance_m": 482,

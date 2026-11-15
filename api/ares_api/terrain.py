@@ -33,7 +33,8 @@ class Terrain:
         filled = analysis / "filled.tif"
         self.filled = self._read(filled) > 0.5 if filled.exists() else np.zeros(self.shape, bool)
         # Cells with no elevation are unknown terrain: count them as filled (planner cost, hazard "unknown").
-        self.filled |= np.isnan(self.grids["dem"]) | np.isnan(self.grids["slope"])
+        self.nodata = np.isnan(self.grids["dem"]) | np.isnan(self.grids["slope"])  # truly unknown: never passable
+        self.filled |= self.nodata
 
         # Science layers: layer_<id>.tif from the data dir, then extras (data dir wins).
         self.layers: dict[str, np.ndarray] = {}

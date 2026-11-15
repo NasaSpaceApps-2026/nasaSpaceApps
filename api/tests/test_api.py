@@ -30,7 +30,8 @@ def test_profile(client):
 
 
 def test_flat_duration_matches_speed(client):
-    r = client.post("/route", json={"start": {"x": -400, "y": -400}, "goal": {"x": -100, "y": -400}}).json()
+    r = client.post("/route", json={"start": {"x": -400, "y": -400}, "goal": {"x": -100, "y": -400},
+                                      "profile": "astronaut_walk"}).json()
     assert abs(r["distance_m"] - 300) / 300 < 0.02
     expected_min = r["distance_m"] / 0.9 / 60
     assert abs(r["duration_min"] - expected_min) / expected_min < 0.02
@@ -63,7 +64,7 @@ def test_no_route_crosses_nogo(client, data_dir):
 
 
 def test_walker_crosses_ridge_rover_detours(client):
-    walk = client.post("/route", json={"start": "poi:base", "goal": "poi:north"}).json()
+    walk = client.post("/route", json={"start": "poi:base", "goal": "poi:north", "profile": "astronaut_walk"}).json()
     rover = client.post("/route", json={"start": "poi:base", "goal": "poi:north", "profile": "rover_scout"}).json()
     assert walk["max_slope_deg"] > 20 and walk["distance_m"] < 600
     assert rover["max_slope_deg"] <= 20 and rover["distance_m"] > 1000
@@ -118,7 +119,7 @@ def test_drive_blocked_by_slope(client):
 
 
 def test_fsd_replans_around_ridge(client):
-    walk = client.post("/route", json={"start": "poi:base", "goal": "poi:north"}).json()
+    walk = client.post("/route", json={"start": "poi:base", "goal": "poi:north", "profile": "astronaut_walk"}).json()
     client.post("/rover/command", json={"cmd": "fsd_enable"})
     res = client.post("/rover/command", json={"cmd": "follow_route", "route_id": walk["route_id"],
                                               "speed_factor": FAST * 3}).json()

@@ -697,6 +697,14 @@ components:
             exclusiveMinimum: 0.0
           - type: 'null'
           title: Time Budget Min
+        filled:
+          type: string
+          enum:
+          - block
+          - caution
+          - allow
+          title: Filled
+          default: caution
       type: object
       required:
       - goal

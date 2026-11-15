@@ -22,16 +22,18 @@
    "roll_deg": -1.3,
    "speed_mps": 0.0,
    "mode": "idle",
-   "odometer_m": 665.0,
+   "odometer_m": 672.9,
    "route_id": null,
    "status": "teleported",
-   "last_event": "Stopped before 21 deg slope at (165, -60); limit is 20 deg.",
+   "last_event": "Stopped before 21 deg slope at (164, -60); limit is 20 deg.",
    "fsd_armed": false,
    "lat": 18.46388,
    "lon": 77.407332,
    "slope_deg": 10.0,
    "vehicle": "rover_scout",
-   "mission_time_min": 281.57
+   "caution_slope_deg": 15,
+   "nogo_slope_deg": 20,
+   "mission_time_min": 281.34
   },
   "warnings": []
  }
