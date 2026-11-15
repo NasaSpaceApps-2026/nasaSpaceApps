@@ -50,11 +50,11 @@ def _bilinear(values: np.ndarray, cf: np.ndarray, rf: np.ndarray) -> np.ndarray:
     return (v00 * (1 - fc) + v01 * fc) * (1 - fr) + (v10 * (1 - fc) + v11 * fc) * fr
 
 
-def resample_heights(values: np.ndarray, x0: float, y0: float, res_m: float, center_x: float, center_y: float, size_m: float = SIZE_M) -> np.ndarray:
-    """Sample a north-up vertex grid onto the sandbox's level-0 posts."""
-    step = size_m / (HEIGHT_PX - 1)
-    xs = -size_m / 2 + np.arange(HEIGHT_PX) * step
-    ys = size_m / 2 - np.arange(HEIGHT_PX) * step
+def resample_heights(values: np.ndarray, x0: float, y0: float, res_m: float, center_x: float, center_y: float, size_m: float = SIZE_M, n: int = HEIGHT_PX) -> np.ndarray:
+    """Sample a north-up vertex grid onto n posts across one sandbox site."""
+    step = size_m / (n - 1)
+    xs = -size_m / 2 + np.arange(n) * step
+    ys = size_m / 2 - np.arange(n) * step
     xx, yy = np.meshgrid(xs, ys)
     cf = ((xx + center_x) - x0) / res_m
     rf = (y0 - (yy + center_y)) / res_m
@@ -141,6 +141,67 @@ def write_site(out: Path, site: str, title: str, credit: str, elev: np.ndarray, 
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
 
+def write_pyramid(
+    out: Path,
+    site: str,
+    title: str,
+    credit: str,
+    elev: np.ndarray,
+    texture: Image.Image,
+    grid: dict,
+    size_m: float,
+    levels: int = 2,
+    img_px: int = 1024,
+) -> None:
+    """Height and colour tiles through `levels`, so a close camera is not one blurry square."""
+    n_tiles = 2 ** levels
+    span = (HEIGHT_PX - 1) * n_tiles + 1
+    posts = resample_heights(
+        elev, float(grid["x0"]), float(grid["y0"]), float(grid["res_m"]),
+        float(grid["center_x"]), float(grid["center_y"]), size_m, span,
+    )
+    picture = texture.resize((img_px * n_tiles, img_px * n_tiles), Image.Resampling.LANCZOS)
+    for level in range(levels + 1):
+        tiles = 2 ** level
+        step = n_tiles // tiles
+        edge = (HEIGHT_PX - 1) * step
+        for ty in range(tiles):
+            for tx in range(tiles):
+                r0 = ty * edge
+                c0 = tx * edge
+                tile = posts[r0 : r0 + HEIGHT_PX, c0 : c0 + HEIGHT_PX]
+                height_path = out / "tiles" / "height" / str(level) / str(tx) / f"{ty}.png"
+                height_path.parent.mkdir(parents=True, exist_ok=True)
+                Image.fromarray(encode_rgb(tile)).save(height_path)
+                box = (tx * img_px * step, ty * img_px * step, (tx + 1) * img_px * step, (ty + 1) * img_px * step)
+                ortho_path = out / "tiles" / "ortho" / str(level) / str(tx) / f"{ty}.webp"
+                ortho_path.parent.mkdir(parents=True, exist_ok=True)
+                picture.crop(box).resize((img_px, img_px), Image.Resampling.LANCZOS).save(ortho_path, "WEBP", quality=90)
+    manifest = {
+        "site": site,
+        "fixture": True,
+        "lat0": 18.44462715,
+        "lon0": 77.45088572,
+        "radius_m": 3396190,
+        "size_m": size_m,
+        "elev_min": float(np.min(posts)),
+        "elev_max": float(np.max(posts)),
+        "center_x": float(grid["center_x"]),
+        "center_y": float(grid["center_y"]),
+        "height": {"max_level": levels, "tile_px": HEIGHT_PX},
+        "layers": [{
+            "id": "ortho",
+            "title": title,
+            "mission": "Mars 2020",
+            "instrument": "HiRISE",
+            "max_level": levels,
+            "kind": "base",
+            "credit": credit,
+        }],
+    }
+    (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+
+
 def export_worlds(repo: Path, out_root: Path) -> None:
     worlds = (
         ("projection", "jezero_sol9_projection", "Photo projection",
@@ -182,11 +243,32 @@ def export_crater(repo: Path, out_root: Path) -> None:
             grid = {**grid, "x0": float(header["x0"]), "y0": float(header["y0"]), "res_m": float(header["res_m"])}
             credit = credit + ", plus the vision-loop crest bumps"
     size_m = (dem.shape[1] - 1) * float(grid["res_m"])
-    write_site(
+    write_pyramid(
         out_root / "crater",
         "jezero_crater",
         "Jezero fan front",
         credit,
+        dem,
+        texture,
+        grid,
+        size_m,
+    )
+
+
+def export_olympus(repo: Path, out_root: Path) -> None:
+    bundle = repo / "contracts" / "fixtures" / "olympus_scarp"
+    if not (bundle / "dem.npy").exists():
+        return
+    grid = json.loads((bundle / "grid.json").read_text())
+    dem = np.load(bundle / "dem.npy")
+    hires = bundle / "texture.png"
+    texture = Image.open(hires if hires.exists() else bundle / "ortho.png").convert("RGB")
+    size_m = (dem.shape[1] - 1) * float(grid["res_m"])
+    write_pyramid(
+        out_root / "olympus",
+        "olympus_scarp",
+        "Olympus Mons scarp",
+        "HiRISE of the layered scarp, Mars orange from the Viking tint, Mastcam grain for close-up dirt",
         dem,
         texture,
         grid,
@@ -199,6 +281,7 @@ def main() -> None:
     out = repo / "contracts" / "fixtures" / "rover_worlds"
     export_worlds(repo, out)
     export_crater(repo, out)
+    export_olympus(repo, out)
     print(out)
 
 

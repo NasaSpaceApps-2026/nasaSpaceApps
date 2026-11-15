@@ -31,10 +31,11 @@ function roverWorlds(): Plugin {
     projection: path.join(repo, 'contracts/fixtures/rover_worlds/projection'),
     vision: path.join(repo, 'contracts/fixtures/rover_worlds/vision'),
     crater: path.join(repo, 'contracts/fixtures/rover_worlds/crater'),
+    olympus: path.join(repo, 'contracts/fixtures/rover_worlds/olympus'),
   };
   const serve: Connect.NextHandleFunction = (req, res, next) => {
     const raw = decodeURIComponent((req.url ?? '').split('?')[0]);
-    const match = raw.match(/^\/worlds\/(projection|vision|crater)(\/.*)?$/);
+    const match = raw.match(/^\/worlds\/(projection|vision|crater|olympus)(\/.*)?$/);
     if (!match) return next();
     const root = roots[match[1]];
     const rel = match[2] && match[2] !== '/' ? match[2] : '';
@@ -50,6 +51,16 @@ function roverWorlds(): Plugin {
     createReadStream(file).pipe(res);
   };
   const attach = (server: ViteDevServer | PreviewServer) => {
+    server.middlewares.use((req, res, next) => {
+      const url = req.url ?? '';
+      if (url === '/' || url.startsWith('/?')) {
+        res.statusCode = 302;
+        res.setHeader('Location', '/sandbox/' + url.slice(1));
+        res.end();
+        return;
+      }
+      next();
+    });
     server.middlewares.use(serve);
   };
   return { name: 'rover-worlds', configureServer: attach, configurePreviewServer: attach };
@@ -57,6 +68,9 @@ function roverWorlds(): Plugin {
 
 export default defineConfig({
   root: here,
+  // Served through the planet app at /sandbox so the street view is same-origin.
+  // A cross-origin iframe gets its animation frames throttled to about 1 Hz.
+  base: '/sandbox/',
   publicDir: siteDir,
   plugins: [roverWorlds()],
   resolve: {
@@ -66,6 +80,9 @@ export default defineConfig({
   },
   server: {
     port: 5174,
+    strictPort: true,
+    origin: 'http://127.0.0.1:5173',
+    hmr: { clientPort: 5173 },
     fs: { allow: [roverDir, siteDir] },
   },
   build: {

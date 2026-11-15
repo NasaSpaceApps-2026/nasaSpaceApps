@@ -9,6 +9,7 @@
  */
 
 import * as THREE from 'three';
+import sandUrl from './mars_sand.jpg';
 import {
   ChaseCamera,
   BUGGY_PARAMS,
@@ -36,12 +37,17 @@ const WORLD_BASE: Record<string, string> = {
   vision: '/worlds/vision',
   llm: '/worlds/vision',
   crater: '/worlds/crater',
+  olympus: '/worlds/olympus',
 };
 const rawWorld = (q.get('world') ?? '').trim().toLowerCase();
 const worldBase = rawWorld ? WORLD_BASE[rawWorld] : undefined;
-const worldName: 'projection' | 'vision' | 'crater' | null =
-  worldBase === '/worlds/vision' ? 'vision' : worldBase === '/worlds/projection' ? 'projection' : worldBase === '/worlds/crater' ? 'crater' : null;
-const worldError = rawWorld && !worldBase ? `Unknown world "${q.get('world')}". Use projection, vision, or crater.` : '';
+const worldName: 'projection' | 'vision' | 'crater' | 'olympus' | null =
+  worldBase === '/worlds/vision' ? 'vision'
+  : worldBase === '/worlds/projection' ? 'projection'
+  : worldBase === '/worlds/crater' ? 'crater'
+  : worldBase === '/worlds/olympus' ? 'olympus'
+  : null;
+const worldError = rawWorld && !worldBase ? `Unknown world "${q.get('world')}". Use projection, vision, crater, or olympus.` : '';
 const BASE = worldBase ?? q.get('base') ?? '';
 const API = (q.get('api') ?? 'http://localhost:8000').replace(/\/$/, '');
 const WS = API.replace(/^http/, 'ws') + '/ws';
@@ -51,7 +57,7 @@ const START = {
   heading_deg: Number(q.get('heading') ?? (worldName ? 0 : 90)),
 };
 
-function worldHref(name: 'projection' | 'vision' | 'crater' | null): string {
+function worldHref(name: 'projection' | 'vision' | 'crater' | 'olympus' | null): string {
   const next = new URLSearchParams(location.search);
   next.delete('base');
   next.delete('x');
@@ -64,11 +70,12 @@ function worldHref(name: 'projection' | 'vision' | 'crater' | null): string {
 }
 
 function renderWorldSwitch() {
-  const items: Array<['default' | 'photo projection' | 'vision loop' | 'crater', 'projection' | 'vision' | 'crater' | null]> = [
+  const items: Array<['default' | 'photo projection' | 'vision loop' | 'crater' | 'olympus', 'projection' | 'vision' | 'crater' | 'olympus' | null]> = [
     ['default', null],
     ['photo projection', 'projection'],
     ['vision loop', 'vision'],
     ['crater', 'crater'],
+    ['olympus', 'olympus'],
   ];
   $('worlds').innerHTML = items.map(([label, name]) => {
     const on = name === worldName;
@@ -104,12 +111,102 @@ async function fetchProfile(): Promise<RoverProfile> {
   }
 }
 
-function buildTerrain(manifest: Manifest, sampler: TileHeightSampler, level: number, stride = 2): THREE.Group {
+/** Repeating sand from a real Mastcam frame. The normal map is what makes grains catch the sun. */
+function marsGrit(): { color: THREE.Texture; normal: THREE.Texture } {
+  const loader = new THREE.TextureLoader();
+  const color = loader.load(sandUrl);
+  color.colorSpace = THREE.SRGBColorSpace;
+  color.wrapS = color.wrapT = THREE.RepeatWrapping;
+  color.anisotropy = 8;
+  const s = 256;
+  const flat = new Uint8Array(s * s * 4);
+  for (let i = 0; i < s * s; i++) {
+    flat[i * 4] = 128;
+    flat[i * 4 + 1] = 128;
+    flat[i * 4 + 2] = 255;
+    flat[i * 4 + 3] = 255;
+  }
+  const normal = new THREE.DataTexture(flat, s, s);
+  normal.wrapS = normal.wrapT = THREE.RepeatWrapping;
+  normal.colorSpace = THREE.NoColorSpace;
+  normal.flipY = false;
+  normal.needsUpdate = true;
+  const image = new Image();
+  image.onload = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = s;
+    canvas.height = s;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(image, 0, 0, s, s);
+    const src = ctx.getImageData(0, 0, s, s).data;
+    const h = new Float32Array(s * s);
+    for (let i = 0; i < s * s; i++) h[i] = (src[i * 4] + src[i * 4 + 1] + src[i * 4 + 2]) / (3 * 255);
+    const out = new Uint8Array(s * s * 4);
+    const strength = 3.2;
+    for (let y = 0; y < s; y++) {
+      for (let x = 0; x < s; x++) {
+        const left = h[y * s + (x + s - 1) % s];
+        const right = h[y * s + (x + 1) % s];
+        const up = h[((y + s - 1) % s) * s + x];
+        const down = h[((y + 1) % s) * s + x];
+        let nx = (left - right) * strength;
+        let ny = (up - down) * strength;
+        let nz = 1;
+        const len = Math.hypot(nx, ny, nz) || 1;
+        nx /= len; ny /= len; nz /= len;
+        const i = (y * s + x) * 4;
+        out[i] = (nx * 0.5 + 0.5) * 255;
+        out[i + 1] = (ny * 0.5 + 0.5) * 255;
+        out[i + 2] = (nz * 0.5 + 0.5) * 255;
+        out[i + 3] = 255;
+      }
+    }
+    normal.image = { data: out, width: s, height: s };
+    normal.needsUpdate = true;
+  };
+  image.src = sandUrl;
+  return { color, normal };
+}
+
+const GRIT = marsGrit();
+
+function terrainMaterial(tex: THREE.Texture, tileM: number): THREE.MeshStandardMaterial {
+  // One copy of the sand photo every 2.5 m, on top of the unique satellite colour.
+  const copies = Math.max(1, tileM / 2.5);
+  GRIT.color.repeat.set(copies, copies);
+  GRIT.normal.repeat.set(copies, copies);
+  const mat = new THREE.MeshStandardMaterial({
+    map: tex,
+    normalMap: GRIT.normal,
+    normalScale: new THREE.Vector2(0.9, 0.9),
+    roughness: 0.96,
+    metalness: 0,
+    toneMapped: false,
+  });
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.detailMap = { value: GRIT.color };
+    shader.fragmentShader = 'uniform sampler2D detailMap;\n' + shader.fragmentShader;
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <map_fragment>',
+      `#include <map_fragment>
+      {
+        vec3 grit = texture2D(detailMap, vMapUv * ${copies.toFixed(3)}).rgb;
+        float gritL = dot(grit, vec3(0.299, 0.587, 0.114));
+        diffuseColor.rgb *= 0.78 + 0.45 * gritL;
+      }`,
+    );
+  };
+  return mat;
+}
+
+function buildTerrain(manifest: Manifest, sampler: TileHeightSampler, level: number): THREE.Group {
   const group = new THREE.Group();
   group.name = 'terrain';
   const ortho = manifest.layers.find((l) => l.id === 'ortho');
   const useOrtho = !!ortho && ortho.max_level >= level;
   const loader = new THREE.TextureLoader();
+  const tileM = manifest.size_m / 2 ** level;
   const n = 2 ** level;
   for (let ty = 0; ty < n; ty++) {
     for (let tx = 0; tx < n; tx++) {
@@ -117,6 +214,9 @@ function buildTerrain(manifest: Manifest, sampler: TileHeightSampler, level: num
       if (!data) continue;
       const px = Math.round(Math.sqrt(data.length));
       const b = tileBounds(manifest.size_m, level, tx, ty);
+      // Keep posts that are already about 2 m. Coarser tiles use every post.
+      const postM = b.size / (px - 1);
+      const stride = postM > 1.2 ? 1 : 2;
       const m = Math.floor((px - 1) / stride);
       const verts = (m + 1) * (m + 1);
       const pos = new Float32Array(verts * 3);
@@ -155,11 +255,9 @@ function buildTerrain(manifest: Manifest, sampler: TileHeightSampler, level: num
       if (useOrtho) {
         const tex = loader.load(`${BASE}/tiles/ortho/${level}/${tx}/${ty}.webp`);
         tex.colorSpace = THREE.SRGBColorSpace;
-        tex.anisotropy = 4;
+        tex.anisotropy = 16;
         tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
-        // Imagery already carries shading; draw it unlit so we do not shade it twice.
-        // toneMapped: false keeps the imagery's own colours under ACES tone mapping.
-        mat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
+        mat = terrainMaterial(tex, tileM);
       } else {
         mat = new THREE.MeshLambertMaterial({ color: 0x9b8a78 });
       }
@@ -179,11 +277,11 @@ async function main() {
     $('msg').textContent = worldError;
     return;
   }
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -197,10 +295,9 @@ async function main() {
   scene.add(new THREE.AmbientLight(0xffffff, 0.12));
   const sun = new THREE.DirectionalLight(0xfff2e0, 3.2);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.02;
-  sun.shadow.radius = 3;
   Object.assign(sun.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6, near: 1, far: 90 });
   scene.add(sun, sun.target);
 
@@ -221,10 +318,26 @@ async function main() {
     `(${f(manifest.size_m / 2 ** level / 256, 2)} m posts), no vertical exaggeration.<br>` +
     `<b>Imagery</b>: ${ortho ? `${ortho.title} - ${ortho.credit ?? ''}` : 'none'}`;
 
-  const profile = await fetchProfile();
+  // Embedded street view passes link=0. Skip the API wait and the reconnect loop.
+  const offline = q.get('link') === '0';
+  const profile = offline ? DEFAULT_BUGGY_PROFILE : await fetchProfile();
   if (!worldName) await resolveStart();
   const controls = new KeyboardControls();
-  const link = new RoverLink({ url: WS });
+  const link = offline ? null : new RoverLink({ url: WS });
+  // The planet page keeps keyboard focus. It forwards keys here so arrows drive
+  // without a click inside the frame.
+  addEventListener('message', (e: MessageEvent) => {
+    if (e.origin !== location.origin) return;
+    const data = e.data as { type?: string; code?: string; down?: boolean; repeat?: boolean } | null;
+    if (!data || data.type !== 'ares-drive-key' || typeof data.code !== 'string') return;
+    dispatchEvent(new KeyboardEvent(data.down ? 'keydown' : 'keyup', {
+      code: data.code,
+      key: data.code,
+      repeat: !!data.repeat,
+      bubbles: true,
+      cancelable: true,
+    }));
+  });
   const driver = new RoverDriver({ sampler, profile, params: BUGGY_PARAMS, controls, link, start: START });
 
   const buggy = createBuggyModel({ castShadow: true });

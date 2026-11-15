@@ -1,0 +1,130 @@
+{
+  "ops": [
+    {
+      "op": "bump",
+      "x": -230.0,
+      "y": 818.0,
+      "radius_m": 5.5,
+      "height_m": 1.05,
+      "inferred": true
+    },
+    {
+      "op": "bump",
+      "x": 930.0,
+      "y": 1032.0,
+      "radius_m": 5.0,
+      "height_m": 0.95,
+      "inferred": true
+    },
+    {
+      "op": "bump",
+      "x": 484.0,
+      "y": 910.0,
+      "radius_m": 5.5,
+      "height_m": 0.9,
+      "inferred": true
+    },
+    {
+      "op": "bump",
+      "x": 718.0,
+      "y": -818.0,
+      "radius_m": 5.0,
+      "height_m": 0.85,
+      "inferred": true
+    },
+    {
+      "op": "bump",
+      "x": 770.0,
+      "y": 410.0,
+      "radius_m": 4.5,
+      "height_m": 0.8,
+      "inferred": true
+    },
+    {
+      "op": "bump",
+      "x": -292.0,
+      "y": 14.0,
+      "radius_m": 5.0,
+      "height_m": 0.75,
+      "inferred": true
+    },
+    {
+      "op": "paint",
+      "x": 380.9,
+      "y": -736.3,
+      "radius_m": 1.4,
+      "strength": 0.34,
+      "rgb": [
+        112,
+        87,
+        67
+      ],
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 380.3,
+      "y": -732.2,
+      "radius_m": 1.3,
+      "strength": 0.34,
+      "rgb": [
+        166,
+        131,
+        103
+      ],
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 379.8,
+      "y": -728.9,
+      "radius_m": 1.4,
+      "strength": 0.32,
+      "rgb": [
+        146,
+        115,
+        90
+      ],
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 399.5,
+      "y": -731.8,
+      "radius_m": 1.2,
+      "strength": 0.28,
+      "rgb": [
+        226,
+        197,
+        159
+      ],
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 397.6,
+      "y": -725.6,
+      "radius_m": 1.2,
+      "strength": 0.26,
+      "rgb": [
+        206,
+        165,
+        130
+      ],
+      "inferred": false
+    },
+    {
+      "op": "paint",
+      "x": 403.6,
+      "y": -723.4,
+      "radius_m": 1.1,
+      "strength": 0.24,
+      "rgb": [
+        220,
+        176,
+        138
+      ],
+      "inferred": false
+    }
+  ]
+}

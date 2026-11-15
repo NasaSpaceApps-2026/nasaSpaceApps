@@ -5,12 +5,12 @@
   "lon0": 77.45088572,
   "radius_m": 3396190,
   "size_m": 1800.0,
-  "elev_min": -2563.97640625,
-  "elev_max": -2455.6875,
+  "elev_min": -2564.080625,
+  "elev_max": -2455.6814453125,
   "center_x": 1000.84655868176,
   "center_y": 1766.3859861944097,
   "height": {
-    "max_level": 0,
+    "max_level": 2,
     "tile_px": 257
   },
   "layers": [
@@ -18,8 +18,8 @@
       "id": "ortho",
       "title": "Jezero fan front",
       "mission": "Mars 2020",
-      "instrument": "Navcam",
-      "max_level": 0,
+      "instrument": "HiRISE",
+      "max_level": 2,
       "kind": "base",
       "credit": "HiRISE brightness and dirt pattern, Mars orange from the anchored Viking tint, with close-up grain, plus the vision-loop crest bumps"
     }

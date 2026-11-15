@@ -4,13 +4,91 @@ import 'cesium/Build/Cesium/Widgets/widgets.css'
 import { R, Site, SPHERE, deg } from './site'
 import { siteImagery, siteTerrain } from './providers'
 import { CesiumRover } from './cesiumRover'
+import type { DriverPose } from './rover/driver'
 import { PlacesLayer, type Place } from './places'
+import { BUBBLES } from './bubbles'
+import { dropOnBubbles, type StreetDrop } from './pegman'
 import './App.css'
 
+type SurfaceView = 'planet' | 'street'
+
 const MARS_ION_ASSET = 3644333
-type Mode = 'orbit' | 'site' | 'ground' | 'rover'
+type Mode = 'orbit' | 'site' | 'ground' | 'rover' | 'planet'
 let roverCtl: CesiumRover | null = null // set once the viewer is up; used by fly()
 let placesCtl: PlacesLayer | null = null
+let marsTileset: Cesium.Cesium3DTileset | null = null
+let bubblePrimitives: Cesium.GroundPrimitive[] = []
+let bubbleMarkers: Cesium.Entity[] = []
+let siteImageryShown: boolean[] | null = null
+const marsBasemapLayers = new Set<Cesium.ImageryLayer>()
+
+const MARS_MOSAIC =
+  'https://trek.nasa.gov/tiles/Mars/EQ/Mars_Viking_MDIM21_ClrMosaic_global_232m/1.0.0/default/default028mm/{z}/{y}/{x}.jpg'
+
+function addMarsBasemap(v: Cesium.Viewer) {
+  const layer = new Cesium.ImageryLayer(new Cesium.UrlTemplateImageryProvider({
+    url: MARS_MOSAIC,
+    tilingScheme: new Cesium.GeographicTilingScheme({
+      ellipsoid: SPHERE,
+      numberOfLevelZeroTilesX: 2,
+      numberOfLevelZeroTilesY: 1,
+    }),
+    maximumLevel: 6,
+    credit: 'NASA / USGS Viking MDIM 2.1 color mosaic, served by Mars Trek',
+  }))
+  v.imageryLayers.add(layer, 0)
+  marsBasemapLayers.add(layer)
+}
+
+function eastLon(lon: number): number {
+  let wrapped = lon
+  while (wrapped > 180) wrapped -= 360
+  while (wrapped < -180) wrapped += 360
+  return wrapped
+}
+
+function lookAtBubble(v: Cesium.Viewer, lat: number, lon: number, height: number) {
+  v.camera.setView({
+    destination: Cesium.Cartesian3.fromDegrees(eastLon(lon), lat, height, SPHERE),
+    orientation: { heading: 0, pitch: Cesium.Math.toRadians(-90), roll: 0 },
+  })
+}
+let roverPoseHud: ((p: DriverPose) => void) | null = null
+
+function ensureRover(v: Cesium.Viewer, s: Site): CesiumRover {
+  if (roverCtl) return roverCtl
+  roverCtl = new CesiumRover(v, s)
+  if (roverPoseHud) roverCtl.onPose = roverPoseHud
+  const w = placesCtl?.first()
+  if (w) roverCtl.driver.teleport(w.x, w.y, w.heading ?? 0)
+  ;(window as unknown as { __rover?: CesiumRover }).__rover = roverCtl
+  return roverCtl
+}
+
+function releaseRover() {
+  if (!roverCtl) return
+  roverCtl.dispose()
+  roverCtl = null
+  delete (window as unknown as { __rover?: CesiumRover }).__rover
+}
+
+function pickMarsLatLon(viewer: Cesium.Viewer, clientX: number, clientY: number): { latDeg: number; lonDeg: number } | null {
+  const rect = viewer.canvas.getBoundingClientRect()
+  const win = new Cesium.Cartesian2(clientX - rect.left, clientY - rect.top)
+  let cartesian: Cesium.Cartesian3 | undefined = viewer.scene.pickPosition(win)
+  if (!Cesium.defined(cartesian)) cartesian = viewer.camera.pickEllipsoid(win, SPHERE) ?? undefined
+  if (!Cesium.defined(cartesian)) return null
+  const carto = Cesium.Cartographic.fromCartesian(cartesian, SPHERE)
+  return { latDeg: Cesium.Math.toDegrees(carto.latitude), lonDeg: Cesium.Math.toDegrees(carto.longitude) }
+}
+
+function resetPegman(el: HTMLDivElement | null) {
+  if (!el) return
+  el.style.left = ''
+  el.style.top = ''
+  el.style.right = ''
+  el.style.bottom = ''
+}
 
 export default function App() {
   const box = useRef<HTMLDivElement>(null)
@@ -23,6 +101,13 @@ export default function App() {
   const [vec, setVec] = useState({ traverse: true, names: true })
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<Place[]>([])
+  const initialMode = ((new URLSearchParams(location.search).get('view') as Mode) || 'site')
+  const [cameraMode, setCameraMode] = useState<Mode>(initialMode)
+  const [surfaceView, setSurfaceView] = useState<SurfaceView>('planet')
+  const [streetDrop, setStreetDrop] = useState<StreetDrop | null>(null)
+  const pegRef = useRef<HTMLDivElement>(null)
+  const pegDrag = useRef(false)
+  const streetFrame = useRef<HTMLIFrameElement>(null)
 
   useEffect(() => {
     let dead = false
@@ -49,7 +134,9 @@ export default function App() {
         selectionIndicator: false,
       })
       const scene = v.scene
-      scene.globe.baseColor = Cesium.Color.TRANSPARENT // outside the site the Mars tileset shows
+      addMarsBasemap(v)
+      // Visible while the mosaic tiles are still arriving. The ion tileset hides this globe.
+      scene.globe.baseColor = Cesium.Color.fromCssColorString('#8c3d28')
       scene.globe.showGroundAtmosphere = false
       // Sky: Cesium's atmosphere shader doesn't draw below the sphere surface (the Jezero floor is
       // ~2.5 km under it), so tint the background directly: dusty tan at the ground, black in space.
@@ -122,11 +209,12 @@ export default function App() {
           })
           v.scene.primitives.add(ts)
           tilesetRef = ts
+          marsTileset = ts
           setStatus('site + Cesium Mars globe')
         } catch (e) {
           setStatus('site only (Mars globe failed: ' + (e as Error).message + ')')
         }
-      } else setStatus('site only (no Cesium token)')
+      } else setStatus('Drag the pegman onto a patch, or press Drive.')
 
       v.camera.moveEnd.addEventListener(() => {
         const c = v!.camera.positionCartographic
@@ -148,16 +236,16 @@ export default function App() {
         }
       })
       ;(window as unknown as { __viewer?: Cesium.Viewer }).__viewer = v
-      roverCtl = new CesiumRover(v, s)
-      ;(window as unknown as { __rover?: CesiumRover }).__rover = roverCtl
+      const bootMode = (new URLSearchParams(location.search).get('view') as Mode) || 'site'
       let lastHud = 0
-      roverCtl.onPose = (p) => {
+      roverPoseHud = (p) => {
         const now = performance.now()
         if (now - lastHud < 250) return
         lastHud = now
         setDrive(`rover ${p.status}${p.stop_reason ? ' (' + p.stop_reason + ')' : ''} · slope ${p.slope_deg.toFixed(1)}° · ` +
           `ahead ${p.ahead_slope_deg.toFixed(1)}° · ${p.display_speed_mps.toFixed(1)} m/s shown (${p.speed_mps.toFixed(2)} real) · x ${p.x.toFixed(0)} y ${p.y.toFixed(0)}`)
       }
+      if (bootMode !== 'planet') ensureRover(v, s)
       // Real Perseverance traverse/waypoints and IAU names; start the rover at the first real waypoint.
       placesCtl = new PlacesLayer(v, s)
       placesCtl.load().then(() => {
@@ -166,7 +254,8 @@ export default function App() {
       }).catch((e) => console.error('places', e))
       setSite(s)
       setViewer(v)
-      fly(v, s, (new URLSearchParams(location.search).get('view') as Mode) || 'site', 0)
+      fly(v, s, bootMode, 0)
+      setCameraMode(bootMode)
     })().catch((e) => setStatus('error: ' + e))
     return () => {
       dead = true
@@ -191,8 +280,10 @@ export default function App() {
     setHits([])
     setQuery(p.name)
     if (p.kind === 'waypoint') {
-      roverCtl?.driver.teleport(p.x, p.y, p.heading ?? 0)
+      if (surfaceView === 'street') leaveStreet()
+      ensureRover(viewer, site).driver.teleport(p.x, p.y, p.heading ?? 0)
       fly(viewer, site, 'rover', 0)
+      setCameraMode('rover')
     } else {
       roverCtl?.setChase(false)
       viewer.camera.flyTo({
@@ -202,18 +293,175 @@ export default function App() {
     }
   }
 
+  const showPegman = cameraMode === 'planet' && surfaceView === 'planet' && viewer
+
+  const onPegPointerDown = (e: React.PointerEvent) => {
+    if (!showPegman) return
+    e.preventDefault()
+    pegDrag.current = true
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const el = pegRef.current
+    if (el) {
+      el.style.right = 'auto'
+      el.style.bottom = 'auto'
+      el.style.left = `${e.clientX - 14}px`
+      el.style.top = `${e.clientY - 14}px`
+    }
+  }
+
+  const onPegPointerMove = (e: React.PointerEvent) => {
+    if (!pegDrag.current || !pegRef.current) return
+    pegRef.current.style.left = `${e.clientX - 14}px`
+    pegRef.current.style.top = `${e.clientY - 14}px`
+  }
+
+  const onPegPointerUp = (e: React.PointerEvent) => {
+    if (!pegDrag.current) return
+    pegDrag.current = false
+    e.currentTarget.releasePointerCapture(e.pointerId)
+    if (!viewer) {
+      resetPegman(pegRef.current)
+      return
+    }
+    const ll = pickMarsLatLon(viewer, e.clientX, e.clientY)
+    if (!ll) {
+      resetPegman(pegRef.current)
+      setStatus('No street view here')
+      return
+    }
+    const drop = dropOnBubbles(ll.latDeg, ll.lonDeg)
+    if (!drop) {
+      resetPegman(pegRef.current)
+      setStatus('No street view here')
+      return
+    }
+    releaseRover()
+    setStreetDrop(drop)
+    setSurfaceView('street')
+    setStatus(`Street view · ${drop.world}`)
+    resetPegman(pegRef.current)
+  }
+
+  const leaveStreet = () => {
+    setStreetDrop(null)
+    setSurfaceView('planet')
+    resetPegman(pegRef.current)
+  }
+
+  const driveAt = (lat: number, lon: number, title: string) => {
+    if (!viewer) return
+    const drop = dropOnBubbles(lat, lon)
+    if (!drop) {
+      setStatus('No street view here')
+      return
+    }
+    lookAtBubble(viewer, lat, lon, 15000)
+    releaseRover()
+    setStreetDrop(drop)
+    setSurfaceView('street')
+    setCameraMode('planet')
+    setStatus(`Street view · ${title}`)
+  }
+
+  const sandboxSrc = streetDrop
+    ? `/sandbox/?world=${encodeURIComponent(streetDrop.world)}&x=${streetDrop.x}&y=${streetDrop.y}&heading=0&link=0`
+    : ''
+
+  useEffect(() => {
+    if (!viewer) return
+    const driving = surfaceView === 'street'
+    viewer.useDefaultRenderLoop = !driving
+    if (!driving) {
+      viewer.resize()
+      viewer.scene.requestRender()
+    }
+  }, [viewer, surfaceView])
+
+  useEffect(() => {
+    if (surfaceView !== 'street') return
+    const frame = streetFrame.current
+    const focusFrame = () => {
+      frame?.focus()
+      try { frame?.contentWindow?.focus() } catch { /* focus is allowed cross-origin */ }
+    }
+    focusFrame()
+    const later = window.setTimeout(focusFrame, 500)
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null
+      if (el && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) return
+      frame?.contentWindow?.postMessage({
+        type: 'ares-drive-key',
+        code: e.code,
+        down: e.type === 'keydown',
+        repeat: e.repeat,
+      }, window.location.origin)
+      if (e.type === 'keydown' && (e.code.startsWith('Arrow') || e.code === 'Space')) e.preventDefault()
+    }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('keyup', onKey)
+    return () => {
+      window.clearTimeout(later)
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('keyup', onKey)
+    }
+  }, [surfaceView, sandboxSrc])
+
   return (
     <div className="app">
-      <div ref={box} className="cesium" />
-      <div className="panel">
-        <b>Ares Atlas — Jezero</b>
-        <div className="row">
-          {(['orbit', 'site', 'ground', 'rover'] as Mode[]).map((m) => (
-            <button key={m} disabled={!viewer} onClick={() => fly(viewer!, site!, m, 2)}>
+      <div ref={box} className={`cesium${surfaceView === 'street' ? ' cesium--hidden' : ''}`} />
+      {surfaceView === 'street' && streetDrop && (
+        <>
+          <iframe ref={streetFrame} className="street-frame" title="Rover street view" src={sandboxSrc} tabIndex={0} />
+          <button type="button" className="map-back" onClick={leaveStreet}>Map</button>
+        </>
+      )}
+      {showPegman && (
+        <div
+          ref={pegRef}
+          className="pegman"
+          role="img"
+          aria-label="Drag to street view"
+          onPointerDown={onPegPointerDown}
+          onPointerMove={onPegPointerMove}
+          onPointerUp={onPegPointerUp}
+          onPointerCancel={onPegPointerUp}
+        />
+      )}
+      {surfaceView !== 'street' && <div className="panel">
+        <b>{cameraMode === 'planet' ? 'Ares Atlas — Mars' : 'Ares Atlas — Jezero'}</b>
+        {cameraMode === 'planet' && (
+          <>
+            <small>One window. Drive enters the rover on that patch. Drag the yellow pegman onto a patch to do the same.</small>
+            {BUBBLES.map((bubble) => (
+              <div className="row" key={bubble.id}>
+                <button type="button" disabled={!viewer} onClick={() => viewer && lookAtBubble(viewer, bubble.lat, bubble.lon, 20000)}>
+                  {bubble.title}
+                </button>
+                <button type="button" disabled={!viewer} onClick={() => driveAt(bubble.lat, bubble.lon, bubble.title)}>
+                  Drive
+                </button>
+              </div>
+            ))}
+          </>
+        )}
+        {cameraMode !== 'planet' && <div className="row">
+          {(['orbit', 'site', 'ground', 'rover', 'planet'] as Mode[]).map((m) => (
+            <button key={m} disabled={!viewer} onClick={() => {
+              if (surfaceView === 'street') leaveStreet()
+              fly(viewer!, site!, m, 2)
+              setCameraMode(m)
+            }}>
               {m}
             </button>
           ))}
-        </div>
+        </div>}
+        {cameraMode === 'planet' && (
+          <button type="button" disabled={!viewer || !site} onClick={() => {
+            fly(viewer!, site!, 'site', 2)
+            setCameraMode('site')
+          }}>Site tools</button>
+        )}
+        {cameraMode !== 'planet' && <>
         <input className="search" placeholder="Search: sol 120, Jezero, Belva…" value={query}
           onChange={(e) => search(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && hits[0]) goTo(hits[0]) }} />
         {hits.map((h) => (
@@ -237,22 +485,25 @@ export default function App() {
           <input type="checkbox" checked={vec.traverse} onChange={() => toggleVec('traverse')} />
           Perseverance traverse + waypoints <small>(Mars 2020, NASA/JPL)</small>
         </label>
-        <label title="USGS Gazetteer of Planetary Nomenclature (IAU-approved names)">
+        </>}
+        {cameraMode !== 'planet' && <label title="USGS Gazetteer of Planetary Nomenclature (IAU-approved names)">
           <input type="checkbox" checked={vec.names} onChange={() => toggleVec('names')} />
           Place names <small>(IAU/USGS)</small>
-        </label>
-        <small>Ground: drag = look · Orbit/site: drag = rotate, right-drag = tilt · wheel = zoom</small>
-        <small>Rover: W/S drive, A/D turn (limits are assumed values)</small>
+        </label>}
+        {cameraMode !== 'planet' && <small>Ground: drag = look · Orbit/site: drag = rotate, right-drag = tilt · wheel = zoom</small>}
+        {cameraMode !== 'planet' && <small>Rover: W/S drive, A/D turn (limits are assumed values)</small>}
         <small>{drive}</small>
         <small>{status}</small>
         <small>{hud}</small>
-      </div>
+      </div>}
     </div>
   )
 }
 
 /** Mouse controls per camera mode. Ground = first-person look; orbit/site = rotate planet + tilt. */
-function applyControls(v: Cesium.Viewer, mode: Mode) {
+function applyControls(v: Cesium.Viewer, mode: Mode, s?: Site) {
+  if (mode === 'planet') releaseRover()
+  else if (s) ensureRover(v, s)
   roverCtl?.setChase(mode === 'rover')
   const c = v.scene.screenSpaceCameraController
   const T = Cesium.CameraEventType, K = Cesium.KeyboardEventModifier
@@ -270,10 +521,135 @@ function applyControls(v: Cesium.Viewer, mode: Mode) {
   }
 }
 
+function siteClippingRing(s: Site): Cesium.Cartesian3[] {
+  const INSET = s.ctx ? 800 : 200
+  const dLon = INSET / (R * Math.cos(Cesium.Math.toRadians(s.manifest.lat0))), dLat = INSET / R
+  return Cesium.Cartesian3.fromRadiansArray(
+    [s.extent.west + dLon, s.extent.south + dLat, s.extent.east - dLon, s.extent.south + dLat,
+     s.extent.east - dLon, s.extent.north - dLat, s.extent.west + dLon, s.extent.north - dLat], SPHERE)
+}
+
+function applySiteGlobeClip(scene: Cesium.Scene, s: Site) {
+  if (new URLSearchParams(location.search).has('noglobeclip')) return
+  const zS = (R + s.relief.max) * Math.sin(s.extent.south), zN = (R + s.relief.min) * Math.sin(s.extent.north)
+  const w = s.extent.west, e = s.extent.east
+  scene.globe.clippingPlanes = new Cesium.ClippingPlaneCollection({
+    unionClippingRegions: true,
+    planes: [
+      new Cesium.ClippingPlane(new Cesium.Cartesian3(-Math.sin(w), Math.cos(w), 0), 0),
+      new Cesium.ClippingPlane(new Cesium.Cartesian3(Math.sin(e), -Math.cos(e), 0), 0),
+      new Cesium.ClippingPlane(new Cesium.Cartesian3(0, 0, 1), -zS),
+      new Cesium.ClippingPlane(new Cesium.Cartesian3(0, 0, -1), zN),
+    ],
+  })
+}
+
+function applySiteTilesetClip(ts: Cesium.Cesium3DTileset, s: Site) {
+  ts.clippingPolygons = new Cesium.ClippingPolygonCollection({
+    polygons: [new Cesium.ClippingPolygon({ positions: siteClippingRing(s) })],
+  })
+}
+
+function hideSiteImagery(v: Cesium.Viewer) {
+  if (siteImageryShown) return
+  siteImageryShown = []
+  const layers = v.imageryLayers
+  for (let i = 0; i < layers.length; i++) {
+    const layer = layers.get(i)
+    siteImageryShown.push(layer.show)
+    if (!marsBasemapLayers.has(layer)) layer.show = false
+  }
+}
+
+function restoreSiteImagery(v: Cesium.Viewer) {
+  if (!siteImageryShown) return
+  const layers = v.imageryLayers
+  for (let i = 0; i < layers.length; i++) layers.get(i).show = siteImageryShown[i] ?? false
+  siteImageryShown = null
+}
+
+function clearPlanetBubbles(v: Cesium.Viewer) {
+  for (const prim of bubblePrimitives) {
+    v.scene.primitives.remove(prim)
+    if (!prim.isDestroyed()) prim.destroy()
+  }
+  bubblePrimitives = []
+  for (const marker of bubbleMarkers) v.entities.remove(marker)
+  bubbleMarkers = []
+}
+
+function showPlanetBubbles(v: Cesium.Viewer) {
+  clearPlanetBubbles(v)
+  const vertexFormat = Cesium.MaterialAppearance.MaterialSupport.TEXTURED.vertexFormat
+  for (const bubble of BUBBLES) {
+    const halfDegLat = (bubble.sizeM / 2) / R * 180 / Math.PI
+    const halfDegLon = halfDegLat / Math.cos(bubble.lat * Math.PI / 180)
+    const lon = eastLon(bubble.lon)
+    const rect = Cesium.Rectangle.fromDegrees(
+      lon - halfDegLon, bubble.lat - halfDegLat,
+      lon + halfDegLon, bubble.lat + halfDegLat,
+    )
+    const prim = new Cesium.GroundPrimitive({
+      geometryInstances: new Cesium.GeometryInstance({
+        geometry: new Cesium.RectangleGeometry({ rectangle: rect, vertexFormat }),
+      }),
+      appearance: new Cesium.MaterialAppearance({
+        material: Cesium.Material.fromType('Image', {
+          image: `/worlds/${bubble.id}/tiles/ortho/0/0/0.webp`,
+        }),
+      }),
+      classificationType: Cesium.ClassificationType.BOTH,
+    })
+    v.scene.primitives.add(prim)
+    bubblePrimitives.push(prim)
+    // Ortho patches are ~2 km; at planet distance they are sub-pixel. Labels mark the drops.
+    bubbleMarkers.push(v.entities.add({
+      position: Cesium.Cartesian3.fromDegrees(lon, bubble.lat, 0, SPHERE),
+      point: {
+        pixelSize: 10,
+        color: Cesium.Color.fromCssColorString('#ffcc00'),
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 2,
+      },
+      label: {
+        text: bubble.title,
+        font: 'bold 16px sans-serif',
+        fillColor: Cesium.Color.WHITE,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 4,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        pixelOffset: new Cesium.Cartesian2(0, -12),
+        scaleByDistance: new Cesium.NearFarScalar(5e4, 1.4, 1.2e7, 0.55),
+      },
+    }))
+  }
+}
+
 function fly(v: Cesium.Viewer, s: Site, mode: Mode, duration: number) {
   const lat0 = s.manifest.lat0, lon0 = s.manifest.lon0
-  applyControls(v, String(mode).startsWith('alt:') ? 'site' : mode)
+  applyControls(v, String(mode).startsWith('alt:') ? 'site' : mode, s)
   if (mode === 'rover') return // chase camera is driven by the rover each frame
+  if (mode === 'planet') {
+    v.scene.globe.clippingPlanes = undefined as unknown as Cesium.ClippingPlaneCollection
+    if (marsTileset) marsTileset.clippingPolygons = undefined as unknown as Cesium.ClippingPolygonCollection
+    v.scene.globe.show = !marsTileset
+    hideSiteImagery(v)
+    showPlanetBubbles(v)
+    // Midpoint lon between Jezero (~77E) and Olympus (~222E). Height high enough that both
+    // sit inside the visible disk (horizon ~75°); at 4e6 m both were over the limb.
+    v.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(150, 20, 9_000_000, SPHERE),
+      orientation: { heading: 0, pitch: Cesium.Math.toRadians(-90), roll: 0 },
+      duration,
+    })
+    return
+  }
+  clearPlanetBubbles(v)
+  v.scene.globe.show = true
+  restoreSiteImagery(v)
+  applySiteGlobeClip(v.scene, s)
+  if (marsTileset) applySiteTilesetClip(marsTileset, s)
   if (String(mode).startsWith('alt:')) {
     // test hook: straight-down view from a given altitude in metres, e.g. ?view=alt:40000
     v.camera.setView({

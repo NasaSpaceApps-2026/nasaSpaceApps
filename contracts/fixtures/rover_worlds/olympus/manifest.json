@@ -1,0 +1,27 @@
+{
+  "site": "olympus_scarp",
+  "fixture": true,
+  "lat0": 18.44462715,
+  "lon0": 77.45088572,
+  "radius_m": 3396190,
+  "size_m": 2236.0,
+  "elev_min": 5130.65966796875,
+  "elev_max": 6756.420203208923,
+  "center_x": 0.0,
+  "center_y": 0.0,
+  "height": {
+    "max_level": 2,
+    "tile_px": 257
+  },
+  "layers": [
+    {
+      "id": "ortho",
+      "title": "Olympus Mons scarp",
+      "mission": "Mars 2020",
+      "instrument": "HiRISE",
+      "max_level": 2,
+      "kind": "base",
+      "credit": "HiRISE of the layered scarp, Mars orange from the Viking tint, Mastcam grain for close-up dirt"
+    }
+  ]
+}

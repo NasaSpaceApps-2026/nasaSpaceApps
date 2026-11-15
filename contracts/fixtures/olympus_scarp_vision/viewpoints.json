@@ -1,0 +1,80 @@
+{
+  "frame": "local_east_north on the HiRISE DTM",
+  "poses_trusted": true,
+  "requires_human": true,
+  "registration_rms_m": null,
+  "bubble_id": "olympus_scarp",
+  "ticks_per_image": 8,
+  "pose_note": "5.00 km\u00b2 of the layered scarp of Olympus Mons, HiRISE PSP_001432_2015. No rover images of this cliff exist. Close-up Mastcam frames are texture references from Jezero, not located photos of Olympus Mons. Keep the orange satellite picture. Bumps follow layers already in the elevation model.",
+  "center_lat": 21.5548278127083,
+  "center_lon_east": 222.31978845442714,
+  "cameras": [
+    {
+      "name": "overhead",
+      "role": "nadir",
+      "xyz": [
+        0,
+        0,
+        8413.62319742367
+      ],
+      "heading_deg": 0,
+      "pitch_deg": -90,
+      "fov_deg": 50,
+      "width": 192,
+      "height": 192,
+      "image": null
+    },
+    {
+      "name": "01_scarp",
+      "role": "fit",
+      "xyz": [
+        316.0,
+        -734.0,
+        6372.701171875
+      ],
+      "heading_deg": 90.0,
+      "pitch_deg": -28.0,
+      "fov_deg": 40.0,
+      "width": 220,
+      "height": 220,
+      "image": "refs/01_scarp.png",
+      "crop_m": 280
+    },
+    {
+      "name": "04_overview",
+      "role": "fit",
+      "xyz": [
+        0,
+        0,
+        8413.62319742367
+      ],
+      "heading_deg": 0,
+      "pitch_deg": -90,
+      "fov_deg": 50,
+      "width": 192,
+      "height": 192,
+      "image": "refs/04_overview.png"
+    }
+  ],
+  "enhance_targets": [
+    {
+      "name": "01_scarp",
+      "x": 366.0,
+      "y": -734.0,
+      "z": 6362.701171875,
+      "heading_deg": 90,
+      "pitch_deg": -40,
+      "fov_deg": 30,
+      "width": 240,
+      "height": 240,
+      "crop_m": 80,
+      "detail": "refs/detail/detail_87_ZL0_0087_067465861.jpg"
+    }
+  ],
+  "credits": [
+    {
+      "name": "hirise",
+      "source": "NASA/JPL-Caltech/UArizona HiRISE DTM DTEEC_001432_2015_001630_2015 and red ortho PSP_001432_2015. Viking MDIM tint. Mastcam-Z grain is from Jezero, not this site."
+    }
+  ]
+}
