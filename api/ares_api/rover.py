@@ -19,6 +19,7 @@ STOP_REASONS = ("arrived", "blocked_slope", "blocked_hazard", "out_of_bounds", "
                 "stopped_by_user", "timeout")
 SUBSTEP_M = 1.0
 ARRIVE_M = 0.5
+STALE_POSE_M = 2.0  # unflagged viewer pose farther than this from the server pose, after a server-driven move, is stale
 
 
 class Command:
@@ -60,6 +61,8 @@ class RoverSim:
         self.fsd_armed = False
         self.policy = self.default_policy()
         self.last_hazard = None
+        self._await_ack = False  # server moved the rover; viewer has not yet reported a pose near it
+        self._stale_seen = None  # (x, y) of the last ignored stale pose
         x, y = start
         self.s = {"x": x, "y": y, "z": 0.0, "heading_deg": 0.0, "pitch_deg": 0.0, "roll_deg": 0.0,
                   "speed_mps": 0.0, "mode": "idle", "odometer_m": 0.0, "mission_time_s": 0.0,
@@ -231,6 +234,7 @@ class RoverSim:
     def _finish(self, reason: str, message: str):
         cmd = self.cmd
         self.cmd = None
+        self._await_ack, self._stale_seen = True, None
         self.s["speed_mps"] = 0.0
         self.s["mode"] = "idle"
         self.s["status"] = reason
@@ -266,6 +270,7 @@ class RoverSim:
         if self.cmd:
             self._finish("stopped_by_user", "Teleported.")
         self.s["x"], self.s["y"] = x, y
+        self._await_ack, self._stale_seen = True, None
         if heading is not None:
             self.s["heading_deg"] = heading % 360
         self.s["mode"] = "idle"
@@ -282,10 +287,22 @@ class RoverSim:
         """Viewer reports a pose from manual driving. While a command is running, only a pose flagged
         `takeover: true` (a real key press / explicit control) takes over; the viewer's periodic pose
         reports are ignored so they cannot cancel an API or agent drive."""
-        if self.cmd and not p.get("takeover"):
+        takeover = bool(p.get("takeover"))
+        if self.cmd and not takeover:
             return
         if self.cmd:
             self._finish("stopped_by_user", "Manual takeover from the viewer.")
+        if not takeover and self._await_ack and "x" in p and "y" in p:
+            d = math.hypot(float(p["x"]) - self.s["x"], float(p["y"]) - self.s["y"])
+            if d <= STALE_POSE_M:
+                self._await_ack = False  # the viewer caught up with the server pose
+            else:
+                # The browser keeps reporting its last manual pose after an API/agent drive. A constant far pose
+                # is stale: ignore it. A far pose that keeps changing is the user really driving: accept it.
+                prev, self._stale_seen = self._stale_seen, (float(p["x"]), float(p["y"]))
+                if prev is None or math.hypot(prev[0] - self._stale_seen[0], prev[1] - self._stale_seen[1]) < 0.05:
+                    return
+        self._await_ack, self._stale_seen = False, None
         s = self.s
         moved = math.hypot(p.get("x", s["x"]) - s["x"], p.get("y", s["y"]) - s["y"])
         for k in ("x", "y", "z", "heading_deg", "pitch_deg", "roll_deg", "speed_mps"):

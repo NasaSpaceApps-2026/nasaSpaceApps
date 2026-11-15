@@ -20,3 +20,21 @@ Revert any item by reverting the named hunks (the repo has no commit for this pa
    command running is adopted as before. `RoverSim.start` now broadcasts `rover.state` immediately. Contract: `rover.pose`
    gains optional `takeover`.
 5. Tests: `api/tests/test_final_pass.py`, `filled_client` fixture in `conftest.py`. SCIENCE_VALIDITY.md: one row added.
+
+6. **Rover snap-back after an API/agent drive** (`rover.py` `manual_pose`, `_finish`, `teleport`; `web/src/rover/link.ts`)
+   - Why: the browser keeps reporting its last manual pose; once the command ended (or after a teleport) `manual_pose`
+     adopted it and the rover jumped back (docs/buggy-driving.md section 6).
+   - API: after a command ends or a teleport, `_await_ack` is set. An unflagged pose more than `STALE_POSE_M` (2 m) from the
+     server pose is ignored, unless it keeps changing (a far pose that moves >5 cm between reports is real driving, so
+     legacy viewers still work). A pose within 2 m clears the guard; a `takeover: true` pose always applies and clears it.
+   - link.ts: `noteServerPose` records every server pose; on auto/fsd -> idle or a >5 m jump while not auto, `sendPose`
+     drops poses farther than 2 m from the server pose for up to 3 s (until the driver adopts it). Takeover flag logic unchanged.
+   - Revert: remove `_await_ack`/`_stale_seen` and the guard block in `manual_pose`; remove `noteServerPose`, `serverPose`,
+     `staleUntil` and the guard in `RoverLink.sendPose`.
+7. **POST /view `mode: "planet"`** (`main.py` `ViewReq`/`set_view`): `lat` (-90..90), `lon` (east, deg), optional `height_m`, `label`.
+   Emits `view.camera` as flat fields AND a `payload` object with the same fields (`{"type":"view.camera","mode":"planet",
+   "lat":..,"payload":{"mode":"planet","lat":..,"lon":..,"height_m":..,"label":..}}`), matching the AtlasDock handler
+   (reads `payload` else flat). Missing lat/lon -> 422. Other modes unchanged. Contract regenerated
+   (`contracts/api.openapi.yaml`). Revert: drop "planet" from the Literal, the four fields and the `if req.mode == "planet"` block.
+8. Tests: `test_final_pass.py` (stale pose ignored, ack resumes manual, takeover applies, moving far pose accepted, planet view).
+   No safety number changed; SCIENCE_VALIDITY.md untouched.

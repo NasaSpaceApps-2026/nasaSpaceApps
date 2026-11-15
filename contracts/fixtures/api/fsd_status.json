@@ -24,7 +24,7 @@
   "last_hazard": {
    "x": 164,
    "y": -60,
-   "slope_deg": 20.7,
+   "slope_deg": 20.5,
    "reason": "blocked_slope"
   },
   "last_event": "Stopped before 21 deg slope at (164, -60); limit is 20 deg.",

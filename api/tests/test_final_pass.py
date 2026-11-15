@@ -95,3 +95,65 @@ def test_pose_without_command_still_adopted(client):
         ws.send_json({"type": "rover.pose", "x": 5, "y": 6, "heading_deg": 90})
         time.sleep(0.1)
         assert client.get("/rover/state").json()["mode"] == "manual"
+
+
+# --- stale viewer pose after a drive; planet view -------------------------------------------------
+def _finish_drive(c):
+    c.post("/rover/vehicle", json={"profile": "rover_scout"})
+    c.post("/rover/command", json={"cmd": "teleport", "target": A, "heading_deg": 90})
+    r = c.post("/rover/command", json={"cmd": "drive", "distance_m": 100, "heading_deg": 90, "speed_factor": FAST}).json()
+    assert r["stop_reason"] == "arrived"
+    return c.get("/rover/state").json()
+
+
+def test_stale_pose_after_drive_ignored_and_ack_resumes_manual(client):
+    end = _finish_drive(client)
+    with client.websocket_connect("/ws") as ws:
+        for _ in range(5):  # the browser keeps reporting its old manual pose
+            ws.send_json({"type": "rover.pose", "x": A["x"], "y": A["y"], "heading_deg": 0})
+            time.sleep(0.05)
+        s = client.get("/rover/state").json()
+        assert (s["x"], s["y"], s["mode"]) == (end["x"], end["y"], "idle")
+        ws.send_json({"type": "rover.pose", "x": end["x"] + 1, "y": end["y"], "heading_deg": 90})  # acknowledged
+        time.sleep(0.1)
+        assert client.get("/rover/state").json()["mode"] == "manual"
+        ws.send_json({"type": "rover.pose", "x": end["x"] + 30, "y": end["y"], "heading_deg": 90})  # driving on
+        time.sleep(0.1)
+        assert client.get("/rover/state").json()["x"] == end["x"] + 30
+
+
+def test_takeover_pose_applies_after_drive(client):
+    end = _finish_drive(client)
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "rover.pose", "x": A["x"], "y": A["y"], "heading_deg": 0, "takeover": True})
+        time.sleep(0.1)
+        s = client.get("/rover/state").json()
+        assert s["mode"] == "manual" and s["x"] == A["x"] != end["x"]
+
+
+def test_moving_far_pose_is_manual_driving_not_stale(client):
+    end = _finish_drive(client)
+    with client.websocket_connect("/ws") as ws:
+        for dx in (0, 5, 10):  # a far pose that keeps changing is real driving
+            ws.send_json({"type": "rover.pose", "x": A["x"] - 50 - dx, "y": A["y"], "heading_deg": 0})
+            time.sleep(0.05)
+        time.sleep(0.1)
+        s = client.get("/rover/state").json()
+        assert s["mode"] == "manual" and s["x"] == A["x"] - 60
+
+
+def test_view_planet_relayed(client):
+    with client.websocket_connect("/ws") as ws:
+        ws.receive_json()  # initial rover.state
+        r = client.post("/view", json={"mode": "planet", "lat": 18.4, "lon": 77.5, "height_m": 2.5e6, "label": "Jezero"})
+        assert r.status_code == 200 and r.json()["camera"]["payload"]["lat"] == 18.4
+        for _ in range(5):
+            m = ws.receive_json()
+            if m["type"] == "view.camera":
+                break
+        want = {"mode": "planet", "lat": 18.4, "lon": 77.5, "height_m": 2.5e6, "label": "Jezero"}
+        assert m["payload"] == want and all(m[k] == v for k, v in want.items())
+    assert client.get("/view").json()["mode"] == "planet"
+    assert client.post("/view", json={"mode": "planet", "lat": 18.4}).status_code == 422
+    assert client.post("/view", json={"mode": "planet", "lat": 95, "lon": 1}).status_code == 422
+    assert client.post("/view", json={"mode": "orbit", "target": "rover"}).json()["camera"]["mode"] == "orbit"
