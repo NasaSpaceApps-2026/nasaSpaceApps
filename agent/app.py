@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
@@ -16,6 +16,7 @@ from .config import Settings, has_key, load_dotenv
 from .mcp_bridge import McpBridge
 from .model import ModelClient, make_model
 from .loop import normalize_history
+from .ratelimit import ChatLimiter
 from .replay import replay_events
 from .session import run_session
 
@@ -40,6 +41,7 @@ def create_app(*, model: ModelClient | None = None, bridge: McpBridge | None = N
     bridge = bridge or McpBridge(settings=settings)
     state: dict[str, Any] = {"model": model, "http": None}
     store = ConversationStore()
+    limiter = ChatLimiter()  # off unless ATLAS_CHAT_RATE_PER_MIN / ATLAS_CHAT_DAILY_CAP are set
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -73,8 +75,13 @@ def create_app(*, model: ModelClient | None = None, bridge: McpBridge | None = N
         return {"event": ev["event"], "data": json.dumps(ev["data"], ensure_ascii=False, default=str)}
 
     @app.post("/chat")
-    async def chat(req: ChatRequest):
+    async def chat(req: ChatRequest, request: Request):
+        blocked = limiter.check(limiter.client_ip(request))
+
         async def stream():
+            if blocked:
+                yield sse({"event": "error", "data": {"message": blocked}})
+                return
             if settings.replay_file:
                 async def reissue(name: str, args: dict):
                     return await bridge.call(name, args, timeout=settings.tool_timeout_s)

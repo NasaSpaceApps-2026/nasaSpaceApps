@@ -1,0 +1,18 @@
+# Pinned to the versions the stack is tested with (api/, devapi, atlas_core, mcp, agent).
+numpy==2.5.4
+scipy==1.18.1
+scikit-image==0.26.0
+rasterio==1.5.2
+shapely==2.2.0
+pyogrio==0.13.0
+pillow==13.0.0
+PyYAML==6.0.3
+fastapi==0.163.0
+starlette==1.10.0
+pydantic==2.14.3
+uvicorn[standard]==0.54.0
+websockets==17.4
+httpx==0.28.1
+sse-starlette==3.7.0
+mcp==2.3.0
+anthropic==2.8.0
