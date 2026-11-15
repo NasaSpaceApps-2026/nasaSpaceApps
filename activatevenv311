@@ -1,0 +1,33 @@
+# Source this file from the repo root so Python 3.11 stays active in your shell:
+#   source activatevenv311
+# Creates api/.venv with python3.11 the first time. The folder is gitignored.
+
+if [ -n "${ZSH_VERSION:-}" ]; then
+  case ${ZSH_EVAL_CONTEXT:-} in
+    *:file:*) ;;
+    *) echo "Source this file so the environment stays on: source activatevenv311" >&2; return 1 2>/dev/null || exit 1 ;;
+  esac
+  eval 'here="$(cd "$(dirname "${(%):-%x}")" && pwd)"'
+elif [ -n "${BASH_VERSION:-}" ]; then
+  if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    echo "Source this file so the environment stays on: source activatevenv311" >&2
+    exit 1
+  fi
+  here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+  echo "Source activatevenv311 from bash or zsh." >&2
+  return 1 2>/dev/null || exit 1
+fi
+
+venv="$here/api/.venv"
+if [ ! -x "$venv/bin/python" ]; then
+  if ! command -v python3.11 >/dev/null 2>&1; then
+    echo "python3.11 is not on PATH." >&2
+    echo "macOS: brew install python@3.11" >&2
+    echo "Ubuntu: sudo add-apt-repository -y ppa:deadsnakes/ppa && sudo apt-get install -y python3.11 python3.11-venv" >&2
+    return 1 2>/dev/null || exit 1
+  fi
+  python3.11 -m venv "$venv"
+fi
+# shellcheck disable=SC1091
+. "$venv/bin/activate"
