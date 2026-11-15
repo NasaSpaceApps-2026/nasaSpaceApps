@@ -76,6 +76,8 @@ def create_app(site: Site | None = None, synthetic: bool | None = None, traverse
         traverse = traverse or _traverse_from_env()
     if synthetic is None:
         synthetic = site.name == "synthetic"
+    from .vehicles import add_vehicle_profiles
+    add_vehicle_profiles(site)      # crew_buggy etc. from api/profiles.yaml when the site has no such profile
     world = World(site, bool(synthetic), traverse, snapshot_timeout_s)
     app = FastAPI(title="Ares Atlas dev API", version="0.1", default_response_class=CleanJSONResponse,
                   description="Stand-in for api/ (Yousef). Reference implementation over atlas_core.")
@@ -312,7 +314,7 @@ def create_app(site: Site | None = None, synthetic: bool | None = None, traverse
     async def post_route(body: dict = Body(...)):
         b = take(body, ("start", "goal", "via", "profile", "max_slope_deg", "time_budget_min"), ("goal",))
         res = R.plan_route(site, store, b.get("start", "rover"), b["goal"], b.get("via"),
-                           b.get("profile", "rover_scout"), b.get("max_slope_deg"), b.get("time_budget_min"))
+                           b.get("profile") or rover.profile, b.get("max_slope_deg"), b.get("time_budget_min"))
         if res["feasible"]:
             res["route_id"] = world.new_route_id()
             await world.add_route(res)
@@ -341,6 +343,34 @@ def create_app(site: Site | None = None, synthetic: bool | None = None, traverse
     @app.get("/rover/state")
     async def rover_state():
         return rover.state()
+
+    def vehicle_table() -> dict:
+        lim = travel_profiles()
+        out = {}
+        for name, v in lim.items():
+            prof = site.profiles.get(name) or {}
+            fs = (prof.get("travel") or {}).get("flat_speed_mps")
+            out[name] = {"title": prof.get("description") or name, "flat_speed_mps": v["flat_speed_mps"],
+                         "max_slope_deg": v["max_slope_deg"], "caution_slope_deg": v["caution_slope_deg"],
+                         "eva_limit_min": v["eva_limit_min"],
+                         "source": (fs.get("source") if isinstance(fs, dict) else None) or "assumed",
+                         "active": name == rover.profile}
+        return {"current": rover.profile, "vehicles": out}
+
+    @app.get("/rover/vehicle")
+    async def get_vehicle():
+        return vehicle_table()
+
+    @app.post("/rover/vehicle")
+    async def set_vehicle(body: dict = Body(...)):
+        b = take(body, ("profile",), ("profile",))
+        tbl = vehicle_table()
+        if b["profile"] not in tbl["vehicles"]:
+            raise AtlasError(f'Unknown vehicle "{b["profile"]}".', hint="Valid vehicles: " + ", ".join(tbl["vehicles"]) + ".")
+        await rover.set_profile(b["profile"])
+        tbl = vehicle_table()
+        return {**tbl, "ok": True, "vehicle": rover.profile, "title": tbl["vehicles"][rover.profile]["title"],
+                "state": rover.state()}
 
     @app.post("/rover/command")
     async def rover_command(body: dict = Body(...)):

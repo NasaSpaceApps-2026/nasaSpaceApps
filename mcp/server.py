@@ -61,8 +61,10 @@ WITHIN = (
     'within = {"from": <location ref>, "max": number, "metric": "straight_m"|"walk_m"|"walk_time_min", '
     '"profile": "eva_walkable"|"rover_scout"} (from, max and metric are all required), e.g. {"from": "base", "max": 60, "metric": "walk_time_min"} keeps only places '
     "reachable on foot from the base in 60 minutes (walk metrics use a placeholder, approximate speed model).")
-PROFILES = ('profile: "rover_scout" (rover, 0.04 m/s real speed, no-go slope 20 deg) or "eva_walkable" '
-            '(astronaut on foot, no-go slope 25 deg); exact limits are in get_site_overview / the result.')
+PROFILES = ('profile: "rover_scout" (scout rover), "crew_buggy" (the crewed buggy), "crew_rover", or "eva_walkable" '
+            '(astronaut on foot); speeds and no-go slopes come from the API (select_vehicle lists them, the result '
+            'prints the ones used, cited or assumed). For a route a vehicle will drive, omit profile: it uses the '
+            'ACTIVE vehicle (select_vehicle).')
 DRIVE_NOTE = ("Blocking: returns when the rover stops, with the final state and a stop_reason: arrived, "
               "blocked_slope, blocked_hazard, replanned, stopped_by_user or timeout. animate=true plays the motion "
               "live in the viewer at 10 Hz (takes real seconds; speed_factor is a multiplier of real rover speed, "
@@ -90,7 +92,7 @@ def _loc(description: str, many: bool = False) -> dict:
 _LOC_NOTE = ' Location reference: {x,y} | {lat,lon} | "poi:<id>" | "marker:<id>" | "base" | "rover" | "set:N" | "N.K".'
 TIERS = ["not_detected", "inferred_from_unit", "weak_orbital", "strong_orbital", "confirmed_in_situ"]
 METRICS = ["straight_m", "walk_m", "walk_time_min"]
-PROFILES_ENUM = ["rover_scout", "eva_walkable"]
+PROFILES_ENUM = ["rover_scout", "crew_buggy", "crew_rover", "eva_walkable"]
 VIEW_MODES = ["globe", "orbit", "chase", "ground"]
 CONDITION_SCHEMA = {
     "type": "object",
@@ -566,8 +568,10 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
         + LOCATION_REFS + " " + UNITS + " "
         'Example: plan_route(start="marker:m1", goal="marker:m2", via=["poi:landing"], profile="rover_scout", '
         "max_slope_deg=15)"))
-    async def plan_route(goal: Any, start: Any = "rover", via: list | None = None, profile: str = "rover_scout",
+    async def plan_route(goal: Any, start: Any = "rover", via: list | None = None, profile: str | None = None,
                          max_slope_deg: float | None = None, time_budget_min: float | None = None) -> CallToolResult:
+        if profile in ("buggy", "scout"):     # words the model may use; canonical names go to the backends
+            profile = backends.map_vehicle(profile)
         body = {"start": _coerce(start), "goal": _coerce(goal), "via": _coerce(via), "profile": profile,
                 "max_slope_deg": max_slope_deg, "time_budget_min": time_budget_min}
         return await call("POST", "/route", fmt.fmt_route, body={k: v for k, v in body.items() if v is not None})
@@ -790,6 +794,12 @@ def build_server(client: httpx.AsyncClient | None = None, api_url: str | None = 
 
     import tools_lake  # mcp/tools_lake.py: flood_at_level, eva_envelope, check_eva_return
     tools_lake.register(tool, call, _coerce, LOCATION_REFS, SCHEMA_PATCH, _loc)
+
+    import tools_drive  # mcp/tools_drive.py: select_vehicle, drive_to (buggy or scout, highest point)
+    tools_drive.register({"tool": tool, "act": act, "act_idem": act_idem, "request": request, "ok": ok, "err": err,
+                          "Unreachable": Unreachable, "coerce": _coerce, "location_refs": LOCATION_REFS,
+                          "units": UNITS, "drive_note": DRIVE_NOTE, "schema_patch": SCHEMA_PATCH, "loc": _loc,
+                          "backends": backends})
 
     # ---- schema patch, aliases and friendly validation errors ----------------------------------
     import re as _re

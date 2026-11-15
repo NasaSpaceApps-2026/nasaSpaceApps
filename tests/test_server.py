@@ -97,7 +97,7 @@ def test_lists_tools_and_descriptions():
         "stop_rover", "set_view", "list_markers", "place_marker", "find_sites", "teleport_rover", "fly_camera",
         "viewshed", "line_of_sight", "find_vantage_points",
         "flood_at_level", "eva_envelope", "check_eva_return",
-        "sun_position", "illumination_at", "find_lit_windows"}
+        "sun_position", "illumination_at", "find_lit_windows", "select_vehicle", "drive_to"}
     for name, t in tools.items():
         assert "Example" in t.description, name
         assert len(t.description) > 80, name

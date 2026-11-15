@@ -128,6 +128,15 @@ class Rover:
             self.manual = False
             yield
 
+    async def set_profile(self, profile: str) -> None:
+        """Switch the driven vehicle (any profile with a travel block); stops a drive in progress."""
+        R.route_params(self.w.site, profile)      # validates
+        if self.running:
+            self._cancel = True
+        self.profile = profile
+        self.last_event = f"vehicle changed to {profile}"
+        await self._emit()
+
     def _params(self, profile: str | None = None) -> dict:
         prof = profile or self.profile
         params, _ = R.route_params(self.w.site, prof)

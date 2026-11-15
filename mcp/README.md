@@ -9,6 +9,7 @@ Tools:
 - Search: `find_locations`, `find_regions`, `find_sites` (minerals and geologic units with evidence), `nearest`, `get_set`.
 - Routes: `plan_route`, `assess_route`, `plan_science_traverse`.
 - Rover: `get_rover_state`, `drive_rover`, `goto_location`, `follow_route`, `teleport_rover`, `stop_rover`, `fsd_enable`, `fsd_disable`, `fsd_status`.
+- Vehicles: `select_vehicle` (crew_buggy, rover_scout, ...; limits read from the API) and `drive_to` (one call: vehicle, plan with its profile, feasibility, drive, highest reachable point). See `docs/buggy-driving.md`.
 - Viewer and markers: `set_view`, `fly_camera`, `list_markers`, `place_marker`.
 - Resource `atlas://site/overview`.
 

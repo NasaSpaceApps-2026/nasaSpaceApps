@@ -27,6 +27,13 @@ FRAME_TOL_M = 1.0
 
 # our profile name -> his profile name (same limits: rover_scout 0.04 m/s, no-go 20; walker no-go 25)
 PROFILE_MAP = {"eva_walkable": "astronaut_walk"}
+# vehicle words a user or model may use -> profile name on both backends (limits are read from the API, never here)
+VEHICLE_ALIASES = {
+    "buggy": "crew_buggy", "crew_buggy": "crew_buggy", "crewed_buggy": "crew_buggy", "the_buggy": "crew_buggy",
+    "performance_buggy": "crew_buggy", "lrv": "crew_buggy", "crew_vehicle": "crew_buggy",
+    "scout": "rover_scout", "scout_rover": "rover_scout", "rover_scout": "rover_scout", "perseverance": "rover_scout",
+    "crew_rover": "crew_rover", "pressurised_rover": "crew_rover", "pressurized_rover": "crew_rover",
+}
 # how fast `animate=false` drives on his (always real-time) sim: display speed in m/s
 INSTANT_DISPLAY_MPS = 400.0
 
@@ -99,8 +106,32 @@ def compare_sites(atlas_site: dict, rover_site: dict, tol_m: float = FRAME_TOL_M
 
 # ---- request-side mapping ----------------------------------------------------------------------------
 
+def map_vehicle(name: str | None) -> str | None:
+    """'buggy' / 'the scout rover' / 'crew buggy' -> crew_buggy / rover_scout / ...; other names unchanged."""
+    if not name or not isinstance(name, str):
+        return name
+    key = re.sub(r"[\s\-]+", "_", name.strip().lower()).removeprefix("the_")
+    return VEHICLE_ALIASES.get(key, name)
+
+
 def map_profile(name: str | None) -> str | None:
-    return PROFILE_MAP.get(name, name) if name else name
+    if not name:
+        return name
+    name = map_vehicle(name)
+    return PROFILE_MAP.get(name, name)
+
+
+def vehicle_table(vehicles: dict, profiles: dict, current: str | None) -> dict:
+    """His GET /rover/vehicles + the /site profiles (for the caution slope) -> one table of drivable vehicles.
+    Every number is his (profiles.yaml); `source` says whether it is cited or assumed."""
+    out = {}
+    for name, v in (vehicles or {}).items():
+        p = (profiles or {}).get(name, {})
+        out[name] = {"title": v.get("title", name), "flat_speed_mps": v.get("flat_speed_mps"),
+                     "max_slope_deg": v.get("nogo_slope_deg"), "caution_slope_deg": p.get("caution_slope_deg"),
+                     "eva_limit_min": p.get("eva_limit_min"), "source": v.get("source", "assumed"),
+                     "active": name == current}
+    return {"current": current, "vehicles": out}
 
 
 _SET_REF = re.compile(r"^(set:)?\d+(\.\d+)?$")
@@ -130,7 +161,7 @@ def policy_to_rover(policy: dict | None) -> dict | None:
     return out
 
 
-def command_to_rover(body: dict, info: dict, last_route: str | None) -> tuple[dict, list[str]]:
+def command_to_rover(body: dict, info: dict, last_route: str | None, vehicle: str | None = None) -> tuple[dict, list[str]]:
     """Our /rover/command body -> his CommandReq. Returns (body, notes)."""
     b = {k: v for k, v in body.items() if v is not None}
     notes: list[str] = []
@@ -148,7 +179,7 @@ def command_to_rover(body: dict, info: dict, last_route: str | None) -> tuple[di
                      "Pass route_id explicitly to avoid surprises.")
     if b.get("cmd") in ("drive", "goto", "follow_route") or (b.get("cmd") == "fsd_enable" and b.get("route_id")):
         if "speed_factor" not in b:
-            prof = info["profiles"].get(info["rover_profile"], {})
+            prof = info["profiles"].get(vehicle or info["rover_profile"], {})   # the ACTIVE vehicle, not always the scout
             flat = float(prof.get("flat_speed_mps") or 1.0)
             if realtime:
                 b["speed_factor"] = float(prof.get("display_speed_factor") or 1.0)
@@ -230,7 +261,7 @@ def adapt_state(s: dict, info: dict, remaining_m: float = 0.0) -> dict:
     if isinstance(out.get("last_event"), str):
         out["last_event"] = out["last_event"].rstrip(". ") or None
     out.setdefault("remaining_m", remaining_m)
-    out.setdefault("profile", info.get("rover_profile"))
+    out.setdefault("profile", out.get("vehicle") or info.get("rover_profile"))
     if "sim_elapsed_s" not in out:
         out["sim_elapsed_s"] = round(float(s.get("mission_time_min", 0.0)) * 60.0, 1)
     for k, dflt in (("pitch_deg", 0.0), ("roll_deg", 0.0), ("speed_mps", 0.0), ("odometer_m", 0.0), ("mode", "idle"),
@@ -697,6 +728,20 @@ class Backends:
             f = await self._rget("/fsd/status")
             return 200, adapt_state(s, info, f.get("remaining_route_m", 0.0))
 
+        if path == "/rover/vehicle":
+            if method == "GET":
+                return 200, await self._vehicles()
+            name = map_vehicle(body.get("profile") or body.get("vehicle"))
+            st, d = await raw("rover", "POST", "/rover/vehicle", {"profile": name}, None, timeout or 20.0)
+            if st >= 400:
+                tbl = await self._vehicles()
+                e = adapt_error(st, d)
+                e["hint"] = "Valid vehicles: " + ", ".join(tbl["vehicles"]) + "."
+                return 422, e
+            tbl = await self._vehicles()
+            return 200, {**tbl, "ok": True, "vehicle": d["vehicle"], "title": d.get("title"),
+                         "state": adapt_state(d["state"], info)}
+
         if path == "/fsd/status":
             return 200, adapt_fsd(await self._rget("/fsd/status"), info)
 
@@ -709,7 +754,7 @@ class Backends:
             if b.get("cmd") == "goto" and b.get("target") is None:
                 raise _Fail({"error": "goto needs a target.", "hint": 'Example: goto_location(target="poi:landing")'})
             try:
-                b, notes = command_to_rover(b, info, self.last_route)
+                b, notes = command_to_rover(b, info, self.last_route, await self._vehicle())
             except ValueError as e:
                 raise _Fail({"error": str(e), "hint": "Plan a route first with plan_route."})
             st, d = await raw("rover", "POST", "/rover/command", b, None, timeout or 330.0)
@@ -739,8 +784,8 @@ class Backends:
                     b[k] = await self.norm_for_rover(b[k])
             if "via" in b:
                 b["via"] = await self.norm_for_rover(b["via"], many=False)
-            if "profile" in b:
-                b["profile"] = map_profile(b["profile"])
+            # no profile given: plan for the vehicle that will drive it (his default would be the walker)
+            b["profile"] = map_profile(b.get("profile")) or await self._vehicle()
             st, d = await raw("rover", "POST", "/route", b, None, timeout)
             if st >= 400:
                 e = adapt_error(st, d)
@@ -789,7 +834,7 @@ class Backends:
             if "near" in b:
                 b["near"] = await self.norm_for_rover(b["near"])
             b, notes = sites_to_rover(b)
-            b["profile"] = map_profile(b.get("profile", "rover_scout"))
+            b["profile"] = map_profile(b.get("profile")) or await self._vehicle() or "rover_scout"
             st, d = await raw("rover", "POST", "/search/sites", b, None, timeout or 60.0)
             if st >= 400:
                 return 422, adapt_error(st, d)
@@ -841,6 +886,18 @@ class Backends:
 
         return 422, {"error": f"The rover backend has no equivalent of {method} {path}.",
                      "hint": "Unset ATLAS_ROVER_API_URL to use the query engine's stand-in for this call."}
+
+    async def _vehicle(self) -> str | None:
+        """Name of the vehicle his sim is driving right now (live: POST /rover/vehicle can change it)."""
+        try:
+            return (await self._rget("/rover/state")).get("vehicle")
+        except (_Fail, Unreachable):
+            return None
+
+    async def _vehicles(self) -> dict:
+        info = await self.info()
+        d = await self._rget("/rover/vehicles")
+        return vehicle_table(d.get("vehicles", {}), info["profiles"], d.get("current"))
 
     async def _highlights(self, hl: Any) -> list[str]:
         """His highlights are id strings. Expand our set refs into member ids; refuse raw coordinates."""

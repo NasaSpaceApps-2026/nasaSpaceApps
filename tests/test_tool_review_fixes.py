@@ -126,7 +126,7 @@ def test_schemas_have_enums_and_item_schemas():
     assert sch["nearest"]["properties"]["metric"]["enum"]
     assert sch["set_view"]["properties"]["mode"]["enum"] == ["globe", "orbit", "chase", "ground"]
     assert sch["fly_camera"]["properties"]["mode"]["enum"]
-    assert sch["plan_route"]["properties"]["profile"]["enum"] == ["rover_scout", "eva_walkable"]
+    assert sch["plan_route"]["properties"]["profile"]["enum"] == ["rover_scout", "crew_buggy", "crew_rover", "eva_walkable"]
     for name, prop in (("describe_location", "at"), ("plan_route", "goal"), ("goto_location", "target"),
                        ("nearest", "from_ref")):
         alts = sch[name]["properties"][prop]["anyOf"]

@@ -258,3 +258,34 @@ cases:
     checks:
       reply_contains_any: ["margin", "point of no return", "walk back", "walk-back"]
 
+  - id: buggy_base_to_delta_front
+    source: buggy driving
+    prompt: "Drive the buggy from base to the delta front."
+    tool_path:
+      required: [drive_to]
+      forbidden: [teleport_rover]
+    checks:
+      reply_contains_any: ["crew_buggy", "buggy"]
+      reply_not_contains: ["scout"]
+      max_tool_calls: 5
+
+  - id: buggy_highest_within_1km
+    source: buggy driving
+    prompt: "Drive the buggy to the highest point within 1 km."
+    tool_path:
+      required: [drive_to]
+    checks:
+      reply_contains_any: ["highest", "reachable", "top"]
+      max_tool_calls: 5
+
+  - id: scout_to_marker
+    source: buggy driving
+    setup:
+      markers: [{x: 1900, y: -380, label: "X"}]
+    prompt: "Switch to the scout rover and drive to marker X."
+    tool_path:
+      required: [[drive_to, select_vehicle]]
+      forbidden: [teleport_rover]
+    checks:
+      reply_contains_any: ["rover_scout", "scout"]
+      max_tool_calls: 6
