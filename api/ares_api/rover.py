@@ -13,6 +13,7 @@ from . import config
 from .hub import Hub
 from .planner import Planner, RouteError
 from .terrain import Terrain
+from .vehicle import grade_speed, has_force_model
 
 STOP_REASONS = ("arrived", "blocked_slope", "blocked_hazard", "out_of_bounds", "no_route",
                 "stopped_by_user", "timeout")
@@ -49,7 +50,7 @@ class RoverSim:
         self.t = terrain
         self.planner = planner
         self.hub = hub
-        self.prof = planner.profile(planner.cfg["rover_profile"])
+        self.prof = planner.profile(planner.cfg.get("vehicle_profile") or planner.cfg["rover_profile"])
         self.cmd: Command | None = None
         self.fsd_armed = False
         self.policy = self.default_policy()
@@ -77,7 +78,8 @@ class RoverSim:
         s["lat"], s["lon"] = self.t.latlon(s["x"], s["y"])
         s["slope_deg"] = round(float(self.t.slope(s["x"], s["y"])), 1)
         s["fsd_armed"] = self.fsd_armed
-        s["mission_time_min"] = round(s.pop("mission_time_s") / 60, 1)
+        s["vehicle"] = self.prof["name"]
+        s["mission_time_min"] = round(s.pop("mission_time_s") / 60, 2)
         return s
 
     def xy(self) -> tuple[float, float]:
@@ -103,19 +105,44 @@ class RoverSim:
                     self._finish("blocked_hazard", f"Simulator error: {e}")
                 await self.hub.broadcast("rover.state", self.state())
 
-    def _speed(self, slope: float, cmd: Command) -> tuple[float, float]:
-        """(display speed, real mission speed) in m/s at this slope."""
-        real = float(self.planner.speed(slope, self.prof))
-        # Same caution slowdown as the browser rover (web/src/rover/physics.ts), in every mode.
-        if slope >= self.policy["caution_slope_deg"]:
-            real *= self.policy["caution_speed_factor"]
-        return real * cmd.speed_factor, real
+    def set_vehicle(self, name: str) -> dict:
+        """Switch the simulated vehicle (a profile in profiles.yaml); stops any active command."""
+        prof = self.planner.profile(name)
+        if self.cmd:
+            self._finish("stopped_by_user", f"Vehicle changed to {name}.")
+        self.prof = prof
+        self.policy = self.default_policy()
+        return prof
+
+    def _grade(self, x: float, y: float, nx: float, ny: float) -> float:
+        """Signed grade (deg, + uphill) from (x, y) toward (nx, ny)."""
+        d = math.hypot(nx - x, ny - y)
+        if d < 1e-6:
+            return 0.0
+        dz = float(self.t.elevation(nx, ny)) - float(self.t.elevation(x, y))
+        return math.degrees(math.atan2(dz, d))
+
+    def _speed(self, slope: float, cmd: Command, grade: float = None) -> tuple[float, float, str | None]:
+        """(display speed, real mission speed, stall note) in m/s.
+        Vehicles with a force model use the same power/grip balance as the browser rover on the
+        signed grade; others use the planner's speed curve on the slope."""
+        stall = None
+        if has_force_model(self.prof) and grade is not None:
+            real, stall = grade_speed(self.prof, grade)
+        else:
+            real = float(self.planner.speed(slope, self.prof))
+        if cmd.fsd and slope >= self.policy["caution_slope_deg"]:
+            real *= self.policy["caution_speed_factor"]  # FSD drives cautiously on steep ground
+        return real * cmd.speed_factor, real, stall
 
     def _advance(self, dt: float):
         cmd, s = self.cmd, self.s
         slope_here = float(self.t.slope(s["x"], s["y"]))
-        disp, _ = self._speed(slope_here, cmd)
-        budget = disp * dt
+        tx0, ty0 = cmd.path[min(cmd.i, len(cmd.path) - 1)]
+        d0 = math.hypot(tx0 - s["x"], ty0 - s["y"])
+        probe = (s["x"] + (tx0 - s["x"]) / d0 * 2, s["y"] + (ty0 - s["y"]) / d0 * 2) if d0 > 1e-6 else (s["x"], s["y"])
+        disp, _, _ = self._speed(slope_here, cmd, self._grade(s["x"], s["y"], *probe))
+        budget = max(disp, 0.05 * cmd.speed_factor * self.prof["flat_speed_mps"]) * dt
         moved = 0.0
         while budget > 1e-6 and cmd.i < len(cmd.path):
             tx, ty = cmd.path[cmd.i]
@@ -141,9 +168,16 @@ class RoverSim:
                         return
                 return self._finish(reason, f"Stopped before {what} at ({nx:.0f}, {ny:.0f}); "
                                             f"limit is {limit:.0f} deg.")
+            _, real, stall = self._speed(slope, cmd, self._grade(s["x"], s["y"], nx, ny))
+            if stall:
+                self.last_hazard = {"x": round(nx), "y": round(ny), "slope_deg": round(slope, 1), "reason": "stalled"}
+                self.hub.emit("rover.hazard", self.last_hazard)
+                if cmd.fsd and self.policy["replan"] and cmd.replans < self.policy["max_replans"]:
+                    if self._replan(stall):
+                        return
+                return self._finish("blocked_slope", f"Stalled at ({s['x']:.0f}, {s['y']:.0f}): {stall}.")
             s["heading_deg"] = math.degrees(math.atan2(dx, dy)) % 360
             s["x"], s["y"] = nx, ny
-            _, real = self._speed(slope, cmd)
             s["mission_time_s"] += step / max(real, 1e-6)
             budget -= step
             moved += step
@@ -241,5 +275,5 @@ class RoverSim:
                 "route_id": s["route_id"], "active_command": cmd.kind if cmd else None,
                 "remaining_route_m": round(cmd.remaining(s["x"], s["y"])) if cmd else 0,
                 "last_hazard": self.last_hazard, "last_event": s["last_event"], "status": s["status"],
-                "profile": self.prof["name"],
+                "profile": self.prof["name"], "vehicle": self.prof.get("title", self.prof["name"]),
                 "limits_source": self.prof.get("source", "assumed")}

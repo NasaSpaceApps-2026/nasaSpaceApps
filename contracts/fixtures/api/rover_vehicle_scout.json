@@ -1,0 +1,35 @@
+{
+ "request": {
+  "method": "POST",
+  "path": "/rover/vehicle",
+  "body": {
+   "profile": "rover_scout"
+  }
+ },
+ "status": 200,
+ "response": {
+  "ok": true,
+  "vehicle": "rover_scout",
+  "title": "Scout rover (Perseverance-like)",
+  "state": {
+   "x": -380,
+   "y": -380,
+   "z": -2403.86,
+   "heading_deg": 0.0,
+   "pitch_deg": -2.4,
+   "roll_deg": -1.5,
+   "speed_mps": 0.0,
+   "mode": "idle",
+   "odometer_m": 0.0,
+   "route_id": null,
+   "status": "ready",
+   "last_event": null,
+   "fsd_armed": false,
+   "lat": 18.453589,
+   "lon": 77.403241,
+   "slope_deg": 2.9,
+   "vehicle": "rover_scout",
+   "mission_time_min": 0.0
+  }
+ }
+}

@@ -32,6 +32,8 @@ class Terrain:
             self.grids[name] = self._read(analysis / f"{name}.tif")
         filled = analysis / "filled.tif"
         self.filled = self._read(filled) > 0.5 if filled.exists() else np.zeros(self.shape, bool)
+        # Cells with no elevation are unknown terrain: count them as filled (planner cost, hazard "unknown").
+        self.filled |= np.isnan(self.grids["dem"]) | np.isnan(self.grids["slope"])
 
         # Science layers: layer_<id>.tif from the data dir, then extras (data dir wins).
         self.layers: dict[str, np.ndarray] = {}
@@ -55,8 +57,9 @@ class Terrain:
     def _read(self, path: Path) -> np.ndarray:
         with rasterio.open(path) as d:
             a = d.read(1).astype(np.float32)
-            if d.nodata is not None:
+            if d.nodata is not None and not np.isnan(d.nodata):
                 a[a == d.nodata] = np.nan
+            a[~np.isfinite(a) | (a < -1e30)] = np.nan  # untagged float nodata (e.g. -3.4e38)
         return a
 
     # --- coordinates -------------------------------------------------------
@@ -147,27 +150,41 @@ class Terrain:
         elev = float(self.elevation(x, y))
         slope = float(self.slope(x, y))
         rough = float(self.bilinear(self.grids["rough"], x, y))
+        num = lambda v, nd: round(v, nd) if math.isfinite(v) else None  # noqa: E731 (NaN is not JSON)
         filled = bool(self.nearest(self.filled.astype(np.uint8), x, y))
         lat, lon = self.latlon(x, y)
         return {
             "x": round(x), "y": round(y), "lat": lat, "lon": lon,
-            "elevation_m": round(elev, 2),
-            "slope_deg": round(slope, 1),
-            "roughness_m": round(rough, 2),
-            "hazard": self.hazard_class(slope, filled, profile),
+            "elevation_m": num(elev, 2),
+            "slope_deg": num(slope, 1),
+            "roughness_m": num(rough, 2),
+            "hazard": self.hazard_class(slope, filled or not math.isfinite(slope), profile),
             "filled": filled,
             "layers": {lid: self.layer_value(lid, x, y) for lid in self.layers},
-            "sources": {"elevation": self.source_label("dem"), "slope": self.source_label("dem")},
+            "sources": {"elevation": self.source_label("dem"), "slope": self.source_label("slope"),
+                        "roughness": self.source_label("rough")},
         }
+
+    def _dtm_citation(self) -> str:
+        """Cite the elevation source from the manifest (mission, instrument, DOI) when the build says so."""
+        for layer in self.manifest.get("layers", []):
+            if "DTM" in str(layer.get("instrument", "")):
+                url = str(layer.get("url") or "")
+                doi = url.split("doi.org/")[-1] if "doi.org/" in url else url
+                cite = f'{layer.get("mission", "MRO")} {layer["instrument"]}'
+                return f"{cite} (USGS, doi:{doi})" if "doi.org/" in url else (f"{cite} ({url})" if url else cite)
+        return "MRO HiRISE DTM"
 
     def source_label(self, lid: str) -> str:
         """Mission/instrument string for citing a layer."""
         if self.manifest.get("fixture"):
             base = "synthetic fixture"
         else:
-            base = "MRO HiRISE DTM"
-        if lid in ("dem", "slope", "rough"):
+            base = self._dtm_citation()
+        if lid == "dem":
             return base
+        if lid in ("slope", "rough"):
+            return base if self.manifest.get("fixture") else f"derived from {base}, {self.res:g} m grid"
         for layer in self.manifest.get("layers", []):
             if layer["id"] == lid:
                 return f'{layer.get("mission")} {layer.get("instrument")}'

@@ -23,6 +23,20 @@ class Places:
                     lon, lat = f["geometry"]["coordinates"][:2]
                     p["x"], p["y"] = terrain.xy_from_latlon(lat, lon)
                 self.pois[p["id"]] = p
+        # Official IAU/USGS names (pipeline/05b_names.py) that fall inside the site, as landmarks.
+        names = terrain.data_dir / "data" / "names.geojson"
+        if names.exists():
+            for f in json.loads(names.read_text())["features"]:
+                p = dict(f["properties"])
+                if p.get("x") is None or p.get("y") is None:
+                    lon, lat = f["geometry"]["coordinates"][:2]
+                    p["x"], p["y"] = terrain.xy_from_latlon(lat, lon)
+                if p["id"] in self.pois or not terrain.in_bounds(p["x"], p["y"]):
+                    continue
+                p.setdefault("type", "landmark")
+                if p.get("z") is None:
+                    p["z"] = round(float(terrain.elevation(p["x"], p["y"])), 2)
+                self.pois[p["id"]] = p
         self.markers: dict[str, dict] = {}
         self._ids = itertools.count(1)
 

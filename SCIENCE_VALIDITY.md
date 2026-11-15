@@ -67,15 +67,16 @@ Status key: **cited** (published NASA/peer value) · **derived** (computed from 
 | Physics checks (static sag = m g/4k with no jitter; climb speed on 20° = P / (m g (sin θ + C_rr cos θ)) within 0.3 %; scout slips on 30°; brakes hold 20° with no creep, slide on 35°/33°; coasting rollback = g (sin θ − C_rr cos θ); braking time v/(μ g); dip in/out; jump: ≥ 0.3 s air, per-frame Δz/Δpitch bounded, settles in 2 s; cornering radius at 12 m/s ≥ v²/(μ g) (68 m vs 59 m) and 3.1 m at 2 m/s; boost never airborne on flat; scout stable at 16× time-lapse) | 19 / 19 pass | `web/src/rover/sandbox/physics.check.ts` |
 | Height-tile decode vs source terrain | < 0.08 m error (1 m posts) | same |
 | Planner: no route crosses a no-go cell (50 random pairs); flat-terrain duration = distance / speed within 2 % | Pass | `api/tests/test_api.py` |
-| Hazard map vs real Perseverance traverse | **Pending real data** (synthetic traverse: 100 % safe/caution) | `GET /validation` |
-| Planned vs driven leg length | **Pending real data** (synthetic: ratios 0.98–1.05) | `GET /validation` |
+| Hazard map vs real Perseverance traverse (Mars 2020 MMGIS traverse, 279 drives, 23.9 km inside the site, sols 13–1019; slope from the HiRISE DTM doi:10.5066/P9REJ9JN on the 2 m grid; rover_scout classes: caution ≥ 15°, no-go ≥ 20°) | **derived**, 2026-11-14: hazard_agreement **0.999** (99.6 % safe, 0.3 % caution, 0.1 % no-go by length). Baseline over the whole 8 km site: 94.9 % safe, 3.0 % caution, 2.1 % no-go, so the rover drove on our no-go ground ~20× less often than chance. Map slope along the drives: median 3.1°, p95 9.7°, p99 12.7°, max 23.0°. Limit: most of the site is flat, so agreement alone is weak; the baseline comparison is the stronger signal | `GET /validation`, `api/tests/test_real_data.py` |
+| Planned vs driven leg length (8 consecutive real waypoint pairs with 100–1500 m driven, spread over sols 129–1001; actual = rover odometry `dist_total_m`; planner profile rover_scout) | **derived**, 2026-11-14: route_realism planned/driven median **1.00**; 6 of 8 pairs 0.88–1.03; 0.77 (sol 713→714) and 0.14 (sol 1000→1001: 136 m driven between points 19 m apart, an out-and-back) where the rover did not drive point to point. All 8 planned within the 20° limit (max 8.7°). Limit: these drives are near-straight on flat floor, so this checks plausibility, not detour choice | `GET /validation`, `api/tests/test_real_data.py` |
 
 ## Known gaps
 
 - Mineral layers and test terrains are synthetic; real CRISM and HiRISE data replace them via Stream A.
 - Grip, rolling resistance and buggy power are assumptions; worth one literature check each.
-- The browser (force model) and API auto-drive (speed curve + slope stop) use different vehicle models;
-  the API's is the conservative planning estimate.
+- API auto-drive uses the steady-state version of the browser force model (power/grip balance on the signed
+  grade, `api/ares_api/vehicle.py`), not the full rigid-body/suspension dynamics; the route planner still
+  uses the speed-curve estimate for time.
 - No thermal, power or life-support model; consumables are time only.
 - Suspension tune, CG height and the scout's spring stand-in for the rocker-bogie are assumptions; the
   buggy nose-dives off sharp crests and can roll over (both physical for this geometry, but untested
@@ -86,6 +87,10 @@ Status key: **cited** (published NASA/peer value) · **derived** (computed from 
   at 15+ m/s the post-to-post slope kinks make the wheels chatter.
 
 ## Change log
+
+- 2026-11-14: First run on the real Jezero build (Caden's pipeline: HiRISE DTM 2 m grid, Mars 2020 traverse). `/validation` now uses every traverse drive (not just the first), length-weighted, with a site-wide baseline, and re-plans 8 odometry-measured waypoint pairs; results in the table above.
+
+- 2026-11-14: API simulator drives the crew buggy by default with the same power/grip force balance as the viewer (stalls where driven-wheel grip runs out); vehicle switchable (`POST /rover/vehicle`).
 
 - 2026-11-14: Buggy switched to rear-wheel drive with front-only steering and a rear-biased centre of mass; climb limit ~20°, body squats ~0.8° at rest.
 

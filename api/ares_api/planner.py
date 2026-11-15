@@ -105,12 +105,16 @@ class Planner:
                              f"{SNAP_RADIUS_M:.0f} m. Pick a different point.")
         return best[1], f"{label} moved {best[0] * self.res:.0f} m to the nearest safe ground."
 
-    def cost_from(self, x: float, y: float, prof: dict, max_slope: float = None) -> np.ndarray:
-        """Cumulative travel seconds from (x, y) to every coarse cell (inf where unreachable)."""
+    def cost_from(self, x: float, y: float, prof: dict, max_slope: float = None, ends: list = None) -> np.ndarray:
+        """Cumulative travel seconds from (x, y) to coarse cells (inf where unreachable or not explored).
+
+        With `ends` (list of (x, y)) the search stops once all of them are reached. That only skips
+        work: every finite value is exact, cells never visited stay inf."""
         cost, nogo = self.cost_grid(prof, max_slope)
         rc, _ = self._snap(x, y, nogo, "Start")
         m = MCP_Geometric(cost, sampling=(self.res, self.res))
-        cum, _ = m.find_costs([rc])
+        end_cells = [self.cell(ex, ey) for ex, ey in ends] if ends else None
+        cum, _ = m.find_costs([rc], end_cells)
         return cum
 
     # --- planning -------------------------------------------------------------------
@@ -122,9 +126,9 @@ class Planner:
         sb, wb = self._snap(*b, nogo, labels[1], lim, strict=True)
         warnings += [w for w in (wa, wb) if w]
         m = MCP_Geometric(cost, sampling=(self.res, self.res))
-        cum, _ = m.find_costs([sa], [sb])
+        cum, _ = m.find_costs([sa], [sb])  # stops as soon as the goal is reached
         if not np.isfinite(cum[sb]):
-            cum, _ = m.find_costs([sa])
+            # The goal was never reached, so the search above already explored every reachable cell.
             reach = np.isfinite(cum)
             rr, cc = np.nonzero(reach)
             d = np.hypot(rr - sb[0], cc - sb[1])
@@ -141,7 +145,9 @@ class Planner:
         return [self.cell_xy(rc) for rc in path], warnings
 
     def plan(self, start, goal, via: list = (), labels: list = None, profile: str = None,
-             max_slope_deg: float = None, time_budget_min: float = None, stops: int = 0) -> dict:
+             max_slope_deg: float = None, time_budget_min: float = None, stops: int = 0,
+             store: bool = True) -> dict:
+        """Plan a route; with store=False it is not kept (no route_id), e.g. for validation runs."""
         prof = self.profile(profile)
         pts = [start, *via, goal]
         labels = labels or [f"({p[0]:.0f}, {p[1]:.0f})" for p in pts]
@@ -159,9 +165,12 @@ class Planner:
         route = self._summarise(cells, leg_ends, prof, max_slope_deg, labels, stops, time_budget_min)
         route["warnings"] = warnings + route["warnings"]
         route["direct_line"] = self.direct_line(pts[0], pts[-1], prof, max_slope_deg)
-        rid = f"r{next(self._ids)}"
-        route["route_id"] = rid
-        self.routes[rid] = route
+        if store:
+            rid = f"r{next(self._ids)}"
+            route["route_id"] = rid
+            self.routes[rid] = route
+        else:
+            route["route_id"] = None
         return route
 
     def _summarise(self, raw, leg_ends, prof, max_slope, labels, stops, budget):

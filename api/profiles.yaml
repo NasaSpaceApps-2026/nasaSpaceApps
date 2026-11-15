@@ -55,6 +55,7 @@ profiles:
     boost_power_factor: 1.6
     traction_mu: 0.6             # wheel-regolith grip (assumed); climb limit ~atan(mu - Crr) ~ 27 deg
     rolling_coeff: 0.08          # loose regolith (assumed)
+    driven_load_share: 0.61      # rear-wheel drive, ~61 % static rear weight (browser BUGGY_PARAMS)
     display_speed_factor: 1      # real time; the viewer can time-lapse
     min_turn_radius_m: 3.1       # LRV ~3 m turning radius (4-wheel steering)
     # Suspension (assumed; soft long-travel off-road tune). Spring k = (m/4)(2 pi f)^2 = 9.1 kN/m per wheel,
@@ -77,4 +78,5 @@ profiles:
     source: "assumed"
 
 default_profile: astronaut_walk
-rover_profile: rover_scout
+rover_profile: rover_scout     # validation benchmark vehicle (Perseverance-like)
+vehicle_profile: crew_buggy    # vehicle the API simulator drives by default (same as the viewer); POST /rover/vehicle switches
