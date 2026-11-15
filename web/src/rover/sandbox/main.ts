@@ -272,6 +272,10 @@ async function main() {
   $('msg').remove();
 
   const hud = $('hud');
+  let showDetails = false;
+  addEventListener('keydown', (e) => {
+    if (e.code === 'KeyH' && !e.repeat) showDetails = !showDetails;
+  });
   let hudT = 0;
   let last = performance.now();
   const loop = () => {
@@ -296,7 +300,15 @@ async function main() {
       const statusCls = ['sliding', 'slipping', 'tip_risk', 'blocked_edge', 'steep'].includes(String(p.status)) ? 'bad' : p.status === 'caution' || p.status === 'airborne' ? 'warn' : '';
       const fc = st.forces;
       const susp = driver.physics.suspension;
-      hud.innerHTML = `<table>
+      const compact = `<table>
+        <tr><td>speed</td><td><b>${f(Math.abs(p.speed_mps) * 3.6, 0)} km/h</b>${p.time_scale !== 1 ? ` (time x${f(prof.display_speed_factor * p.time_scale, 2)})` : ''}</td></tr>
+        <tr><td>boost</td><td class="${p.boost_active ? 'warn' : ''}"><span class="meter"><span style="width:${Math.round(p.boost_charge * 100)}%"></span></span>${p.boost_active ? ' BOOST' : ''}</td></tr>
+        <tr><td>slope</td><td class="${slopeCls}">${f(p.slope_deg)}&deg;</td></tr>
+        <tr><td>status</td><td class="${statusCls}">${p.status}</td></tr>
+        ${p.stop_reason ? `<tr><td colspan="2" class="src">${p.stop_reason}</td></tr>` : ''}
+        <tr><td colspan="2" class="src">H details</td></tr>
+      </table>`;
+      hud.innerHTML = showDetails ? `<table>
         <tr><td>x, y</td><td>${f(p.x)} E, ${f(p.y)} N m</td></tr>
         <tr><td>elevation</td><td>${f(p.z, 2)} m</td></tr>
         <tr><td>heading</td><td>${f(p.heading_deg)}&deg;</td></tr>
@@ -316,9 +328,9 @@ async function main() {
         <tr class="sep"><td>caution slope</td><td>${prof.caution_slope_deg}&deg;</td></tr>
         <tr><td>no-go slope</td><td>${prof.nogo_slope_deg}&deg;</td></tr>
         <tr><td>vehicle</td><td>${prof.mass_kg} kg, ${prof.power_w} W, grip &mu; ${prof.traction_mu}, rolling ${prof.rolling_coeff}, cap ${prof.flat_speed_mps} m/s${prof.min_turn_radius_m ? `, turn radius ${prof.min_turn_radius_m} m` : ''}; springs ${f(susp.k_n_per_m / 1000, 1)} kN/m (${prof.suspension_hz ?? '-'} Hz), dampers ${f(susp.c_ns_per_m, 0)} N s/m (&zeta; ${prof.damping_ratio ?? '-'})</td></tr>
-        <tr><td colspan="2" class="src">W/S drive (S brakes when moving forward) &middot; A/D steer &middot; Shift boost &middot; Space brake &middot; release W to coast &middot; [ ] time-lapse &middot; R reset &middot; C camera side &middot; wheel zoom</td></tr>
+        <tr><td colspan="2" class="src">W/S drive (S brakes when moving forward) &middot; A/D steer &middot; Shift boost &middot; Space brake &middot; release W to coast &middot; [ ] time-lapse &middot; R reset &middot; C camera side &middot; H hide details &middot; wheel zoom</td></tr>
         <tr><td colspan="2" class="src">Limits source: ${prof.source}. Rigid-body model: Mars g 3.71 m/s&sup2;; four spring-damper wheels; tyre forces inside the friction circle &mu;F<sub>z</sub> (drive limited by power and grip). Slope limits are safety advisories, not walls.</td></tr>
-      </table>`;
+      </table>` : compact;
     }
     requestAnimationFrame(loop);
   };

@@ -46,12 +46,12 @@ profiles:
     title: Crewed performance buggy (concept; LRV-derived geometry, unpressurised)
     # Reference: Apollo LRV was ~13 km/h top (18 km/h record), ~750 W, 25 deg rating.
     # This concept is faster and more powerful than the LRV; speeds/power are assumed.
-    flat_speed_mps: 12           # 43 km/h (assumed concept)
-    boost_speed_mps: 20          # 72 km/h (assumed concept)
+    flat_speed_mps: 24           # 86 km/h (assumed concept)
+    boost_speed_mps: 40          # 144 km/h (assumed concept)
     speed_curve_k: 2.0           # more torque than the scout: loses less speed on slopes (assumed)
     # Browser force model (web/src/rover/physics.ts):
     mass_kg: 700                 # LRV 210 kg + 2 suited crew + gear
-    power_w: 10000               # 10 kW (assumed concept; LRV had ~750 W)
+    power_w: 25000               # 25 kW (assumed concept; LRV had ~750 W)
     boost_power_factor: 1.6
     traction_mu: 0.6             # wheel-regolith grip (assumed); climb limit ~atan(mu - Crr) ~ 27 deg
     rolling_coeff: 0.08          # loose regolith (assumed)

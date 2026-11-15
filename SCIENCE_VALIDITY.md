@@ -27,11 +27,12 @@ Status key: **cited** (published NASA/peer value) · **derived** (computed from 
 | Scout rover top speed | 0.04 m/s | cited | Perseverance ~4.2 cm/s (NASA) |
 | Scout drive power | 40 W | assumed | Chosen so the cap is reached on flat ground |
 | Buggy concept | Performance crew buggy, faster than the LRV | assumed | Geometry, slope rating and turn radius from the Apollo LRV; speed and power are a concept, not a flown vehicle |
-| Buggy top speed | 12 m/s (43 km/h) | assumed | Concept. Reference: LRV 3.6 m/s (13 km/h) nominal (cited) |
-| Buggy boost speed | 20 m/s cap (72 km/h); ~17 m/s reached in a 6 s boost | assumed | Concept. Reference: LRV record 5 m/s (18 km/h), Apollo 17 (cited) |
-| Buggy motor power | 10 kW (16 kW boost) | assumed | Concept. Reference: LRV ~750 W (4 × 0.25 hp) (cited) |
+| Buggy top speed | 24 m/s (86 km/h) | assumed | Concept. Reference: LRV 3.6 m/s (13 km/h) nominal (cited) |
+| Buggy boost speed | 40 m/s cap (144 km/h); ~33 m/s reached in a 6 s boost from cruise | assumed | Concept. Reference: LRV record 5 m/s (18 km/h), Apollo 17 (cited) |
+| Buggy motor power | 25 kW (40 kW boost) | assumed | Concept. Reference: LRV ~750 W (4 × 0.25 hp) (cited). Acceleration is grip-limited at low speed (~(μ − Crr)·g ≈ 1.9 m/s², 0–86 km/h in ~13 s) |
 | Buggy slope rating | 25° | cited | LRV design slope capability (advisory limit in the viewer) |
-| Buggy turn radius | 3.1 m | cited | LRV, four-wheel steering (~3 m) |
+| Buggy turn radius | ~3.1 m at the rear axle (~3.8 m at the body centre) | derived | Front-wheel steering only (40° max lock). The LRV reached ~3 m with four-wheel steering (cited) |
+| Buggy drivetrain | Rear-wheel drive; centre of mass 0.25 m behind the wheelbase midpoint (~61 % rear weight) | assumed | Rear-engine dune-buggy layout. Consequence: only rear-axle grip pushes, so the climb limit drops to ~20° (vs ~27° with all-wheel drive); 0–86 km/h takes longer |
 | Buggy mass (loaded) | 700 kg | derived | LRV 210 kg + two suited crew + equipment |
 | Wheel–regolith grip μ | 0.6 | assumed | Gives a ~27° climb limit, consistent with the 25° LRV rating |
 | Rolling resistance | 0.08 | assumed | Loose regolith; to verify against rover mobility literature |
@@ -85,6 +86,10 @@ Status key: **cited** (published NASA/peer value) · **derived** (computed from 
   at 15+ m/s the post-to-post slope kinks make the wheels chatter.
 
 ## Change log
+
+- 2026-11-14: Buggy switched to rear-wheel drive with front-only steering and a rear-biased centre of mass; climb limit ~20°, body squats ~0.8° at rest.
+
+- 2026-11-14: Buggy concept doubled: 24 m/s top, 40 m/s boost cap, 25 kW. At 24 m/s the grip-limited turn radius on Mars is ~260 m (v² / μg).
 
 - 2026-11-14: Browser rover physics v3: rigid-body chassis with four spring-damper wheels, friction-circle
   tyres and chassis ground contact replace the kinematic terrain-following body (no more snapping on

@@ -66,14 +66,14 @@ export interface RoverProfile {
 
 /** Built-in fallback, matching api/profiles.yaml crew_buggy as of Nov 14 2026. */
 export const DEFAULT_BUGGY_PROFILE: RoverProfile = {
-  flat_speed_mps: 12,
-  boost_speed_mps: 20,
+  flat_speed_mps: 24,
+  boost_speed_mps: 40,
   display_speed_factor: 1,
   caution_slope_deg: 15,
   nogo_slope_deg: 25,
   speed_curve_k: 2.0,
   mass_kg: 700,
-  power_w: 10000,
+  power_w: 25000,
   traction_mu: 0.6,
   rolling_coeff: 0.08,
   boost_power_factor: 1.6,
@@ -145,6 +145,8 @@ export interface RoverParams {
   wheel_radius_m: number;
   /** Centre of mass above the body origin (the ground under the body at static ride height), m. */
   cg_height_m: number;
+  /** Centre of mass ahead (+) or behind (-) the wheelbase midpoint, m. Sets the front/rear weight split. */
+  cg_forward_m: number;
   /** Inertia box (length x width x height), m. */
   body_length_m: number;
   body_width_m: number;
@@ -160,6 +162,10 @@ export interface RoverParams {
   turn_rate_deg_s: number;
   /** Steering slew, full lock per this many seconds (display time). */
   steer_lock_s: number;
+  /** Four-wheel steering: rear wheels counter-steer at low speed (blend below). False = front steering only. */
+  rear_steer: boolean;
+  /** Which wheels the motor drives. */
+  driven_wheels: 'all' | 'rear' | 'front';
   /** Rear wheels counter-steer fully below this speed and not at all above `rear_steer_off_mps` (4-wheel steer blend). */
   rear_steer_full_mps: number;
   rear_steer_off_mps: number;
@@ -195,6 +201,7 @@ export const DEFAULT_ROVER_PARAMS: RoverParams = {
   track_m: 2.3,
   wheel_radius_m: 0.2625,
   cg_height_m: 1.15,
+  cg_forward_m: 0,
   body_length_m: 3.0,
   body_width_m: 2.7,
   body_height_m: 2.2,
@@ -206,6 +213,8 @@ export const DEFAULT_ROVER_PARAMS: RoverParams = {
   hull_top_half_width_m: 0.9,
   turn_rate_deg_s: 40,
   steer_lock_s: 0.4,
+  rear_steer: false,
+  driven_wheels: 'all',
   rear_steer_full_mps: 3,
   rear_steer_off_mps: 8,
   max_steer_deg: 90,
@@ -238,8 +247,11 @@ export const BUGGY_PARAMS: Partial<RoverParams> = {
   hull_top_half_length_m: 0.9,
   hull_top_half_width_m: 0.65,
   turn_rate_deg_s: 60,
-  max_steer_deg: 35,
+  max_steer_deg: 40,
   tip_angle_deg: 50,
+  rear_steer: false, // front steering only
+  driven_wheels: 'rear', // rear-wheel drive
+  cg_forward_m: -0.25, // rear-biased like a rear-engine buggy: ~61 % of the weight on the rear axle
 };
 
 export interface DriveInput {
@@ -532,14 +544,16 @@ export class RoverPhysics {
     this.setOrientation(s.heading_deg, f.pitch_deg, f.roll_deg);
     const M = this.M;
     const lift = sc.static_sag_m * (1 - Math.cos(f.slope_deg * DEG)) + p.cg_height_m;
-    this.px = s.x + M[2] * lift;
-    this.py = s.y + M[5] * lift;
-    this.pz = f.z + M[8] * lift;
+    this.px = s.x + M[2] * lift + M[1] * p.cg_forward_m;
+    this.py = s.y + M[5] * lift + M[4] * p.cg_forward_m;
+    this.pz = f.z + M[8] * lift + M[7] * p.cg_forward_m;
     this.vx = this.vy = this.vz = this.wx = this.wy = this.wz = 0;
     this.steerAct = 0;
-    this.lastSuspForce.fill((this.profile.mass_kg * MARS_G) / 4);
+    // Static axle loads from the centre-of-mass position (front share = (L/2 + d) / L).
+    const front = (p.wheelbase_m / 2 + p.cg_forward_m) / p.wheelbase_m;
+    for (let i = 0; i < 4; i++) this.lastSuspForce[i] = (this.profile.mass_kg * MARS_G * (i < 2 ? front : 1 - front)) / 2;
     const h = this.substepLength();
-    const n = Math.min(400, Math.max(40, Math.ceil(1.0 / h)));
+    const n = Math.min(800, Math.max(40, Math.ceil(2.0 / h)));
     const ctl: Ctl = { braked: true, driveTotal: 0, yawCmd: NaN, steerKappa: 0, rearBlend: 1, throttle: 0, steerIn: 0 };
     this.settling = true;
     for (let i = 0; i < n; i++) this.substep(h, ctl);
@@ -683,7 +697,8 @@ export class RoverPhysics {
     const Rx = M[0], Ry = M[3], Rz = M[6];
     const Fx = M[1], Fy = M[4], Fz = M[7];
     const Ux = M[2], Uy = M[5], Uz = M[8];
-    const ox = this.px - Ux * p.cg_height_m, oy = this.py - Uy * p.cg_height_m, oz = this.pz - Uz * p.cg_height_m;
+    const d = p.cg_forward_m;
+    const ox = this.px - Ux * p.cg_height_m - Fx * d, oy = this.py - Uy * p.cg_height_m - Fy * d, oz = this.pz - Uz * p.cg_height_m - Fz * d;
     const halfB = p.track_m / 2, halfA = p.wheelbase_m / 2;
     const vfwd = this.vx * Fx + this.vy * Fy + this.vz * Fz;
     const e = Math.max(0.2, r * 0.7);
@@ -776,14 +791,16 @@ export class RoverPhysics {
       loadSum += this.lastSuspForce[i];
     }
 
-    // --- drive force, shared by wheel load (all-wheel drive)
+    // --- drive force, shared by load among the driven wheels in contact (FL, FR, RL, RR = 0..3)
+    const driven = (i: number) => p.driven_wheels === 'all' || (p.driven_wheels === 'rear' ? i >= 2 : i < 2);
     let nc = 0;
-    for (let i = 0; i < 4; i++) nc += this.wc[i];
+    let drivenLoad = 0;
+    for (let i = 0; i < 4; i++) if (driven(i) && this.wc[i]) { nc++; drivenLoad += this.lastSuspForce[i]; }
     for (let i = 0; i < 4; i++) {
       this.wDrive[i] = 0;
       this.wDriveEff[i] = 0;
-      if (!this.wc[i] || ctl.driveTotal === 0) continue;
-      const share = loadSum > 1e-6 ? this.lastSuspForce[i] / loadSum : 1 / nc;
+      if (!this.wc[i] || !driven(i) || ctl.driveTotal === 0) continue;
+      const share = drivenLoad > 1e-6 ? this.lastSuspForce[i] / drivenLoad : 1 / nc;
       this.wDrive[i] = ctl.driveTotal * share * h;
     }
 
@@ -949,7 +966,7 @@ export class RoverPhysics {
 
     // Integrate: position, then orientation from the new angular velocity.
     const nxp = this.px + this.vx * h, nyp = this.py + this.vy * h, nzp = this.pz + this.vz * h;
-    const nox = nxp - Ux * p.cg_height_m, noy = nyp - Uy * p.cg_height_m;
+    const nox = nxp - Ux * p.cg_height_m - M[1] * p.cg_forward_m, noy = nyp - Uy * p.cg_height_m - M[4] * p.cg_forward_m;
     if (!this.inside(nox, noy)) {
       this.vx = this.vy = this.vz = this.wx = this.wy = this.wz = 0;
       return false;
@@ -975,9 +992,9 @@ export class RoverPhysics {
     const M = this.M;
     const p = this.params;
     const sc = suspensionConstants(this.profile, p);
-    s.x = this.px - M[2] * p.cg_height_m;
-    s.y = this.py - M[5] * p.cg_height_m;
-    s.z = this.pz - M[8] * p.cg_height_m;
+    s.x = this.px - M[2] * p.cg_height_m - M[1] * p.cg_forward_m;
+    s.y = this.py - M[5] * p.cg_height_m - M[4] * p.cg_forward_m;
+    s.z = this.pz - M[8] * p.cg_height_m - M[7] * p.cg_forward_m;
     const fx = M[1], fy = M[4], fz = M[7];
     if (Math.abs(fx) + Math.abs(fy) > 1e-9) s.heading_deg = normalizeHeading(Math.atan2(fx, fy) / DEG);
     s.pitch_deg = Math.asin(Math.max(-1, Math.min(1, fz))) / DEG;
@@ -1056,7 +1073,7 @@ export class RoverPhysics {
         driveTotal: drive,
         yawCmd: skid ? (-this.steerAct * p.turn_rate_deg_s * DEG) / Math.max(prof.display_speed_factor, 1e-9) : NaN,
         steerKappa: skid ? 0 : this.steerAct / prof.min_turn_radius_m!,
-        rearBlend: Math.max(0, Math.min(1, (p.rear_steer_off_mps - sp) / (p.rear_steer_off_mps - p.rear_steer_full_mps))),
+        rearBlend: p.rear_steer ? Math.max(0, Math.min(1, (p.rear_steer_off_mps - sp) / (p.rear_steer_off_mps - p.rear_steer_full_mps))) : 0,
         throttle,
         steerIn,
       };
